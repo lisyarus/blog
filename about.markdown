@@ -4,15 +4,10 @@ title: About
 permalink: /about/
 ---
 
-This is the base Jekyll theme. You can find out more info about customizing your Jekyll theme, as well as basic Jekyll usage documentation at [jekyllrb.com](https://jekyllrb.com/)
+Hi! My name is Nikita Lisitsa, I'm a software developer from Saint Petersburg.
 
-You can find the source code for Minima at GitHub:
-[jekyll][jekyll-organization] /
-[minima](https://github.com/jekyll/minima)
+I've been programming since about 2010, with my primary insterests being C++, geometry, simulations, graphics, performance, and, recently, game developement.
 
-You can find the source code for Jekyll at GitHub:
-[jekyll][jekyll-organization] /
-[jekyll](https://github.com/jekyll/jekyll)
+I also teach real-time computer graphics in Saint Petersburg State University. 
 
-
-[jekyll-organization]: https://github.com/jekyll
+You can try some of my games [on itch.io](https://lisyarus.itch.io/). They're generally pretty bad, although I've been getting better over time.
