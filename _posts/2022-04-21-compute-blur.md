@@ -92,6 +92,8 @@ If you've ever read any resources on Gaussian blur, you know that this single-pa
 
 <center><img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B150%7D%20C_%7Bij%7D%3Dx_i%20%5Ccdot%20y_j" alt="C[i,j] = x[i] * y[j]"></center>
 
+(see also [this amazing post](https://bartwronski.com/2020/02/03/separate-your-filters-svd-and-low-rank-approximation-of-image-filters) about low-rank filter approximations).
+
 In the case of a Gaussian filter, the corresponding decomposition is
 
 <center><img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B150%7D%20%5Cexp%5Cleft%28-%5Cfrac%7Bi%5E2&plus;j%5E2%7D%7B%5Csigma%5E2%7D%5Cright%29%20%3D%20%5Cexp%5Cleft%28-%5Cfrac%7Bi%5E2%7D%7B%5Csigma%5E2%7D%5Cright%29%5Ccdot%20%5Cexp%5Cleft%28-%5Cfrac%7Bj%5E2%7D%7B%5Csigma%5E2%7D%5Cright%29" alt="exp(-(i^2+j^2)/sigma^2) = exp(-i^2/sigma^2) * exp(-j^2/sigma^2)"></center>
