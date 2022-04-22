@@ -11,3 +11,5 @@ I've been programming since about 2010, with my primary insterests being C++, ge
 I also teach real-time computer graphics in Saint Petersburg State University. 
 
 You can try some of my games [on itch.io](https://lisyarus.itch.io/). They're generally pretty bad, although I've been getting better over time.
+
+I've also written a beginner-friendly introductory [book on quantum chemistry](https://github.com/lisyarus/chembook) which shows how to compute some hydrogen atom electron orbitals with just some python.
