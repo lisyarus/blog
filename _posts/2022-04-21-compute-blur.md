@@ -102,19 +102,20 @@ In the case of a Gaussian filter, the corresponding decomposition is
 
 In fact, this is exactly how the weights were defined in the naive implementation: a single array of N coefficients is enough to reconstruct the full N×N coefficient matrix.
 
-What it means is that we can replace out single-pass algorithm with a two-pass algorithm: instead of replacing every pixel with a weighted average of all N×N neigbouring pixels, we do
+What it means is that we can replace our single-pass algorithm with a two-pass algorithm: instead of replacing every pixel with a weighted average of all N×N neigbouring pixels, we do
 1. Horizontal blur: replace every pixel with the average of neigbouring N×1 pixels
 2. Vertical blur: replace every pixel with the average of neighbouring 1×N pixels.
 
 This way, vertical averaging deals with pixels that have already been averaged horizontally, thus producing a full blur. Specifically, say `W[i]` is the one-dimensional weight vector, meaning that
 `W[i]*W[j]` is the coefficient of some pixel's `P[x,y]` contribution to its neighbour `P[x+i,y+j]` when performing full blur. Then, the horizontal pass will add `W[i]*P[x,y]` to the value of `P[x+i,y]`, then the vertical blur will add `W[j]*P[x+i,y]` to `P[x+i,y+j]`, so the value of `P[x,y]` will get multiplied by `W[i]*W[j]` upon reaching `P[x+i,y+j]`, which is exactly what we want. _Not sure who needs another explanation of separable filters, but, hey, it never hurts._
 
-The point of this separation is that, compared to the naive version, which uses N² texture accesses (per fragment), this version only uses 2N texture accessed (2 passes, each having N accesses per pixel). This sounds like a drastic increase in performance: assuming everything else is negligible compared to texture access, for N=33 we'll get about N²/2N = 33/2 = 16.5 times better performance! Of course, things aren't that simple, but we still can hope for a huge improvement.
+The point of this separation is that, compared to the naive version which uses N² texture accesses (per fragment), this version only uses 2N texture accesses (2 passes, each having N accesses per pixel). This sounds like a drastic increase in performance: assuming everything else is negligible compared to texture access, for N=33 we'll get about N²/2N = 33/2 = 16.5 times better performance! Of course, things aren't that simple, but we still can hope for a huge improvement.
 
 On the OpenGL side, we'll have to use two framebuffers this time. The algorithm is as follows:
 1. Render the scene to framebuffer 1
 2. Use framebuffer 1 color texture as input to horizontal blur that outputs to framebuffer 2
 3. Use framebuffer 2 color texture as input to vertical blur that outputs to target framebuffer (e.g. the screen)
+
 Note that we don't need a depth attachment for the second framebuffer.
 
 Implementing a separable kernel is even easier than the full blur: we only need a single loop over neighbouring pixels, and the direction of blur can be constrolled by a uniform variable:
@@ -153,9 +154,9 @@ The result is significally better: **1ms** for the whole blur. A 15x improvement
 
 ### Separable kernel with hardware filtering
 
-There's this neat trick that I've [learnt long ago](https://www.rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling) but didn't have the opportunity to try. See, we're still bound by memory accesses: all the shader does is fetch texture data and do a pitiful amount of arithmetics. Modern GPUs are famously superior in terms of computing performance while not so in terms of memory speeds, so anything that decreases our texture access counts is a win.
+There's this neat trick that I've [learnt long ago](https://www.rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling) but didn't have the opportunity to try. See, we're still bound by memory accesses: all the shader does is fetch texture data and do a pitiful amount of arithmetics. Modern GPUs are famously superior in terms of computing performance while not so in terms of memory speed, so anything that decreases our texture access counts is a win.
 
-What we've been ignoring up to now is that GPUs have a whole zoo of special hardware dedicated to various graphics needs. In particular, it can do linear filtering on textures almost for free! Linear filtering is just averaging neighbouring pixels, -- sounds a lot like what we're trying to do!
+What we've been ignoring up to now is that GPUs have a whole zoo of special hardware dedicated to various graphical needs. In particular, it can do linear filtering on textures almost for free! Linear filtering is just averaging neighbouring pixels, -- sounds a lot like what we're trying to do!
 
 So, the idea goes like this: when doing a weighted average of neighbouring pixels, instead of computing `W[i]*P[i] + W[i+1]*P[i+1]`, let's ask the GPU to mix `P[i]` and `P[i+1]` with appropriate weights and return the result to us via a single texture fetch. What happens when we read a texture with linear filtering at coordinate `i+t` (where `t` is in the range `[0..1)`) is it returns `lerp(P[i], P[i+1], t) = P[i] * (1-t) + P[i+1] * t`, which we'll have to scale by some weight `W`. This gives us a system of equations:
 
@@ -200,7 +201,7 @@ void main()
 }
 ```
 
-So, instead of N=33 texture fetches we now have 1+(N-1)/2=17 of them, leading to a theoretical 1.95x performance increase. Indeed, what I got was **0.54ms** for the whole blur, about 1.85x increase! It always facinates me when theoretical performance predictions match reality. I wish this happened more often :)
+So, instead of N=33 texture fetches we now have 1+(N-1)/2=17 of them, leading to a theoretical 1.95x performance increase. Indeed, what I got was **0.54ms** for the whole blur, about 1.85x increase! It always fascinates me when theoretical performance predictions match reality. I wish this happened more often :)
 
 ### Compute naive
 
@@ -209,15 +210,17 @@ Now that we've settled on our baseline OpenGL 3.3 implementation, let's start do
 I won't dive deep into explaining how compute shaders work, but the TL;DR is:
 1. They are a completely separate shader stage, like vertex or fragment shader
 2. They don't have any special inputs (like vertex attributes) or outputs (like output color for fragment shaders)
-3. All data read & write happens using special GLSL functions
-4. Compute shaders operate in so-called workgroups; a single compute dispatch (compute analogue of drawing commands, i.e. the command that issues shader invocations) is composed of a set of workgroups of equal size (predetermined by the shader itself)
+3. All data read & write from/to textures/images/buffers happens using specializes GLSL functions
+4. Compute shaders operate in so-called workgroups:
+    1. A single compute dispatch (compute analogue of drawing commands, i.e. the command that issues shader invocations) is composed of a set of workgroups of equal size (predetermined by the shader itself)
+    2. A single workgroup is composed of a set of compute shader invocations
 5. Workgroups are useful due to having *shared memory* (LDS, Local Data Store, something around 16K..64K per workgroup) -- fast-access data that can be shared between shader invocations *in the same workgroup* (but **not** between different workgroups!)
 
 At first, let's write a naive implementation: a full N×N loop that does averaging with Gaussian weights. Instead of reading a texture via the `texture` GLSL function, we'll use the `imageLoad` function. Instead of writing pixels to the framebuffer as part of the usual rendering pipeline, we'll manually write pixels to the output texture with the `imageStore` function.
 
-Note that this functions have `image` in their name, not `texture`. OpenGL makes a difference between images and textures: an image is just that, an array of pixels, while a texture is a *set* of images (mipmap levels) together with a whole bunch of sampling options (linear/nearest/trilinear filtering, swizzling, clamping/repeating, anisotropy, etc). One can use textures in compute shaders, but we simply don't need that now since we're foing to read & write single pixels without any filtering or other special effects. Binding images to shaders is done using `glBindImageTexture`.
+Note that these functions have `image` in their name, not `texture`. OpenGL makes a difference between images and textures: an image is just that, an array of pixels, while a texture is roughly a *set* of images (mipmap levels) together with a whole bunch of sampling options (linear/nearest/trilinear filtering, swizzling, clamping/repeating, anisotropy, etc). One can use textures in compute shaders, but we simply don't need that now since we're going to read & write single pixels without any filtering or other special effects. Binding images to shaders is done using `glBindImageTexture`.
 
-So, we're going to select some workgroup size (say, 16×16), and have each shader invocation write exactly one pixel. For a screen resolution `W×H` We'll dispatch a grid of `ceil(W/16) × ceil(H/16)` workgroups to make sure that these workgrous cover the whole screen. Additionally, if, say, the screen height is not a multiple of 16, we'll insert some checks in the shader so that the shader invocations corresponding to off-screen pixels won't do anything (most importantly, they won't try to write to the output image).
+So, we're going to select some workgroup size (say, 16×16), and have each shader invocation write exactly one pixel. For a screen resolution `W×H` we'll dispatch a grid of `ceil(W/16) × ceil(H/16)` workgroups to make sure that these workgrous cover the entire screen. Additionally, if, say, the screen height is not a multiple of 16, we'll insert some checks in the shader so that the shader invocations corresponding to off-screen pixels won't do anything (most importantly, they won't try to write to the output image).
 
 So, here's the full compute shader:
 
@@ -274,7 +277,7 @@ As far as I know, we can't use the compute shader to write directly onto the scr
 
 Let's talk about memory barriers. Normally, OpenGL is designed in such a way that it's pretty obvious to the driver what commands read/write what data (e.g. a draw command reads vertex buffers & bound textures and writes to currently bound framebuffer, etc). Even if the GPU decides to shuffle around user's commands (and it certainly will), it can use that knowledge about data dependence to prevent erroneous ordering of commands. It basically means that OpenGL guarantees that all data written by a command will be seen by any following command that tries to read that data, and it happens magically, and you don't even need to think about that.
 
-Unfortunatelly, compute shaders are a bit trickier: they can read and write arbitrary portions of arbitrary bound objects, so the GPU has a hard time trying to guess the exact data dependencies. That's what memory barriers are for: they tell the GPU what data depends on what. For example, we want all the data renderered at step 1 to be visible to the image load-store operations perfomed at step 3. This is what `GL_SHADER_IMAGE_ACCESS_BARRIER_BIT` is for. Next, we want the pixels written by step 3 to be visible for the framebuffer blit operation at step 5, this is what `GL_FRAMEBUFFER_BARRIER_BIT`. I hope I didn't mess that up :)
+Unfortunatelly, compute shaders are a bit trickier: they can read and write arbitrary portions of arbitrary bound objects, so the GPU has a hard time trying to guess the exact data dependencies. That's what memory barriers are for: they tell the GPU what data depends on what. For example, we want all the data renderered at step 1 to be visible to the image load-store operations perfomed at step 3. This is what `GL_SHADER_IMAGE_ACCESS_BARRIER_BIT` is for. Next, we want the pixels written by step 3 to be visible for the framebuffer blit operation at step 5, this is what `GL_FRAMEBUFFER_BARRIER_BIT` does. *I hope I didn't mess that up :)*
 
 Combining all this, I got the following performance for various workgroup sizes:
 
@@ -286,7 +289,7 @@ Combining all this, I got the following performance for various workgroup sizes:
 
 (there's no 32x64 or 64x64 workgroup size since this exceeds the maximum workgroup size for my GPU).
 
-Performance is bad for 4x4, but it stays pretty much the same for all other workgroup sizes, although there are some trends. This correlates nicely with my understanding that Nvidia GPUs typically execute shaders in groups of 32 (so-called warps): any workgroup size with at least 32 threads is fine, while 4x4 occupies only half of the warp and thus a lot of computational power is wasted (*serious handwaving here!*).
+Performance is bad for 4x4, but it stays pretty much the same for all other workgroup sizes, although there are some trends. This correlates nicely with my understanding that Nvidia GPUs typically execute shaders in groups of 32 (so-called warps): any workgroup size which is a multiple 32 threads is fine (it gets spread into several warps), while 4x4 occupies only half of the warp and thus a lot of computational power is wasted (*serious handwaving here!*).
 
 Anyways, that's still about 1.6 times worse than the non-compute naive implementation. Let's get deeper.
 
@@ -300,7 +303,7 @@ Specifically for a convolution filter with size `N = 2*M+1` (like Gaussian blur)
 
 <center><img src="{{site.url}}/blog/media/blur/shared.png"></center>
 
-(here, `M = 2`, `N = 5` and `G = 4`; red is a single pixel or a 4x4 workgroup, blue are accessed pixels).
+(here, `M = 2`, `N = 5` and `G = 4`; red is a single pixel or a 4x4 workgroup, blue are accessed pixels outside workgroup).
 
 So, the new algorithm is:
 1. Create a shared array in the compute shader with an appropriate size
@@ -412,6 +415,8 @@ Well, either I did something really wrong, or it was a bad idea.
 
 ### Conclusion?
 
-So, what's happening here? The problem is I genuinely have no idea. Maybe I'm doing something really wrong in my compute shaders. Maybe the texture cache is actully so good that it outperforms clever manual optimizations. Maybe the rasterizer orders it's own fragment shader workgroups in some clever way (e.g. using [Hilbert](https://en.wikipedia.org/wiki/Hilbert_curve) or [Morton](https://en.wikipedia.org/wiki/Z-order_curve) curves) to improve data locality (there are ways to do this with compute shaders as well, see [this paper](https://developer.nvidia.com/blog/optimizing-compute-shaders-for-l2-locality-using-thread-group-id-swizzling)). Anyways, what this definitely does prove is that GPU optimization is a hard topic! Who would have thought.
+So, what's happening here? The problem is I genuinely have no idea. *I'm still learning, remember? :)*
+
+Maybe I'm doing something really wrong in my compute shaders. Maybe the texture cache is actully so good that it outperforms clever manual shared storage optimizations. Maybe the rasterizer orders it's own fragment shader workgroups in some clever way (e.g. using [Hilbert](https://en.wikipedia.org/wiki/Hilbert_curve) or [Morton](https://en.wikipedia.org/wiki/Z-order_curve) curves) to improve data locality (there are ways to do this with compute shaders as well, see e.g. [this paper](https://developer.nvidia.com/blog/optimizing-compute-shaders-for-l2-locality-using-thread-group-id-swizzling)). Anyways, what this definitely does prove is that GPU optimization is a hard topic! Who would have thought.
 
 If you have any corrections, suggestions, or explanations, feel free to reach me in any convenient way (though email or twitter would probably be the easiest). And, well, thanks for reading :)
