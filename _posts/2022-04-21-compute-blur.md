@@ -207,11 +207,11 @@ I won't dive deep into explaining how compute shaders work, but the TL;DR is:
 2. They don't have any special inputs (like vertex attributes) or outputs (like output color for fragment shaders)
 3. All data read & write happens using special GLSL functions
 4. Compute shaders operate in so-called workgroups; a single compute dispatch (compute analogue of drawing commands, i.e. the command that issues shader invocations) is composed of a set of workgroups of equal size (predetermined by the shader itself)
-5. Workgroups are useful due to having *shared memory* -- fast-access data that can be shared between shader invocations *in the same workgroup* (but **not** between different workgroups!)
+5. Workgroups are useful due to having *shared memory* (LDS, Local Data Store, something around 16K..64K per workgroup) -- fast-access data that can be shared between shader invocations *in the same workgroup* (but **not** between different workgroups!)
 
 At first, let's write a naive implementation: a full N×N loop that does averaging with Gaussian weights. Instead of reading a texture via the `texture` GLSL function, we'll use the `imageLoad` function. Instead of writing pixels to the framebuffer as part of the usual rendering pipeline, we'll manually write pixels to the output texture with the `imageStore` function.
 
-Note that this functions have `image` in their name, not `texture`. OpenGL makes a difference between images and textures: an image is just that, an array of pixels, while a texture is a *set* of images (mipmap levels) together with a whole bunch of sampling options (linear/nearest/trilinear filtering, swizzling, clamping/repeating, anisotropy, etc). One can use textures in compute shaders, but we simply don't need that now since we're foing to read & write single pixels without any filtering or other special effects.
+Note that this functions have `image` in their name, not `texture`. OpenGL makes a difference between images and textures: an image is just that, an array of pixels, while a texture is a *set* of images (mipmap levels) together with a whole bunch of sampling options (linear/nearest/trilinear filtering, swizzling, clamping/repeating, anisotropy, etc). One can use textures in compute shaders, but we simply don't need that now since we're foing to read & write single pixels without any filtering or other special effects. Binding images to shaders is done using `glBindImageTexture`.
 
 So, we're going to select some workgroup size (say, 16×16), and have each shader invocation write exactly one pixel. For a screen resolution `W×H` We'll dispatch a grid of `ceil(W/16) × ceil(H/16)` workgroups to make sure that these workgrous cover the whole screen. Additionally, if, say, the screen height is not a multiple of 16, we'll insert some checks in the shader so that the shader invocations corresponding to off-screen pixels won't do anything (most importantly, they won't try to write to the output image).
 
@@ -274,7 +274,6 @@ Unfortunatelly, compute shaders are a bit trickier: they can read and write arbi
 
 Combining all this, I got the following performance for various workgroup sizes:
 
-|                  |                  |                  |                  |                  |
 |:----------------:|:----------------:|:----------------:|:----------------:|:----------------:|
 |4x4: **40ms**     |4x8: **25.3ms**   |4x16: **25.7ms**  |4x32: **26ms**    |4x64: **26.5ms**  |
 |                  |8x8: **24.2ms**   |8x16: **24.7ms**  |8x32: **25.2ms**  |8x64: **25.4ms**  |
@@ -286,3 +285,129 @@ Combining all this, I got the following performance for various workgroup sizes:
 Performance is bad for 4x4, but it stays pretty much the same for all other workgroup sizes, although there are some trends. This correlates nicely with my understanding that Nvidia GPUs typically execute shaders in groups of 32 (so-called warps): any workgroup size with at least 32 threads is fine, while 4x4 occupies only half of the warp and thus a lot of computational power is wasted (*serious handwaving here!*).
 
 Anyways, that's still about 1.6 times worse than the non-compute naive implementation. Let's get deeper.
+
+### Compute naive + LDS
+
+My first instinct for improving the naive compute implementation was to use workgroup shared memory. After all, that's one of the unique features of compute shaders!
+
+The general idea of using LDS is to exploit data locality, i.e. that many threads in the same workgroup require the same data. Instead of each thread reading the memory it needs, we'd make the threads read all the data they all need into shared memory, then proceed the computations as usual using this shared memory instead (which is supposedly very fast!).
+
+Specifically for a convolution filter with size `N = 2*M+1` (like Gaussian blur), a single thread accesses `NxN` pixels, while a whole workgroup of size `GxG` accesses `(G+2*M)x(G+2*M)` pixels:
+
+<center><img src="{{site.url}}/blog/media/blur/shared.png"></center>
+
+(here, `M = 2`, `N = 5` and `G = 4`; red is a single pixel or a 4x4 workgroup, blue are accessed pixels).
+
+So, the new algorithm is:
+1. Create a shared array in the compute shader with an appropriate size
+2. Compute shader first loads all the pixels accessed by the workgroup into the shared memory
+3. A memory barrier (in the shader, not on the CPU side!) makes sure shared memory writes are synchronized between threads within workgroup
+4. Compute shader does the usual Gaussian blur, reading the input from shared memory
+
+There are a lot of details here, including
+* Properly computing the shared array size
+* Balancing work - we want all the threads to fetch about the same number of pixels into shared memory (this can be done by dividing the total number of fetched pixels by the workgroup size)
+* Making sure nothing reads or writes out of bounds (shared array bounds or input image bounds)
+* Properly indexing into shared array
+
+I won't go into much detail, the full code is [here](https://github.com/lisyarus/compute/tree/master/blur/source/compute_lds.cpp). Sad news -- this variant has incredibly poor performance:
+
+|:----------------:|:----------------:|:----------------:|
+|4x4: **175ms**    |8x8: **134ms**    |16x16: **117ms**  |
+
+It didn't let me create a 32x32 workgroup since the shared array size would exceed available shared workgroup memory size.
+
+### Compute + separable kernel
+
+Fine, probably compute shaders aren't as miraculously fast as I thought! Let's try the first optimization we did -- doing two-pass blur -- with compute shaders. Nothing essentially new here, except that this time we need three framebuffers:
+
+1. Render the scene into framebuffer 1
+2. Apply horizontal blur to framebuffer 1 color buffer and write to framebuffer 2 color buffer
+3. Apply vertical blur to framebuffer 2 color buffer and write to framebuffer 3 color buffer
+4. Blit from framebuffer 3 to the screen
+
+In fact, framebuffer 2 is optional, since we don't use it as a framebuffer -- only write to and read from its color texture.
+
+The shader is relatively simple:
+
+```glsl
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(rgba8, binding = 0) uniform restrict readonly image2D u_input_image;
+layout(rgba8, binding = 1) uniform restrict writeonly image2D u_output_image;
+
+uniform ivec2 u_direction;
+
+const int M = 16;
+const int N = 2 * M + 1;
+
+// sigma = 10
+const float coeffs[N] = float[N](...); // generated kernel coefficients
+
+void main()
+{
+  ivec2 size = imageSize(u_input_image);
+  ivec2 pixel_coord = ivec2(gl_GlobalInvocationID.xy);
+
+  if (pixel_coord.x < size.x && pixel_coord.y < size.y)
+  {
+    vec4 sum = vec4(0.0);
+
+    for (int i = 0; i < N; ++i)
+    {
+      ivec2 pc = pixel_coord + u_direction * (i - M);
+      if (pc.x < 0) pc.x = 0;
+      if (pc.y < 0) pc.y = 0;
+      if (pc.x >= size.x) pc.x = size.x - 1;
+      if (pc.y >= size.y) pc.y = size.y - 1;
+
+      sum += coeffs[i] * imageLoad(u_input_image, pc);
+    }
+
+    imageStore(u_output_image, pixel_coord, sum);
+  }
+}
+```
+
+(the full code is [here](https://github.com/lisyarus/compute/tree/master/blur/source/compute_separable.cpp)).
+
+And here are the timings for different workgroup sizes:
+
+|:----------------:|:----------------:|:----------------:|:----------------:|
+|4x4: **2.79ms**   |8x8: **1.59ms**   |16x16: **1.66ms** |32x32: **2.3ms**  |
+
+We're finally close to the performance we had with the non-compute implementation, although still about 3x slower.
+
+### Compute + separable kernel + LDS
+
+Let's combine both optimizations! A two-pass blur, with each pass using a shared array to prefetch all the accessed input pixels. This time, I'm using Gx1 workgroups for horizontal blur, and 1xG for the vertical pass, since e.g. during a horizontal pass a pixel shares a lot of accessed input pixels with its horizontal heighbours, but none with its vertical neighbours.
+
+The code is [here](https://github.com/lisyarus/compute/tree/master/blur/source/compute_separable_lds.cpp) and the results are reasonably satisfying:
+
+|:----------------:|:----------------:|:----------------:|:----------------:|:----------------:|:----------------:|:----------------:|
+|4x1: **10.8ms**   |8x1: **4.5ms**    |16x1: **2.15ms**  |32x1: **1.08ms**  |64x1: **1.07ms**  |128x1: **1.06ms** |256x1: **1.06ms** |
+
+This is still slower than our non-compute implementation, though :)
+
+### Compute + separable kernel + single-pass + LDS
+
+The final idea I wanted to give a try is to get rid of the intermediary buffer used to store the result of horizontal blur. We have workgroup shared memory, why not use it? The algorithm is:
+1. Fetch all input pixels accessed by workgroup threads into shared array
+2. Issue a barrier to make sure all data is in shared memory
+3. Perform a horizontal blur
+4. Issue a barrier to make sure all threads finished the horizontal pass
+5. Write the result into shared array
+6. Issue a barrier to make sure all threads have written their results
+7. Perform a vertical blur, this time outputing directly to the output texture
+
+The code is [here](https://github.com/lisyarus/compute/tree/master/blur/source/compute_separable_single_lds.cpp) and here are the numbers:
+
+|:----------------:|:----------------:|:----------------:|
+|4x4: **75ms**     |8x8: **29ms**     |16x16: **16ms**   |
+
+Well, either I did something really wrong, or it was a bad idea.
+
+### Conclusion?
+
+So, what's happening here? The problem is I genuinely have no idea. Maybe I'm doing something really wrong in my compute shaders. Maybe the texture cache is actully so good that it outperforms clever manual optimizations. Maybe the rasterizer orders it's own fragment shader workgroups in some clever way (e.g. using [Hilbert](https://en.wikipedia.org/wiki/Hilbert_curve) or [Morton](https://en.wikipedia.org/wiki/Z-order_curve) curves) to improve data locality (there are ways to do this with compute shaders as well, see [this paper](https://developer.nvidia.com/blog/optimizing-compute-shaders-for-l2-locality-using-thread-group-id-swizzling)). Anyways, what this definitely does prove is that GPU optimization is a hard topic! Who would have thought.
+
+If you have any corrections, suggestions, or explanations, feel free to reach me in any convenient way (though email or twitter would probably be the easiest). And, well, thanks for reading :)
