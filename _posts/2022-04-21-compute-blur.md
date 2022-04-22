@@ -18,6 +18,8 @@ In my recent [twitter post](https://twitter.com/lisyarus/status/1515213774743126
 
 So, I dediced I'll document my own attempts at learning this stuff in the form of a blog post series, in the hope that it helps someone like me. In this post, I'll try to implement Gaussian blur using compute shaders and compare the performance to classic fragment shader-based implementation (_spoiler: the results aren't great at all_). All the code for this post is available at [this repository](https://github.com/lisyarus/compute/tree/master/blur). I'm using [my pet C++ engine](https://bitbucket.org/lisyarus/psemek/src/master), but the OpenGL-related stuff should be clear for the most part. I'm using CMake as a build system, so you should be able to easily clone the repo and run the examples.
 
+I'm testing everything on my GeForce GTX 1060, with a screen resolution of 1920x1080, without any downsampling.
+
 _**Disclaimer:** as I've said, I'm only learning all this stuff, and this is literally the first time I'm writing compute serious shaders and analyzing their performance. Beware of dramatic ignorance ahead :)_
 
 ### Preparing the scene
@@ -82,7 +84,7 @@ A better way is to use OpenGL timer queries, which are a little tricky due to as
 Thankfully, this can be easily dealt with by using a [pool of queries](https://bitbucket.org/lisyarus/psemek/src/master/libs/gfx/source/query.cpp) that creates a new query object if all others are still busy.
 I'll use both methods: timer queries for measurement, and frame durations for sanity checks (e.g. to make sure that I'm measuring the right thing and there's nothing else occupying half the frame time).
 
-The performance on my GeForce GTX 1060 turns out to be pretty sad: **15ms** for the whole blur. This is clearly unsatisfactory (we typically have just 16ms for the whole frame!), so let's move on to a better approach.
+The performance turns out to be pretty sad: **15ms** for the whole blur. This is clearly unsatisfactory (we typically have just 16ms for the whole frame!), so let's move on to a better approach.
 
 ### Separable kernel
 
