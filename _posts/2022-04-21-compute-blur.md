@@ -196,4 +196,93 @@ void main()
 }
 ```
 
-So, instead of N=33 texture fetches we now have 1+(N-1)/2=17 of them, leading to a theoretical ~1.95x performance increase. Indeed, what I got was **0.54ms** for the whole blur, about 1.85x increase! It always facinates me when theoretical performance predictions match reality. I wish this happened more often :)
+So, instead of N=33 texture fetches we now have 1+(N-1)/2=17 of them, leading to a theoretical 1.95x performance increase. Indeed, what I got was **0.54ms** for the whole blur, about 1.85x increase! It always facinates me when theoretical performance predictions match reality. I wish this happened more often :)
+
+### Compute naive
+
+Now that we've settled on our baseline OpenGL 3.3 implementation, let's start doing compute shaders! For these, you need either OpenGL 4.3 or the `ARB_compute_shader` extension (I'm using the latter since I want the engine to work on older devices that only support OpenGL 3.3).
+
+I won't dive deep into explaining how compute shaders work, but the TL;DR is:
+1. They are a completely separate shader stage, like vertex or fragment shader
+2. They don't have any special inputs (like vertex attributes) or outputs (like output color for fragment shaders)
+3. All data read & write happens using special GLSL functions
+4. Compute shaders operate in so-called workgroups; a single compute dispatch (compute analogue of drawing commands, i.e. the command that issues shader invocations) is composed of a set of workgroups of equal size (predetermined by the shader itself)
+5. Workgroups are useful due to having *shared memory* -- fast-access data that can be shared between shader invocations *in the same workgroup* (but **not** between different workgroups!)
+
+At first, let's write a naive implementation: a full N×N loop that does averaging with Gaussian weights. Instead of reading a texture via the `texture` GLSL function, we'll use the `imageLoad` function. Instead of writing pixels to the framebuffer as part of the usual rendering pipeline, we'll manually write pixels to the output texture with the `imageStore` function.
+
+Note that this functions have `image` in their name, not `texture`. OpenGL makes a difference between images and textures: an image is just that, an array of pixels, while a texture is a *set* of images (mipmap levels) together with a whole bunch of sampling options (linear/nearest/trilinear filtering, swizzling, clamping/repeating, anisotropy, etc). One can use textures in compute shaders, but we simply don't need that now since we're foing to read & write single pixels without any filtering or other special effects.
+
+So, we're going to select some workgroup size (say, 16×16), and have each shader invocation write exactly one pixel. For a screen resolution `W×H` We'll dispatch a grid of `ceil(W/16) × ceil(H/16)` workgroups to make sure that these workgrous cover the whole screen. Additionally, if, say, the screen height is not a multiple of 16, we'll insert some checks in the shader so that the shader invocations corresponding to off-screen pixels won't do anything (most importantly, they won't try to write to the output image).
+
+So, here's the full compute shader:
+
+```glsl
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(rgba8, binding = 0) uniform restrict readonly image2D u_input_image;
+layout(rgba8, binding = 1) uniform restrict writeonly image2D u_output_image;
+
+const int M = 16;
+const int N = 2 * M + 1;
+
+// sigma = 10
+const float coeffs[N] = float[N](...); // generated kernel coefficients
+
+void main()
+{
+  ivec2 size = imageSize(u_input_image);
+  ivec2 pixel_coord = ivec2(gl_GlobalInvocationID.xy);
+
+  if (pixel_coord.x < size.x && pixel_coord.y < size.y)
+  {
+    vec4 sum = vec4(0.0);
+
+    for (int i = 0; i < N; ++i)
+    {
+      for (int j = 0; j < N; ++j)
+      {
+        ivec2 pc = pixel_coord + ivec2(i - M, j - M);
+        if (pc.x < 0) pc.x = 0;
+        if (pc.y < 0) pc.y = 0;
+        if (pc.x >= size.x) pc.x = size.x - 1;
+        if (pc.y >= size.y) pc.y = size.y - 1;
+
+        sum += coeffs[i] * coeffs[j] * imageLoad(u_input_image, pc);
+      }
+    }
+
+    imageStore(u_output_image, pixel_coord, sum);
+  }
+}
+```
+
+(the full code is [here](https://github.com/lisyarus/compute/tree/master/blur/source/compute.cpp)).
+
+On the CPU side, we'll do the following:
+
+1. Render the scene to a framebuffer 1
+2. Insert a memory barrier
+3. Dispatch the compute shader that reads from framebuffer 1 color texture and writes to framebuffer 2 color texture
+4. Insert a memory barrier
+5. Blit from framebuffer 2 to the screen
+
+As far as I know, we can't use the compute shader to write directly onto the screen, so we write to a framebuffer-attached texture, and then use `glBlitFramebuffer` to copy the result onto the screen.
+
+Let's talk about memory barriers. Normally, OpenGL is designed in such a way that it's pretty obvious to the driver what commands read/write what data (e.g. a draw command reads vertex buffers & bound textures and writes to currently bound framebuffer, etc). Even if the GPU decides to shuffle around user's commands (and it certainly will), it can use that knowledge about data dependence to prevent erroneous ordering of commands. It basically means that OpenGL guarantees that all data written by a command will be seen by any following command that tries to read that data, and it happens magically, and you don't even need to think about that.
+
+Unfortunatelly, compute shaders are a bit trickier: they can read and write arbitrary portions of arbitrary bound objects, so the GPU has a hard time trying to guess the exact data dependencies. That's what memory barriers are for: they tell the GPU what data depends on what. For example, we want all the data renderered at step 1 to be visible to the image load-store operations perfomed at step 3. This is what `GL_SHADER_IMAGE_ACCESS_BARRIER_BIT` is for. Next, we want the pixels written by step 3 to be visible for the framebuffer blit operation at step 5, this is what `GL_FRAMEBUFFER_BARRIER_BIT`. I hope I didn't mess that up :)
+
+Combining all this, I got the following performance for various workgroup sizes:
+
+|                  |                  |                  |                  |                  |
+|:----------------:|:----------------:|:----------------:|:----------------:|:----------------:|
+|4x4: **40ms**     |4x8: **25.3ms**   |4x16: **25.7ms**  |4x32: **26ms**    |4x64: **26.5ms**  |
+|                  |8x8: **24.2ms**   |8x16: **24.7ms**  |8x32: **25.2ms**  |8x64: **25.4ms**  |
+|                  |                  |16x16: **25ms**   |16x32: **25.5ms** |16x64: **26ms**   |
+|                  |                  |                  |32x32: **30.7ms** |                  |
+
+(there's no 32x64 or 64x64 workgroup size since this exceeds the maximum workgroup size for my GPU).
+
+Performance is bad for 4x4, but it stays pretty much the same for all other workgroup sizes, although there are some trends. This correlates nicely with my understanding that Nvidia GPUs typically execute shaders in groups of 32 (so-called warps): any workgroup size with at least 32 threads is fine, while 4x4 occupies only half of the warp and thus a lot of computational power is wasted (*serious handwaving here!*).
+
+Anyways, that's still about 1.6 times worse than the non-compute naive implementation. Let's get deeper.
