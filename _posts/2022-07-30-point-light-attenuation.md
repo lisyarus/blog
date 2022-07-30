@@ -7,7 +7,7 @@ categories: graphics
 
 ### The problem
 
-So, recently I was adding lights support to the martian-droid-colony-building project I've been working on for a while. I used CPU-based [clustered shading](https://www.aortiz.me/2018/12/21/CG.html), storing the lights & clusters data in [buffer textures](https://www.khronos.org/opengl/wiki/Buffer_Texture), and managed to support about 4K lights at 60 FPS on my machine. [Here's](https://twitter.com/lisyarus/status/1552566798649802753?s=20&t=yo_3FRluSchtarf5SwKc5g) a twitter thread with some intermediate results, and here are some final screenshots:
+So, recently I was adding lights support to the martian-droid-colony-building project I've been working on for a while. I used CPU-based [clustered shading](https://www.aortiz.me/2018/12/21/CG.html), storing the lights & clusters data in [buffer textures](https://www.khronos.org/opengl/wiki/Buffer_Texture), and managed to support about 4K lights at 60 FPS on my machine. *(I'm not using compute shaders and SSBO's because I'm stuck with OpenGL 3.3 so that even prehistoric microwaves can run my game; I'll probably add support for those through OpenGL extensions later.)* [Here's](https://twitter.com/lisyarus/status/1552566798649802753?s=20&t=yo_3FRluSchtarf5SwKc5g) a twitter thread with some intermediate results, and here are some final screenshots:
 
 <center><img src="{{site.url}}/blog/media/light/many.png"></center><br/>
 <center><img src="{{site.url}}/blog/media/light/spot.png"></center><br/>
@@ -82,7 +82,7 @@ float sqr(float x)
 float attenuate(float distance, float radius, float max_intensity)
 {
 	float s = distance / radius;
-	
+
 	if (s >= 1.0)
 		return 0.0;
 
