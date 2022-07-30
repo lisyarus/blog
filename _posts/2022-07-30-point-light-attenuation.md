@@ -15,7 +15,7 @@ So, recently I was adding lights support to the martian-droid-colony-building pr
 <center><img src="{{site.url}}/blog/media/light/copper.png"></center><br/>
 <br/>
 
-For light clustering to work, I need to clip the light's area of influence by a certain distance. The physically correct point light attenuation function is
+For light clustering to work, I need to clip the light's area of influence by a certain distance. The physically correct point light attenuation function (how much light some point in scene receives) is
 
 <center><img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20%5Cfrac%7BA%7D%7Bd%5E2%7D"></center><br/>
 
@@ -23,11 +23,11 @@ where A is the light's amplitude (intensity) and d is the distance from the ligh
 
 <center><img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20%5Cfrac%7BA%7D%7B1&plus;d%5E2%7D"></center><br/>
 
-This has the added benefit that A is now the maximal light intensity (achieved at d = 0). This function isn't physically correct at small values of d, but is close to the correct one for large distances:
+This has the added benefit that A is now the maximal light intensity (achieved at d = 0). This function (red) isn't physically correct at small values of d, but is close to the correct one (blue) for large distances:
 
 <center><img src="{{site.url}}/blog/media/light/plot1.png"></center><br/>
 
-However, this attenuation formula doesn't let us control the fallof, i.e. how fast does the intensity decrease with distance. This won't be physically correct either, but it allow for a greater artistic flexibility. So, introduce another parameter R:
+However, this attenuation formula doesn't let us control the fallof, i.e. how fast does the intensity decrease with distance. This won't be physically correct either, but it allows for a greater artistic flexibility. So, introduce another parameter R:
 
 <center><img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20%5Cfrac%7BA%7D%7B1&plus;%28%5Cfrac%7Bd%7D%7BR%7D%29%5E2%7D"></center><br/>
 
@@ -45,7 +45,7 @@ Small values of Q introduce a cusp at d = 0, producing a faster fallof and a sli
 
 Use can play with all this functions [here](https://www.desmos.com/calculator/3si5gqopde).
 
-This type of function is usually presented in APIs/engines in a slightly different, arguably cleaner form:
+This type of function is usually presented in APIs/engines in a slightly different, arguably cleaner form (but with less intuitive parameters):
 
 <center><img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20%5Cfrac%7B1%7D%7BC_0%20&plus;%20C_1%20d%20&plus;%20C_2%20d%5E2%7D"></center><br/>
 
@@ -69,7 +69,7 @@ where <img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%
 
 <center><img src="{{site.url}}/blog/media/light/plot4.png"></center><br/>
 
-For distances less than R/2 this function looks about the same as <img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20%5Cfrac%7BA%7D%7B1&plus;4%28%5Cfrac%7Bd%7D%7BR%7D%29%5E2%7D">, while for larger values it gradually goes to zero at distance R. Note that it doesn't have a sharp cusp at d = 0, for artistic reasons: I want the attenuation to behave roughly like a spherical area light source near the light.
+For distances less than R/2 this function looks about the same as <img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20%5Cfrac%7BA%7D%7B1&plus;4%28%5Cfrac%7Bd%7D%7BR%7D%29%5E2%7D">, while for larger values it gradually goes to zero and is exactly zero at distance R. Note that it doesn't have a sharp cusp at d = 0, for artistic reasons: I want the attenuation to behave roughly like a spherical area light source near the light.
 
 For the sake of completeness, here's a GLSL implementation. Note that we need to check for d < R, otherwise we'd get wrong lightness values at larger distances.
 
@@ -82,6 +82,10 @@ float sqr(float x)
 float attenuate(float distance, float radius, float max_intensity)
 {
 	float s = distance / radius;
+	
+	if (s >= 1.0)
+		return 0.0;
+
 	float s2 = sqr(s);
 
 	return max_intensity * sqr(1 - s2) / (1 + s2);
