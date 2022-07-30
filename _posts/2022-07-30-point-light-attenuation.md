@@ -7,7 +7,7 @@ categories: graphics
 
 ### The problem
 
-So, recently I was adding lights support to the martian-droid-colony-building project I've been working on for a while. I used CPU-based [clustered shading](https://www.aortiz.me/2018/12/21/CG.html), storing the lights & clusters data in [buffer textures](https://www.khronos.org/opengl/wiki/Buffer_Texture), and managed to support about 4K lights at 60 FPS on my machine. Here are some screenshots:
+So, recently I was adding lights support to the martian-droid-colony-building project I've been working on for a while. I used CPU-based [clustered shading](https://www.aortiz.me/2018/12/21/CG.html), storing the lights & clusters data in [buffer textures](https://www.khronos.org/opengl/wiki/Buffer_Texture), and managed to support about 4K lights at 60 FPS on my machine. [Here's](https://twitter.com/lisyarus/status/1552566798649802753?s=20&t=yo_3FRluSchtarf5SwKc5g) a twitter thread with some intermediate results, and here are some final screenshots:
 
 <center><img src="{{site.url}}/blog/media/light/many.png"></center><br/>
 <center><img src="{{site.url}}/blog/media/light/spot.png"></center><br/>
@@ -58,7 +58,7 @@ There are other popular attenuation functions: some [introduce a sharp cutoff](h
 So, I set off to find a different formula that
 
 * Looks a bit like the physically correct <img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20%5Cfrac%7B1%7D%7Bd%5E2%7D">
-* Is exactly zero at a certain distance R
+* Is exactly zero at a certain distance R, so that I can use that distance for light-cluster intersections
 * Has zero derivative at distance R (otherwise the lightness will have a C^1 discontinuity, leading to a noticeable gradient edge)
 
 What I came up with looks incredibly simple:
