@@ -71,7 +71,7 @@ where <img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%
 
 For distances less than R/2 this function looks about the same as <img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20%5Cfrac%7BA%7D%7B1&plus;4%28%5Cfrac%7Bd%7D%7BR%7D%29%5E2%7D">, while for larger values it gradually goes to zero and is exactly zero at distance R. Note that it doesn't have a sharp cusp at d = 0, which can be for an artistic reason of wanting the attenuation to behave roughly like a spherical area light source near the light. For a version with cusp (which I'm actually using), you can simply remove the square in the denominator:
 
-<center><img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20A%5Cfrac%7B%281-s%5E2%29%5E2%7D%7B1&plus;Fs%7D"></center>
+<center><img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20A%5Cfrac%7B%281-s%5E2%29%5E2%7D%7B1&plus;Fs%7D"></center><br/>
 
 Here's how it looks like for the same values of A = 2, R = 5, F = 1 (red) and F = 4 (blue):
 
