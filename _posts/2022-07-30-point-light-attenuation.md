@@ -63,13 +63,19 @@ So, I set off to find a different formula that
 
 What I came up with looks incredibly simple:
 
-<center><img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20A%5Cfrac%7B%281-s%5E2%29%5E2%7D%7B1&plus;s%5E2%7D"></center><br/>
+<center><img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20A%5Cfrac%7B%281-s%5E2%29%5E2%7D%7B1&plus;Fs%5E2%7D"></center><br/>
 
-where <img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20s%3D%5Cfrac%7Bd%7D%7BR%7D"> is the normalized distance. It allows to separately control the maximum intensity A and the maximum radius R. You can play with this formula [here](https://www.desmos.com/calculator/zemezoyn1c). It is also fast to compute, since it doesn't use square roots, exponents, and other stuff, just a bit of arithmetic. Here's how it looks like for A = 2 and R = 5:
+where <img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20s%3D%5Cfrac%7Bd%7D%7BR%7D"> is the normalized distance, and F allows you to control how fast it decays. It allows to separately control the maximum intensity A and the maximum radius R. You can play with this formula [here](https://www.desmos.com/calculator/zemezoyn1c). It is also fast to compute, since it doesn't use square roots, exponents, and other stuff, just a bit of arithmetic. Here's how it looks like for A = 2, R = 5, F = 1 (red) and F = 4 (blue):
 
 <center><img src="{{site.url}}/blog/media/light/plot4.png"></center><br/>
 
-For distances less than R/2 this function looks about the same as <img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20%5Cfrac%7BA%7D%7B1&plus;4%28%5Cfrac%7Bd%7D%7BR%7D%29%5E2%7D">, while for larger values it gradually goes to zero and is exactly zero at distance R. Note that it doesn't have a sharp cusp at d = 0, for artistic reasons: I want the attenuation to behave roughly like a spherical area light source near the light.
+For distances less than R/2 this function looks about the same as <img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20%5Cfrac%7BA%7D%7B1&plus;4%28%5Cfrac%7Bd%7D%7BR%7D%29%5E2%7D">, while for larger values it gradually goes to zero and is exactly zero at distance R. Note that it doesn't have a sharp cusp at d = 0, which can be for an artistic reason of wanting the attenuation to behave roughly like a spherical area light source near the light. For a version with cusp (which I'm actually using), you can simply remove the square in the denominator:
+
+<center><img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20A%5Cfrac%7B%281-s%5E2%29%5E2%7D%7B1&plus;Fs%7D"></center>
+
+Here's how it looks like for the same values of A = 2, R = 5, F = 1 (red) and F = 4 (blue):
+
+<center><img src="{{site.url}}/blog/media/light/plot5.png"></center><br/>
 
 For the sake of completeness, here's a GLSL implementation. Note that we need to check for d < R, otherwise we'd get wrong lightness values at larger distances.
 
@@ -79,7 +85,7 @@ float sqr(float x)
 	return x * x;
 }
 
-float attenuate(float distance, float radius, float max_intensity)
+float attenuate_no_cusp(float distance, float radius, float max_intensity, float falloff)
 {
 	float s = distance / radius;
 
@@ -88,7 +94,19 @@ float attenuate(float distance, float radius, float max_intensity)
 
 	float s2 = sqr(s);
 
-	return max_intensity * sqr(1 - s2) / (1 + s2);
+	return max_intensity * sqr(1 - s2) / (1 + falloff * s2);
+}
+
+float attenuate_cusp(float distance, float radius, float max_intensity, float falloff)
+{
+	float s = distance / radius;
+
+	if (s >= 1.0)
+		return 0.0;
+
+	float s2 = sqr(s);
+
+	return max_intensity * sqr(1 - s2) / (1 + falloff * s);
 }
 ```
 
