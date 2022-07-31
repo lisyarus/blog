@@ -65,7 +65,7 @@ What I came up with looks incredibly simple:
 
 <center><img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20A%5Cfrac%7B%281-s%5E2%29%5E2%7D%7B1&plus;Fs%5E2%7D"></center><br/>
 
-where <img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20s%3D%5Cfrac%7Bd%7D%7BR%7D"> is the normalized distance, and F allows you to control how fast it decays. It allows to separately control the maximum intensity A and the maximum radius R. You can play with this formula [here](https://www.desmos.com/calculator/zemezoyn1c). It is also fast to compute, since it doesn't use square roots, exponents, and other stuff, just a bit of arithmetic. Here's how it looks like for A = 2, R = 5, F = 1 (red) and F = 4 (blue):
+where <img src="https://latex.codecogs.com/png.latex?%5Cdpi%7B120%7D%20%5Clarge%20s%3D%5Cfrac%7Bd%7D%7BR%7D"> is the normalized distance, and F allows you to control how fast it decays. It allows to separately control the maximum intensity A and the maximum radius R. You can play with this formula [here](https://www.desmos.com/calculator/5eaerimi8q). It is also fast to compute, since it doesn't use square roots, exponents, and other stuff, just a bit of arithmetic. Here's how it looks like for A = 2, R = 5, F = 1 (red) and F = 4 (blue):
 
 <center><img src="{{site.url}}/blog/media/light/plot4.png"></center><br/>
 
