@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "A simple texture atlas packing algorithm"
-date:   2022-07-30 11:00:00 +0300
+date:   2022-08-06 14:00:00 +0300
 categories: graphics
 ---
 
