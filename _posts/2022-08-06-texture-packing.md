@@ -116,7 +116,7 @@ std::vector<box> allocate_texture_atlas(
 
     std::vector<box> result(texture_sizes.size());
 
-    for (std::size_t i : sorted)
+    for (int i : sorted)
     {
         int const size = texture_sizes[i];
 
