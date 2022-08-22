@@ -554,4 +554,5 @@ Pretty neat, I'd say! We've lost the cache and allocator-friendliness, though we
 
 <center><video width="600" autoplay muted loop><source src="{{site.url}}/blog/media/behavior_trees/second.mp4" type="video/mp4"></video></center>
 <center><i>AI droids doing their stuff. Most of them got stuck trying to pick up resources from a container on the right, but they did it consciously!</i></center>
+<center><i>If you're interested in this project, I've published <a href="https://www.youtube.com/watch?v=_sTvgTeqXAM">my first ever devlog</a> about it a few days ago.</i></center>
 <br/>
