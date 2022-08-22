@@ -7,7 +7,7 @@ categories: programming
 
 ### Game AI
 
-Programming game AI is hard. Like, really hard. When dealing with hard problems, humans usually try to come up with patterns, frameworks, guidelines, that help minimize errors and keep the cognitive load at a manageable level. In the case of game AI there are (apart from the obvious *"no pattern"* pattern) many popular choices: state machines, hierarchical state machines, utility systems, behavior trees, and others.
+Programming game AI is hard. Like, really hard. When dealing with hard problems, humans usually try to come up with patterns, frameworks, and guidelines, that help minimize errors and keep the cognitive load at a manageable level. In the case of game AI there are (apart from the obvious *"no pattern"* pattern) many popular choices: state machines, hierarchical state machines, utility systems, behavior trees, and others.
 
 They all have their pros and cons; I won't talk about these here, mainly for the reason that I have zero experience with most of these. See [these](https://www.youtube.com/watch?v=G5A0-_4dFLg) [two](https://www.youtube.com/watch?v=5ZXfDFb4dzc&t=2413s) streams by [Bobby Anguelov](https://twitter.com/Bobby_Anguelov) about these patterns and what types of AI each of them is good for. See also [this](http://www.gameaipro.com/) huge collection of articles on game AI.
 
@@ -33,7 +33,7 @@ To begin with, what even are behavior trees? The idea goes roughly like this:
 
 So, you implement some concrete nodes for your specific AI needs, combine them somehow using generic aggregation nodes (hopefully provided by your behavior trees library) and you have your tree ready to go.
 
-The crucial thing about AI is that it is **asynchronous**: you can't just call it once and call it a day, you need to continuously run it. Coroutines or fibers would be perfect for this, but they are close to impossible to serialize (save & load) in a cross-platform way and hard to control precisely. Thus, behavior tree implementations usually use a tick-based approach, in some sense creating explicit coroutines: each behavior tree node has an `update()` function, and every frame (or every N frames) of game simulation the current active node's `update()` is called. The `update()` may have some `float dt` parameter so that the node knows how much time elapsed from the previous update. Inner tree nodes' `update()` can call their children's `update()` and returns something based on what their children's status was.
+The crucial thing about AI is that it is **asynchronous**: you can't just call it once and call it a day, you need to continuously run it. Coroutines or fibers would be perfect for this, but they are close to impossible to serialize (save & load) in a cross-platform way and hard to control precisely. Thus, behavior tree implementations usually use a tick-based approach, in some sense creating explicit coroutines: each behavior tree node has an `update()` function, and every frame (or every N frames) of game simulation the current active node's `update()` is called. The `update()` may have some `float dt` parameter so that the node knows how much time elapsed from the previous update. Inner tree nodes' `update()` can call their children's `update()` and return something based on what their children's status was.
 
 To communicate with the rest of the tree, the node must be able to tell it's status: is it still running its stuff, or has it succeeded in doing its stuff, or has it failed? We can achieve this by simply returning this status from the update function.
 
@@ -229,9 +229,9 @@ Some behavior tree implementations can have more status values. For example, som
 
 The final touch for our behavior tree node interface is responding to events. Say, your poor AI is cutting down a tree, while suddenly it spots an angry woolf nearby. It better run away, or prepare to fight! 
 
-How do we implement this in a behavior tree? Surely we could simply check for **all** such conditions in the beginning of **every** node's `update()` methods (or maybe just the leaf nodes). Needless to say, this is ridiculously wasteful, and doesn't work at all in the presence of the `waiting` optimization we talked above.
+How do we implement this in a behavior tree? Surely we could simply check for **all** such conditions in the beginning of **every** node's `update()` methods (or maybe just the leaf nodes). Needless to say, this is ridiculously wasteful, and doesn't work at all in the presence of the `waiting` optimization we talked about above.
 
-A much nicer way is to make the nodes explicitly respond to events: have an `on_event()` method that gets the event that happened and decides what to do:
+A much nicer way is to make the nodes explicitly respond to events -- have an `on_event()` method that gets the event that happened and decides what to do:
 
 {% highlight cpp %}
 struct node
@@ -249,14 +249,14 @@ On a certain event, a node may e.g. record that it needs to fail at the next upd
 So, what do I want from my implementation of a generic, reusable behavior trees library? Quite a lot, to be honest:
 - **Arbitrary time type.** `float` is nice, but what if I'm making a roguelike with discrete equal time steps, and I want to use an integer for time? Or maybe I'm doing some nanorobots simulation and I have to use `double` not to lose precision? Or maybe I've gone completely bonkers and my time is a `complex` number or a `string`? *There definitely are use-cases for that, I promise!*
 - **Arbitrary event type.** This one is way less speculative than the time type -- how does a generic library know anything about the specific AI event types? Ideally I'd like the `event` type to be a variant of all possible event types specific to this particular AI, or something like that.
-- **Arbitrary extra parameters for `update()`.** A specific behavior tree runs for a specific agent; it needs access to this agent's data, as well as to some world data like buildings and pathfinder. These could go to the node's constructor, so that it would save them as members and access at any time. A much more flexible and memory-cheap approach is to put them directly to the `update()` method parameters at each update: this way, we can change the pathfinder or even the entity this tree controls, and it still should work (in theory)!
+- **Arbitrary extra parameters for `update()`.** A specific behavior tree runs for a specific agent; it needs access to this agent's data, as well as to some world data like buildings and pathfinder. These could go to the node's constructor, so that it would save them as members and access at any time. A much more flexible and memory-cheap approach is to put them directly to the `update()` method parameters at each update: this way, we can change the pathfinder or even the entity this tree controls, and it still should work (in theory)! More importantly, we wouldn't have to store this parameters in every node.
 - **Readable [DSL](https://en.wikipedia.org/wiki/Domain-specific_language)-like tree description.** Look at the `repeat_until` implementation above: wouldn't it be neat if this is what it actually looked like, in code? Instead of explicitly creating compound nodes as separate classes with a ton of boilerplate, we'd just write a nice behavior tree (or part of it) directly in code, with a readable & understandable syntax.
 
 With these goals in mind, I proceeded to design this library.
 
 ### First attempt
 
-Being such a C++ templates admirer, my first idea was to use the full power of compile-time ad-hoc polymorphism this language provides, and make each behavior tree node a separate (most probably, a template) class with the interface outlined above, with no virtual methods:
+Being such a C++ templates admirer, my first idea was to use the full power of compile-time ad-hoc polymorphism this language provides, and make each behavior tree node a separate template class with the interface outlined above, with no virtual methods:
 
 {% highlight cpp %}
 template <typename Time, typename Event, typename ... Args>
@@ -393,7 +393,7 @@ static auto do_catch_fish()
 
 Amusingly, it actually works! The benefits of this approach are:
 - The whole tree is a single enormous object without any pointers to children (they are just class members!), so the allocator & cache are quite happy
-- Everything is known at compile-time, meaning the compiler has all the opportunities to optimize, inline, and other magic
+- Everything is known at compile-time, meaning the compiler has all the opportunities to optimize, inline, and do other magic
 
 Unfortunately, it also has a number of downsides:
 - Everything is known at compile time. I can't replace part of the tree somewhere mid-game, I can't make a mod that e.g. replaces just a single part of the tree with a different implementation.
@@ -550,7 +550,7 @@ bt::node_ptr<droid> wait(float duration)
 }
 {% endhighlight %}
 
-Pretty neat, I'd say! We've lost the cache and allocator-friendliness, though we could restore them by supplying our own allocator for the whole tree. We've also lost the possibility for heavy inlining, which we can't really do anything about. Having used this for quite a while by now and I'd say that it is a pretty good approach, and seems to handle most complicated situations relatively well. [Here's the source code](https://bitbucket.org/lisyarus/psemek/src/master/libs/bt/include/psemek/bt/) for this second approach. It is pretty much self-contained.
+Pretty neat, I'd say! We've lost the cache and allocator-friendliness, though we could restore them by supplying our own allocator for the whole tree. We've also lost the possibility for heavy inlining, which we can't really do anything about. Having used this for quite a while by now I'd say that it is a pretty good approach, and seems to handle most complicated situations relatively well. [Here's the source code](https://bitbucket.org/lisyarus/psemek/src/master/libs/bt/include/psemek/bt/) for this second approach. It is pretty much self-contained.
 
 <center><video width="600" autoplay muted loop><source src="{{site.url}}/blog/media/behavior_trees/second.mp4" type="video/mp4"></video></center>
 <center><i>AI droids doing their stuff. Most of them got stuck trying to pick up resources from a container on the right, but they did it consciously!</i></center>
