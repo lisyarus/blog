@@ -20,14 +20,14 @@ Currently I'm using the SDL_Mixer library for mixing audio (i.e. adding all inpu
 - It requires you to pre-allocate a number of mixing channels, and keep track of their state (whether the channel is playing something or not),
 - It allows per-channel effects (in a form of an internal linked lists), but the effects cannot change the number of requested/produced audio samples, so e.g. you cannot implement a simple pitch adjustment effect (which I needed for the racing game to adjust the sound of the car engine),
 - It doesn't allow effects applied to the (already mixed) output channel, while I'd really like to stick a compressor there (a thing that doesn't allow the output samples to exceed maximal value, preventing unpleasant clicks and noise),
-- It works with samples in `int16` format, while it would be much nicer to work with them as `float`'s.
-- It seems to load MP3 files as a whole instead of stream-decoding them, which results in the loading taking a few seconds per track (and I consider a few seconds of startup delay to be unacceptable)
+- It works with samples in `int16` format, while it would be much nicer to work with them as `float`'s,
+- It seems to load MP3 files as a whole instead of stream-decoding them, which results in the loading taking a few seconds per track (and I consider a few seconds of startup delay to be unacceptable).
 
 Naturally, instead of looking for alternatives, I decided to implement an audio mixing library myself, mostly because it *sounds* like fun. The whole result is [here](https://bitbucket.org/lisyarus/psemek/src/master/libs/audio), if you want to skip the article and just browse the code.
 
 ### The goals
 
-What do I want from my new library? Just a few of things, really:
+What do I want from my new library? Just a few things, really:
 - A decent C++ interface. All my engine is in C++, and I'm really sick of `SDL_DoThatThing(&options, pointer_to_void, size_in_magical_units, &callback, user_data, legacy_value)` (sorry for all C admirers, I do respect you, it's just that I'm not one of you).
 - Simple yet composable & flexible interface. Imagine how all effects and mixers can be simple functions mapping sound streams to sound streams in some nice functional language. Now translate that to C++
 - Flexible effects. I want to be able to slap pitch correction to the whole output channel or to a single played sound.
@@ -44,11 +44,11 @@ After spending some time thinking & looking at other solutions, I decided to pin
 *A hierarchy of mixing* sounds cool. What if mixing wasn't some final step, like in SDL_Mixer, but rather a compositional primivite? Like, if you want to play a bunch of sounds together, you throw them all into a mixer, which results in another sound, which can be played by itself or thrown into another mixer, you get the idea. I spent a while iterating on the idea, and ended up with a few basic primitives of the library:
 
 - A **stream** is something you can play as a sound. It may be loaded from a file or generated on the fly. It may be finite or infinite. One important thing is that a **stream** is single-shot: it doesn't have a `restart` method or anything like that.
-- A **channel** is something where a stream is actually played. You can request the **channel** to stop, or you can replace the **stream** this **channel** is playing.
+- A **channel** is something where a **stream** is actually played. You can request the **channel** to stop, or you can replace the **stream** this **channel** is playing.
 
 All other primitives are more or less derivatives of these two:
 - A **track** is something that can create identical **streams**. You loaded a sound from disk -- that's a **track**. You start playing it -- that's a **stream**.
-- An **effect** is a function that takes a **stream** (or several **streams**) and produces another **stream**, potentially with some handle that allows you to control the **effect** dynamically. Say, you want to control the volume of a **stream**? Nudge it through a `volume` effect and get a volume-controlled stream.
+- An **effect** is a function that takes a **stream** (or several **streams**) and produces another **stream**, potentially with some handle that allows you to control the **effect** dynamically. Say, you want to control the volume of a **stream**? Nudge it through a `volume` effect and get a volume-controlled stream. *Yes, volume control is nontrivial enough to be a separate effect. No, I haven't gone mad, why are you asking?*
 - A **mixer** is a thing that turns **streams** into **channels** and produces one output **stream**. Say, the user clicked a button and you want to start playing the corresponding sound: take your output **mixer**, add the button sound **stream** to it, and it returns a **channel** so that you could stop the sound immediataly if you need to.
 
 In terms of some pseudocode, the interface of these primitives looks roughly like this:
@@ -73,15 +73,15 @@ interface mixer {
 ```
 
 Finally, the whole library provides just a single output **channel**. This, together with all other primitives, covers all my needs:
-- If I want to just play a single music file, I load it as a **track**, and put its **stream** to the library's output **channel**
-- If I want to play a few sounds in parallel, I create a **mixer**, put its output **stream** to the library's output **channel**, and add any sound I want to play as a **stream** to the **mixer**
+- If I want to just play a single music file, I load it as a **track**, and put its **stream** to the library's output **channel**.
+- If I want to play a few sounds in parallel, I create a **mixer**, put its output **stream** to the library's output **channel**, and add any sound I want to play as a **stream** to the **mixer**.
 - If I want some highly flexible & customizable setup like what Alan talks about in his tweet, I can create separate **mixers** for separate classes of audio (UI, environment, effects, dialogues), slap any **effects** on each of them, combine them all in the final **mixer**, put a compressor & volume **effects** on its output **stream**, and put this into the library's output **channel**.
 
 Gosh I love designing libraries.
 
 ### The anatomy of digital sound
 
-Before I talk about the implementation, I'd better say a few things about what it even means to implement and audio effect or mixer. Digital audio works basically by controlling the vibrations of some output audio device, like speakers or headphones. You can imagine them having some rest state, and some maximal deviation from the rest state forward or backward, e.g. the speaker's membrane can shift ±1 mm from it's rest state (*the number is expository, I don't know the real values*). You control it by specifying this shift in normalized units: `0` is rest state, `1` is maximal forward shift, `-1` is maximal backward shift. This value can (and should) change with time. If you send exactly <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20%5Csin%282%5Cpi%20%5Comega%20t%29"/> as this normalized value, you get a sound of frequency <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20%5Comega"/>. E.g. for <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20%5Comega%3D440"/> you'd get something like
+Before I talk about the implementation, I'd better say a few things about what it even means to implement and audio effect or mixer. Digital audio works basically by controlling the vibrations of some output audio device, like speakers or headphones. You can imagine them having some rest state, and some maximal deviation from the rest state forward or backward, e.g. the speaker's membrane can shift ±1mm from it's rest state (*the number is expository, I don't know the real values*). You control it by specifying this shift in normalized units: `0` is rest state, `1` is maximal forward shift, `-1` is maximal backward shift. This value can (and should) change with time. If you send exactly <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20%5Csin%282%5Cpi%20%5Comega%20t%29"/> as this normalized value, you get a sound of frequency <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20%5Comega"/>. E.g. for <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20%5Comega%3D440"/> you'd get something like
 
 <center><audio controls><source src="{{site.url}}/blog/media/audio/440.mp3" type="audio/mpeg"></audio></center>
 
@@ -95,7 +95,7 @@ So, to implement a mixing library means to write a function (the *audio callback
 
 ### The implementation
 
-First, I decided that the whole library will work with samples as `float` values, and the engine will encode them into `int16` at the very end. I've decided on the sampling frequency of 44100 Hz and a buffer size of 256 samples (times 2 channels), meaning the worst delay for a new sound should be around 5ms, i.e. less than a frame for a screen 60Hz refresh rate.
+First, I decided that the whole library will work with samples as `float` values, and the engine will encode them into `int16` at the very end. I've decided on the sampling frequency of 44100 Hz and a buffer size of 256 samples (times 2 channels), meaning the worst delay for a new sound should be around 5ms, i.e. less than a frame for a typical 60Hz screen refresh rate.
 
 The **stream** interface is the core of the library, so let's discuss it first. It is remarkably simple:
 
@@ -108,7 +108,7 @@ struct stream
 };
 {% endhighlight %}
 
-Its only function is `read` which reads the stream (whatever it means for a particular stream) and outputs no more than `count` samples into the `data` array, and returns the number of samples written. If the return value is less than `count`, the stream has ended and won't ever produce new samples, i.e. `read` will always return 0. For the case of 2 channels, `data[0]` and `data[1]` would be the first samples for the left & right channels respectively, `data[2]` and `data[3]` will be the next corresponding samples, and so on. I'll assume we have just a single channel in the rest of the article, for simplicity.
+Its only function is `read` which reads the stream (whatever it means for a particular stream) and outputs no more than `count` samples into the `data` array, and returns the number of samples written. If the return value is less than `count`, the stream has ended and won't ever produce new samples, i.e. `read` will always return 0. For the case of 2 channels, `data[0]` and `data[1]` would be the first samples for the left & right channels respectively, `data[2]` and `data[3]` will be the next corresponding samples, and so on. I'll assume we have just a single channel in the rest of the article, for simplicity (the library properly works with 2-channel audio).
 
 So, to use a stream, we repeatedly ask it for new samples until it doesn't have any more. This is more or less what the engine's audio callback function does (plus a boring `float -> int16` conversion):
 
@@ -209,7 +209,7 @@ private:
 
 However, if you plug just this into the output stream, you'll hear some barely noticeable noise that gets worse over time. What's going on here is floating-point precision: at some point, `t_ + 1.f / 44100.f` necessarily starts rounding, and the sequence of values of `t_` no longer adequately represents the time of each sample. As `t_` grows, the rounding will get worse, and at some point `1.f / 44100.f` will get smaller than the distance between two successive numbers, and `t_ + 1.f / 44100.f` will evaluate to `t_`, effectively stopping any sound.
 
-The solution to this is to implement an *oscillator* -- basically a thing that generates a perfect sine wave of a specified frequency without floating-point problems. There are many ways to make one; I've decided to use the complex numbers: <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20%5Csin%282%5Cpi%20%5Comega%20t%29"/> is just the imaginary part of <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20%5Cexp%282%5Cpi%20i%5Comega%20t%29"/>, and in our case <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20t%20%3D%20n%20t_s"/> with t<sub>s</sub> = 1/44100. So, I can compute the sine wave samples as <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20f%28k%29%20%3D%20%5Coperatorname%7BIm%7Dz%5Ek"/> where <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20z%3D%5Cexp%282%5Cpi%20%5Comega%20i%20t_s%29"/> and Im denotes the imaginary part. This number z can be computed just once, and all I need to do next is repeatedly mupliply the current value by z, which involves arithmetics on numbers in the [-1..1] range, so it mostly keeps the precision issues away. This is what my [oscillator](https://bitbucket.org/lisyarus/psemek/src/master/libs/audio/include/psemek/audio/oscillator.hpp) class does:
+The solution to this is to implement an *oscillator* -- basically a thing that generates a perfect sine wave of a specified frequency without floating-point problems. There are many ways to make one; I've decided to use the complex numbers: <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20%5Csin%282%5Cpi%20%5Comega%20t%29"/> is just the imaginary part of <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20%5Cexp%282%5Cpi%20i%5Comega%20t%29"/>, and in our case <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20t%20%3D%20k%20t_s"/> with t<sub>s</sub> = 1/44100. So, I can compute the sine wave samples as <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20f%28k%29%20%3D%20%5Coperatorname%7BIm%7Dz%5Ek"/> where <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20z%3D%5Cexp%282%5Cpi%20%5Comega%20i%20t_s%29"/> and Im denotes the imaginary part. This number z can be computed just once, and all I need to do next is repeatedly mupliply the current value by z, which involves arithmetics on numbers in the [-1..1] range, so it mostly keeps the precision issues away. This is what my [oscillator](https://bitbucket.org/lisyarus/psemek/src/master/libs/audio/include/psemek/audio/oscillator.hpp) class does:
 
 {% highlight cpp %}
 struct oscillator
@@ -263,7 +263,7 @@ struct mixer
 };
 {% endhighlight %}
 
-The implementation of it is quite boring: it just accumulates the contribution of each channel into the output:
+Notice how a mixer is as well a stream. The implementation of it is quite boring: it just accumulates the contribution of each channel into the output:
 
 {% highlight cpp %}
 std::size_t mixer::read(float * data, std::size_t count)
@@ -308,7 +308,9 @@ std::size_t volume_control::read(float * data, std::size_t count)
 }
 {% endhighlight %}
 
-However, if the user suddenly changes the volume, we'd hear a noticeable click in the output due to a sudden change in the resulting samples, e.g. we were playing some sine wave at volume 1, and got samples like 0.991, 0.992, 0.993, 0.994 etc, and suddenly the volume is 0.5 and the samples are 0.496, 0.497, 0.498. This is one common source of clicks in the audio output. To fix that, we need to gradually change the volume instead of applying the change immediately. Exponential decay is probably the best solution to this:
+Notice how the `stream_->read` call can easily request more than `count` samples, or less than `count`. This is the flexibility I was talking about.
+
+However, if the user suddenly changes the volume, we'd hear a noticeable click in the output due to a sudden change in the resulting samples. If e.g. we were playing some sine wave at volume 1, and got samples like 0.991, 0.992, 0.993, 0.994 etc, and suddenly the volume is 0.5 and the samples are 0.496, 0.497, 0.498. This is one common source of clicks in the audio output. To fix that, we need to gradually change the volume instead of applying the change immediately. Exponential decay is probably the best solution to this:
 {% highlight cpp %}
 std::size_t volume_control::read(float * data, std::size_t count)
 {
@@ -359,11 +361,11 @@ There's a bit of math going on, but it seems to work. Alan said that it is a goo
 
 Finally, to implement **tracks** I wanted to support loading raw, WAV and MP3 data. Raw samples data is trivial: store it in a buffer, output it in the `read` method. WAV support was almost trivial as well, since SDL_Audio supports loading WAV (although I hard-coded the data format to `int16` and the frequency to 44100; I'll have to write some re-encoding myself in case I need a different WAV file).
 
-To support MP3 files, I decided to use the [minimp3](https://github.com/lieff/minimp3) library. It does exactly what I need: stream-decodes MP3 data and returns floating-point buffers. The only catch is that MP3 may have a different sampling rate (like the one I was testing it with -- it was 48000 Hz), so I had to implement a [resampler](https://bitbucket.org/lisyarus/psemek/src/master/libs/audio/source/resampler.cpp) for that (a thing that converts one sampling frequency to another). Accidentally, the very same code can be used to implement a dynamic [pitch effect](https://bitbucket.org/lisyarus/psemek/src/master/libs/audio/source/effect/pitch.cpp).
+To support MP3 files, I decided to use the [minimp3](https://github.com/lieff/minimp3) library. It does exactly what I need: stream-decodes MP3 data (as opposed to decoding it full in one go) and returns floating-point buffers. The only catch is that MP3 may have a different sampling rate (like the one I was testing it with -- it was 48000 Hz), so I had to implement a [resampler](https://bitbucket.org/lisyarus/psemek/src/master/libs/audio/source/resampler.cpp) for that (a thing that converts one sampling frequency to another). Accidentally, the very same code can be used to implement a dynamic [pitch effect](https://bitbucket.org/lisyarus/psemek/src/master/libs/audio/source/effect/pitch.cpp).
 
 In the end, I decided to have some fun & try implementing the Karplus-Strong guitar sound generation algorithm, which I also [learnt from Alan](https://blog.demofox.org/2016/06/16/synthesizing-a-pluked-string-sound-with-the-karplus-strong-algorithm). Here's me using my library in a test application to play a simple melody:
 
-<center><video width="600" controls><source src="{{site.url}}/blog/media/audio/guitar.mp4" type="video/mp4"></video></center>
+<center><video width="100%" controls><source src="{{site.url}}/blog/media/audio/guitar.mp4" type="video/mp4"></video></center>
 <br/>
 
 The code for this test app is [here](https://bitbucket.org/lisyarus/psemek/src/master/examples/audio.cpp). It's audio setup looks like this:
@@ -390,6 +392,6 @@ i.e. a source stream with a fade in effect to prevent an inital click.
 
 ### The conclusion
 
-I spent about a week designing & implementing this library and I'm honestly really happy with it. I've learnt a ton about audio, and I have a solid foundation for improving the audio in my future projects. I have no idea how convenient & performant it will turn out, but my experiments with the test application were quite encouraging.
+I spent about a week designing & implementing this library and I'm honestly really happy with it. I've learnt a ton about audio, and I have a solid foundation for improving the audio in my future projects, and MP3s now load instantly. I have no idea how convenient & performant it will turn out, but my experiments with the test application were quite encouraging.
 
 Feel free to inspect the code (it's quite readable, for the most part, I think) and/or even use the library. It's a bit integrated into my engine, but you could probably strip the dependencies easily. I'd encourage you to implement you own such library, though, -- it's *so much fun*! And thanks for reading.
