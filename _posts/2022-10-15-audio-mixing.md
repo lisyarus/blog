@@ -108,7 +108,7 @@ struct stream
 };
 {% endhighlight %}
 
-It's only function is `read` which reads the stream (whatever it means for a particular stream) and outputs no more than `count` samples into the `data` array, and returns the number of samples written. If the return value is less than `count`, the stream has ended and won't ever produce new samples, i.e. `read` will always return 0. For the case of 2 channels, `data[0]` and `data[1]` would be the first samples for the left & right channels respectively, `data[2]` and `data[3]` will be the next corresponding samples, and so on. I'll assume we have just a single channel in the rest of the article, for simplicity.
+Its only function is `read` which reads the stream (whatever it means for a particular stream) and outputs no more than `count` samples into the `data` array, and returns the number of samples written. If the return value is less than `count`, the stream has ended and won't ever produce new samples, i.e. `read` will always return 0. For the case of 2 channels, `data[0]` and `data[1]` would be the first samples for the left & right channels respectively, `data[2]` and `data[3]` will be the next corresponding samples, and so on. I'll assume we have just a single channel in the rest of the article, for simplicity.
 
 So, to use a stream, we repeatedly ask it for new samples until it doesn't have any more. This is more or less what the engine's audio callback function does (plus a boring `float -> int16` conversion):
 
@@ -209,7 +209,7 @@ private:
 
 However, if you plug just this into the output stream, you'll hear some barely noticeable noise that gets worse over time. What's going on here is floating-point precision: at some point, `t_ + 1.f / 44100.f` necessarily starts rounding, and the sequence of values of `t_` no longer adequately represents the time of each sample. As `t_` grows, the rounding will get worse, and at some point `1.f / 44100.f` will get smaller than the distance between two successive numbers, and `t_ + 1.f / 44100.f` will evaluate to `t_`, effectively stopping any sound.
 
-The solution to this is to implement an *oscillator* -- basically a thing that generates a perfect sine wave of a specified frequency without floating-point problems. There are many ways to make one; I've decided to use the complex numbers: <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20%5Csin%282%5Cpi%20%5Comega%20t%29"/> is just the imaginary part of <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20%5Cexp%282%5Cpi%20i%5Comega%20t%29"/>, and in out case <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20t%20%3D%20n%20t_s"/> with t<sub>s</sub> = 1/44100. So, I can compute the sine wave samples as <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20f%28k%29%20%3D%20%5Coperatorname%7BIm%7Dz%5Ek"/> where <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20z%3D%5Cexp%282%5Cpi%20%5Comega%20i%20t_s%29"/> and Im denotes the imaginary part. This number z can be computed just once, and all I need to do next is repeatedly mupliply the current value by z, which involves arithmetics on numbers in the [-1..1] range, so it mostly keeps the precision issues away. This is what my [oscillator](https://bitbucket.org/lisyarus/psemek/src/master/libs/audio/include/psemek/audio/oscillator.hpp) class does:
+The solution to this is to implement an *oscillator* -- basically a thing that generates a perfect sine wave of a specified frequency without floating-point problems. There are many ways to make one; I've decided to use the complex numbers: <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20%5Csin%282%5Cpi%20%5Comega%20t%29"/> is just the imaginary part of <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20%5Cexp%282%5Cpi%20i%5Comega%20t%29"/>, and in our case <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20t%20%3D%20n%20t_s"/> with t<sub>s</sub> = 1/44100. So, I can compute the sine wave samples as <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20f%28k%29%20%3D%20%5Coperatorname%7BIm%7Dz%5Ek"/> where <img src="https://latex.codecogs.com/png.latex?%5Cinline%20%5Cdpi%7B120%7D%20%5Clarge%20z%3D%5Cexp%282%5Cpi%20%5Comega%20i%20t_s%29"/> and Im denotes the imaginary part. This number z can be computed just once, and all I need to do next is repeatedly mupliply the current value by z, which involves arithmetics on numbers in the [-1..1] range, so it mostly keeps the precision issues away. This is what my [oscillator](https://bitbucket.org/lisyarus/psemek/src/master/libs/audio/include/psemek/audio/oscillator.hpp) class does:
 
 {% highlight cpp %}
 struct oscillator
@@ -355,7 +355,7 @@ std::size_t compressor::read(float * data, std::size_t count)
 There's a bit of math going on, but it seems to work. Alan said that it is a good compressor, and I couldn't dream of a better acknowledgement :)
 
 <center><blockquote class="twitter-tweet" data-lang="en"><a href="https://twitter.com/Atrix256/status/1578427186125496321"></a></blockquote></center>
-</br>
+<br/>
 
 Finally, to implement **tracks** I wanted to support loading raw, WAV and MP3 data. Raw samples data is trivial: store it in a buffer, output it in the `read` method. WAV support was almost trivial as well, since SDL_Audio supports loading WAV (although I hard-coded the data format to `int16` and the frequency to 44100; I'll have to write some re-encoding myself in case I need a different WAV file).
 
@@ -364,7 +364,7 @@ To support MP3 files, I decided to use the [minimp3](https://github.com/lieff/mi
 In the end, I decided to have some fun & try implementing the Karplus-Strong guitar sound generation algorithm, which I also [learnt from Alan](https://blog.demofox.org/2016/06/16/synthesizing-a-pluked-string-sound-with-the-karplus-strong-algorithm). Here's me using my library in a test application to play a simple melody:
 
 <center><video width="600" controls><source src="{{site.url}}/blog/media/audio/guitar.mp4" type="video/mp4"></video></center>
-</br>
+<br/>
 
 The code for this test app is [here](https://bitbucket.org/lisyarus/psemek/src/master/examples/audio.cpp). It's audio setup looks like this:
 
