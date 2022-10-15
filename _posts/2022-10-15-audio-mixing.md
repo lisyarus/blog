@@ -2,7 +2,7 @@
 layout: post
 title:  "C++ audio mixing library design"
 date:   2022-10-15 13:00:00 +0300
-categories: programming, audio
+categories: programming
 ---
 
 <script async="" src="//platform.twitter.com/widgets.js" charset="utf-8"></script>
