@@ -62,7 +62,7 @@ This idea of updating velocities and then using them to update the positions is 
 <center><video width="600" muted controls><source src="{{site.url}}/blog/media/collisions/planet-no-collision.mp4" type="video/mp4"></video></center>
 <br/>
 
-It is arguable quite fun, but it is also a complete mess. Particles don't collide, so they just fly around at high speeds. They also yeet far away often: due to a discrete time step two particles can appear arbitrarily close to each other, and the <img src="https://latex.codecogs.com/png.latex?%5Clarge%20%5Cfrac%7B1%7D%7BR%5E2%7D"/> part of the force becomes huge, so the particles get huge acceleration and gain a very high speed instantly. This doesn't happen in reality, where other forces (electromagnetic, for the most part) are much stronger than gravity at small distances and keep things away from each other.
+It is arguably quite fun, but it is also a complete mess. Particles don't collide, so they just fly around at high speeds. They also yeet far away often: due to a discrete time step two particles can appear arbitrarily close to each other, and the <img src="https://latex.codecogs.com/png.latex?%5Clarge%20%5Cfrac%7B1%7D%7BR%5E2%7D"/> part of the force becomes huge, so the particles get huge acceleration and gain a very high speed instantly. This doesn't happen in reality, where other forces (electromagnetic, for the most part) are much stronger than gravity at small distances and keep things away from each other.
 
 Anyway, this definitely doesn't look like a stable planet, which is my ultimate goal. We need some collisions! What are our options?
 
