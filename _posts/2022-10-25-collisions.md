@@ -57,7 +57,7 @@ for (size_t i = 0; i < particles.size(); ++i)
 
 This idea of updating velocities and then using them to update the positions is called the [symplectic Euler scheme](https://en.wikipedia.org/wiki/Semi-implicit_Euler_method). It all looks like this:
 
-<center><video width="600" muted controls><source src="{{site.url}}/blog/media/collisions/planet-intro.mp4" type="video/mp4"></video></center>
+<center><video width="600" muted controls><source src="{{site.url}}/blog/media/collisions/planet-no-collision.mp4" type="video/mp4"></video></center>
 <br/>
 
 It is arguable quite fun, but it is also a complete mess. Particles don't collide, so they just fly around at high speeds. They also yeet far away often: due to a discrete time step two particles can appear arbitrarily close to each other, and the <img src="https://latex.codecogs.com/png.latex?%5Clarge%20%5Cfrac%7B1%7D%7BR%5E2%7D"/> part of the force becomes huge, so the particles get huge acceleration and gain a very high speed instantly. This doesn't happen in reality, where other forces (electromagnetic, for the most part) are much stronger than gravity at small distances and keep things away from each other.
@@ -439,7 +439,7 @@ After successfully defeating all the problems, I got this:
 <center><video width="600" muted controls><source src="{{site.url}}/blog/media/collisions/planet-event.mp4" type="video/mp4"></video></center>
 <br/>
 
-This is perfect, quite literally. Stiff collisions, no explosions, no boiling, not sponging, nothing. And it *doesn't spin*. I've left the simulation for really long times & it still doesn't spin.
+This is perfect, quite literally. Stiff collisions, no explosions, no boiling, no sponging, nothing. And it *doesn't spin*. I've left the simulation for really long times & it still doesn't spin.
 
 The only problem is that it is slow as hell, as you can probably see in the video. Huge blobs of sticked particles cause an enormous number of collisions, all of which happen over tiny time periods. Based on numerical results, there are on average something like `0.1 * N^2` collisions per simulation frame, where `N` is the number of particles. I'm yet to find a solution for this.
 
