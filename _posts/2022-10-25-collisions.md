@@ -153,11 +153,23 @@ Here's what it looks like in my simulation with the spring constant K set to 100
 
 It seems to work in the beginning, but then it's a complete mess again. Since we're just applying a force to the colliding particles, it takes time to move them apart, meaning they can still happen to be too close and gain enormous accelerations due to gravity. We could make the time step Δt smaller, or the gravitational force G weaker, but that would make the simulation way too slow (not performance-wise, it's just that the interesting time scales will become too big). We could also make the collision force K stronger, which wouldn't resolve the problem but would also introduce yeeting due to the collision force being too strong (which we could fix by making the time step Δt smaller, which we don't wanna do). Making the collision force weaker doesn't help either -- now the gravitational yeeting is too strong. Et cetera, et cetera.
 
+Here's how it looks if I decrease the gravitational constant G by a factor of 10 (from 500 to 50):
+
+<center><video width="600" muted controls><source src="{{site.url}}/blog/media/collisions/planet-force-weak.mp4" type="video/mp4"></video></center>
+<br/>
+
+It's still a mess, but the collisions are perfectly elastic. Here's the same thing but with constant cooling (i.e. multiplying velocities by some 0.99 every iteration step):
+
+<center><video width="600" muted controls><source src="{{site.url}}/blog/media/collisions/planet-force-weak-cool.mp4" type="video/mp4"></video></center>
+<br/>
+
+IT kinda works, but it still boils, dissipates energy (something we definitely don't want for e.g. planets orbiting a star), and in general is painfully slow.
+
 This approach can definitely work in simple situations, as illustrated by [@KangarooPhysics](https://twitter.com/KangarooPhysics):
 
 <center><blockquote class="twitter-tweet" data-lang="en"><a href="https://twitter.com/KangarooPhysics/status/1579406276395925504"></a></blockquote></center>
 
- but it fails if we want a fast, interesting simulation. It also can't handle many particles, because at some point the gravitational force will become too strong and overcome the collision force (unless we always make the collision force stronger than gravity, in which case we've effectively canceled gravity and we're back at the "bounding gravity" solution). Here's what happens with a hundred particles after I stop artificially cooling them down (i.e. multiplying velocities by some 0.99 every iteration step):
+ but it fails if we want a fast, interesting simulation. It also can't handle many particles, because at some point the gravitational force will become too strong and overcome the collision force (unless we always make the collision force stronger than gravity, in which case we've effectively canceled gravity and we're back at the "bounding gravity" solution). Here's what happens with a hundred particles after I stop artificially cooling them down:
 
 <center><video width="600" muted controls><source src="{{site.url}}/blog/media/collisions/planet-force-cool.mp4" type="video/mp4"></video></center>
 <br/>
