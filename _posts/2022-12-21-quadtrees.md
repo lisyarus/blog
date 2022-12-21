@@ -14,7 +14,7 @@ Recently [John Baez](https://en.wikipedia.org/wiki/John_C._Baez), a well-known m
 <center><video width="100%" muted controls><source src="{{site.url}}/blog/media/quadtree/footage.mp4" type="video/mp4"></video></center>
 <br/>
 
-*Actually, now I'm working on a larger project -- a generic particle simulator -- which I've dreamt of making for a long time. I'll release it in a week or two, stay tuned :) Here's a sneak peek:*
+*Actually, now I'm working on a larger project -- a generic particle simulator -- which I've dreamt of making for a long time. I'll release it in a week or two with full code, stay tuned :) Here's a sneak peek:*
 
 <center><blockquote class="twitter-tweet" data-lang="en"><a href="https://twitter.com/lisyarus/status/1604943260002164751"></a></blockquote></center>
 <br/>
