@@ -404,7 +404,7 @@ node_id build_impl(quadtree & tree, box const & bbox,
     ...
 }
 
-static cosntexpr std::size_t MAX_QUADTREE_DEPTH = 64;
+static constexpr std::size_t MAX_QUADTREE_DEPTH = 64;
 
 template <typename Iterator>
 quadtree build(Iterator begin, Iterator end)
