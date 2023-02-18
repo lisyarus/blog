@@ -204,7 +204,7 @@ Finally, what's `heap_compare`? It is a comparator which will be used to compare
 {% highlight cpp %}
 struct heap_compare
 {
-    void operator()(animation const & a1, animation const & a2) const
+    bool operator()(animation const & a1, animation const & a2) const
     {
         return a1.remaining_time() > a2.remaining_time();
     }
@@ -261,7 +261,7 @@ private:
 
     struct heap_compare
     {
-        void operator()(animation const & a1, animation const & a2) const
+        bool operator()(animation const & a1, animation const & a2) const
         {
             return a1.remaining_time() > a2.remaining_time();
         }
