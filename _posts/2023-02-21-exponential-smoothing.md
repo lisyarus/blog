@@ -227,7 +227,11 @@ function Map(width, height, scale)
             const vv = v00 * (1 - sx) * (1 - sy) + v01 * sx * (1 - sy) + v10 * (1 - sx) * sy + v11 * sx * sy;
             const v = (Math.sqrt(2) * vv + 1) / 2;
 
-            this.cells[y][x] = Math.floor(v * 5);
+            const vmin = 0.15;
+            const vmax = 0.85;
+            const vs = v < vmin ? 0 : v > vmax ? 1 : smoothstep((v - vmin) / (vmax - vmin));
+
+            this.cells[y][x] = Math.min(4, Math.floor(vs * 5));
         }
     }
 
