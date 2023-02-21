@@ -5,6 +5,8 @@ date:   2023-02-17 16:00:00 +0300
 categories: programming
 image:
   path: /media/exponential_smoothing/cover.png
+  width: 100
+  height: 100
 ---
 
 <style>
