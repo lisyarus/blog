@@ -713,7 +713,7 @@ Pretty nice, if you ask me! Notice how it speeds up naturally if you click fast 
 
 # Under the hood
 
-Ok, so that's up with this `1 - exp(- speed * dt)`, what on Earth is that?
+Ok, so what's up with this `1 - exp(- speed * dt)`, what on Earth is that?
 
 Let's start with a simplified version: we have some animation, it has a current `position` and the new position `target` which it must move towards with some `speed`. To make the movement faster when the difference between `position` and `target` is large, we make the speed proportional to this difference:
 
@@ -821,7 +821,7 @@ If you google "exponential smoothing" (or "exponential moving average"), you mig
 
 Suppose that our `dt` is always the same; also suppose that `target` changes as often as every iteration. Then, indexing the values with the iteration number, we compute something like `position[i] = (target[i] - position[i - 1]) * factor`, where `factor = 1 - exp(- speed * dt)`. In this case, one typically sets `factor` directly to some value between 0 and 1 instead of deriving it from other values (although the aforementioned wiki article <a href="https://en.wikipedia.org/wiki/Exponential_smoothing#Time_constant">does explain</a> what this `factor` actually means).
 
-People use it in signal processing for the same reasons I do for animations: it doesn't require maintaining previous values or any other obscure state, just the current averaged value.
+People use it in signal processing for the same reasons I do for animations: it doesn't require maintaining previous values or any other obscure state, just the current averaged value. They also use it in digital audio, where you typically have a fixed `dt` of `1 / freq` the inverse sampling frequency (e.g. `1/44100` or `1/48000`).
 
 # Last paragraph title
 
