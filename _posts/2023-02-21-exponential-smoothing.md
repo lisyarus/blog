@@ -539,6 +539,8 @@ function makeCamera(id, interpolation, speed)
 
 </script>
 
+<meta name='image' property="og:image" content="{site.url}}/blog/media/exponential_smoothing/cover.png">
+
 There's a certain simple animation thing that I've been using almost since I've ever started doing anything related to graphics. I use it for rotating & moving the camera, for moving figures in a turn-based game, for moving UI elements, for smoothing volume changes in <a href="https://lisyarus.github.io/blog/programming/2022/10/15/audio-mixing.html">my audio lib</a>, everywhere! So I decided I'll write about it. The trick itself is nothing new, - in fact, you've probably already heard about or even used it, - but I'll also show it in some examples and explain how it works mathematically :)
 
 # Toggle buttons
