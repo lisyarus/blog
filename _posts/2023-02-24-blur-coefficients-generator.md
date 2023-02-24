@@ -207,6 +207,7 @@ Here's an example GLSL function that does the blurring:
 vec4 blur(in sampler2D sourceTexture, vec2 blurDirection, vec2 pixelCoord)
 {
     vec4 result = vec4(0.0);
+    vec2 size = textureSize(sourceTexture, 0);
     for (int i = 0; i < SAMPLE_COUNT; ++i)
     {
         vec2 offset = blurDirection * OFFSETS[i] / size;
