@@ -20,6 +20,9 @@ Generates sample offsets and weights for a two-pass Gaussian blur GLSL shader th
 <label for="sigma">Blur sigma:</label>
 <input id="sigma" value="3">
 <br>
+<label for="linear">Linear filtering:</label>
+<input type="checkbox" id="linear" checked>
+<br>
 <label for="correction">Small sigma correction:</label>
 <input type="checkbox" id="correction" checked>
 </form>
@@ -73,6 +76,7 @@ function setInputFilter(textbox, inputFilter, errMsg) {
 
 var radiusInput = document.getElementById("radius");
 var sigmaInput = document.getElementById("sigma");
+var linearInput = document.getElementById("linear");
 var correctionInput = document.getElementById("correction");
 var resultTextArea = document.getElementById('result');
 var warningDiv = document.getElementById('warning');
@@ -111,6 +115,7 @@ function update()
 
     const radius = parseInt(radiusInput.value);
     const sigma = parseFloat(sigmaInput.value);
+    const linear = linearInput.checked;
     const correction = correctionInput.checked;
 
     if (sigma == 0.0) return;
@@ -140,30 +145,46 @@ function update()
 
     let hasZeros = false;
 
-    for (let i = -radius; i <= radius; i += 2)
+    if (linear)
     {
-        if (i == radius)
+        for (let i = -radius; i <= radius; i += 2)
         {
-            offsets.push(i);
-            newWeights.push(weights[i + radius]);
-        }
-        else
-        {
-            const w0 = weights[i + radius + 0];
-            const w1 = weights[i + radius + 1];
-
-            const w = w0 + w1;
-            if (w > 0)
+            if (i == radius)
             {
-                offsets.push(i + w1 / w);
+                offsets.push(i);
+                newWeights.push(weights[i + radius]);
             }
             else
             {
-                hasZeros = true;
-                offsets.push(i);
+                const w0 = weights[i + radius + 0];
+                const w1 = weights[i + radius + 1];
+
+                const w = w0 + w1;
+                if (w > 0)
+                {
+                    offsets.push(i + w1 / w);
+                }
+                else
+                {
+                    hasZeros = true;
+                    offsets.push(i);
+                }
+                newWeights.push(w);
             }
-            newWeights.push(w);
         }
+    }
+    else
+    {
+        for (let i = -radius; i <= radius; i++)
+        {
+            offsets.push(i);
+        }
+
+        for (let w of weights)
+            if (w == 0.0)
+                hasZeros = true;
+
+        newWeights = weights;
     }
 
     if (hasZeros)
@@ -173,9 +194,11 @@ function update()
 
     let result = "";
 
-    result += `const int SAMPLE_COUNT = ${radius + 1};\n\n`;
+    const N = newWeights.length;
 
-    result += `const float OFFSETS[${radius + 1}] = float[${radius + 1}](\n`;
+    result += `const int SAMPLE_COUNT = ${N};\n\n`;
+
+    result += `const float OFFSETS[${N}] = float[${N}](\n`;
     for (let i in offsets)
     {
         if (i > 0)
@@ -185,7 +208,7 @@ function update()
     }
     result += "\n);\n\n";
 
-    result += `const float WEIGHTS[${radius + 1}] = float[${radius + 1}](\n`;
+    result += `const float WEIGHTS[${N}] = float[${N}](\n`;
     for (let i in newWeights)
     {
         if (i > 0)
@@ -205,6 +228,7 @@ update();
 
 radiusInput.oninput = update;
 sigmaInput.oninput = update;
+linearInput.oninput = update;
 correctionInput.oninput = update;
 
 </script>
