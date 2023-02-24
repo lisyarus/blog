@@ -11,7 +11,7 @@ categories: graphics
 }
 </style>
 
-Generates sample offsets and weights for a two-pass Gaussian blur shader that uses linear texture filtering to sample two weighted pixels using a single texture read.
+Generates sample offsets and weights for a two-pass Gaussian blur GLSL shader that uses linear texture filtering to sample two weighted pixels using a single texture read.
 
 <form>
 <label for="radius">Blur radius:</label>
