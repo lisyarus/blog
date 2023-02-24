@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "My favourite animation trick: exponential smoothing"
-date:   2023-02-17 16:00:00 +0300
+date:   2023-02-21 16:00:00 +0300
 categories: programming
 image:
   path: /media/exponential_smoothing/cover.png
