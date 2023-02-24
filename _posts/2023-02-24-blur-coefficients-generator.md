@@ -31,6 +31,8 @@ Generates sample offsets and weights for a two-pass Gaussian blur GLSL shader th
 
 <textarea id="result" cols="80" rows="25" readonly></textarea>
 
+<br>
+
 <script defer>
 
 function isNonNegativeInteger(text)
@@ -260,6 +262,8 @@ vec4 blur(in sampler2D sourceTexture, vec2 blurDirection, vec2 pixelCoord)
     return result;
 }
 </textarea>
+
+<br>
 
 # How does it work?
 
