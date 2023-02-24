@@ -24,6 +24,8 @@ Generates sample offsets and weights for a two-pass Gaussian blur GLSL shader th
 <input type="checkbox" id="correction" checked>
 </form>
 
+<div id="warning" style="color: red"></div>
+
 <textarea id="result" cols="80" rows="25" readonly></textarea>
 
 <script defer>
@@ -73,6 +75,7 @@ var radiusInput = document.getElementById("radius");
 var sigmaInput = document.getElementById("sigma");
 var correctionInput = document.getElementById("correction");
 var resultTextArea = document.getElementById('result');
+var warningDiv = document.getElementById('warning');
 
 setInputFilter(radiusInput, isNonNegativeInteger, "Must be a nonnegative integer");
 setInputFilter(sigmaInput, isNonNegativeFloat, "Must be a nonnegative floating-point");
@@ -135,6 +138,8 @@ function update()
     var offsets = [];
     var newWeights = [];
 
+    let hasZeros = false;
+
     for (let i = -radius; i <= radius; i += 2)
     {
         if (i == radius)
@@ -147,10 +152,24 @@ function update()
             const w0 = weights[i + radius + 0];
             const w1 = weights[i + radius + 1];
 
-            offsets.push(i + w1 / (w0 + w1));
-            newWeights.push(w0 + w1);
+            const w = w0 + w1;
+            if (w > 0)
+            {
+                offsets.push(i + w1 / w);
+            }
+            else
+            {
+                hasZeros = true;
+                offsets.push(i);
+            }
+            newWeights.push(w);
         }
     }
+
+    if (hasZeros)
+        warningDiv.innerHTML = "Some weights are equal to zero; try using a smaller radius or a bigger sigma";
+    else
+        warningDiv.innerHTML = "<br>";
 
     let result = "";
 
@@ -198,7 +217,7 @@ correctionInput.oninput = update;
 
 Here's an example GLSL function that does the blurring:
 
-<textarea id="example" cols="80" rows="17" readonly>
+<textarea id="example" cols="80" rows="18" readonly>
 // blurDirection is:
 //     vec2(1,0) for horizontal pass
 //     vec2(0,1) for vertical pass
