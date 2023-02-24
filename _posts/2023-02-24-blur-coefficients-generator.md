@@ -19,6 +19,9 @@ Generates sample offsets and weights for a two-pass Gaussian blur shader that us
 <br>
 <label for="sigma">Blur sigma:</label>
 <input id="sigma" value="3">
+<br>
+<label for="correction">Small sigma correction:</label>
+<input type="checkbox" id="correction" checked>
 </form>
 
 <textarea id="result" cols="80" rows="25" readonly></textarea>
@@ -68,10 +71,35 @@ function setInputFilter(textbox, inputFilter, errMsg) {
 
 var radiusInput = document.getElementById("radius");
 var sigmaInput = document.getElementById("sigma");
+var correctionInput = document.getElementById("correction");
 var resultTextArea = document.getElementById('result');
 
 setInputFilter(radiusInput, isNonNegativeInteger, "Must be a nonnegative integer");
 setInputFilter(sigmaInput, isNonNegativeFloat, "Must be a nonnegative floating-point");
+
+// From https://hewgill.com/picomath/javascript/erf.js.html
+function erf(x) {
+    // constants
+    var a1 =  0.254829592;
+    var a2 = -0.284496736;
+    var a3 =  1.421413741;
+    var a4 = -1.453152027;
+    var a5 =  1.061405429;
+    var p  =  0.3275911;
+
+    // Save the sign of x
+    var sign = 1;
+    if (x < 0) {
+        sign = -1;
+    }
+    x = Math.abs(x);
+
+    // A&S formula 7.1.26
+    var t = 1.0/(1.0 + p*x);
+    var y = 1.0 - (((((a5*t + a4)*t) + a3)*t + a2)*t + a1)*t*Math.exp(-x*x);
+
+    return sign*y;
+}
 
 function update()
 {
@@ -80,12 +108,23 @@ function update()
 
     const radius = parseInt(radiusInput.value);
     const sigma = parseFloat(sigmaInput.value);
+    const correction = correctionInput.checked;
+
+    if (sigma == 0.0) return;
 
     var weights = [];
     let sumWeights = 0.0;
     for (let i = -radius; i <= radius; i++)
     {
-        const w = Math.exp(- i * i / sigma / sigma);
+        let w = 0;
+        if (correction)
+        {  
+            w = (erf((i + 0.5) / sigma / Math.sqrt(2)) - erf((i - 0.5) / sigma / Math.sqrt(2))) / 2;
+        }
+        else
+        {
+            w = Math.exp(- i * i / sigma / sigma);
+        }
         sumWeights += w;
         weights.push(w);
     }
@@ -147,10 +186,17 @@ update();
 
 radiusInput.oninput = update;
 sigmaInput.oninput = update;
+correctionInput.oninput = update;
 
 </script>
 
 # How to use it?
+
+`OFFSETS` are offsets in pixels from the destination pixel to the input sample pixels (along the current blurring axis, i.e. horizontal or vertical).
+
+`WEIGHTS` are the corresponding weights, i.e. how much contribution each input sample gives to the output value. They are already normalized --- their sum is 1.
+
+Here's an example GLSL function that does the blurring:
 
 <textarea id="example" cols="80" rows="17" readonly>
 // blurDirection is:
@@ -170,3 +216,15 @@ vec4 blur(in sampler2D sourceTexture, vec2 blurDirection, vec2 pixelCoord)
     return result;
 }
 </textarea>
+
+# How does it work?
+
+A *two-dimantional Gaussian filter* uses weights in the form of <img src="https://latex.codecogs.com/png.image?\dpi{110}\exp\left(-\frac{x^2+y^2}{\sigma^2}\right)">, sampling the input texture in a <img src="https://latex.codecogs.com/png.image?\dpi{110}(2N+1)\times(2N+1)"> square (in the <img src="https://latex.codecogs.com/png.image?\dpi{110}[-N..N]\times[-N..N]"> range around the current pixel), making a total of <img src="https://latex.codecogs.com/png.image?\dpi{110}(2N+1)^2"> texture reads in a single fragment shader invocation.
+
+A *separable* filter makes use of the observation that <img src="https://latex.codecogs.com/png.image?\dpi{110}\exp\left(-\frac{x^2+y^2}{\sigma^2}\right)=\exp\left(-\frac{x^2}{\sigma^2}\right)\cdot\exp\left(-\frac{y^2}{\sigma^2}\right)">, which means that we can blur horizontally over the range <img src="https://latex.codecogs.com/png.image?\dpi{110}[-N..N]"> around the current pixel, and then blur the result vertically to get the final blur (or blur vertically first and horizontally after that, doesn't matter). This cuts down the number of texture reads to <img src="https://latex.codecogs.com/png.image?\dpi{110}2N+1"> per pass, meaning <img src="https://latex.codecogs.com/png.image?\dpi{110}4N+2"> in total (for both the horizontal and vertical passes).
+
+Using linear filtering for the input texture, we can further reduce the number of required texture reads. Say, we want to to read two neighbouring pixels `p[i]` and `p[i+1]` (I'm using 1D indexing because we're talking about separable blur, so all pixels read in a single shader invocation are in the same row or column) with weights <img src="https://latex.codecogs.com/png.image?\dpi{110}w_0"> and <img src="https://latex.codecogs.com/png.image?\dpi{110}w_1">. The total contribution of these two pixels is <img src="https://latex.codecogs.com/png.image?\dpi{110}w_0%20p_i%20+%20w_1%20p_{i+1}">. Rewriting it as a `lerp`, we get <img src="https://latex.codecogs.com/png.image?\dpi{110}w_0%20p_i%20+%20w_1%20p_{i+1}%20=%20(w_0%20+%20w_1)%20\text{lerp}\left(p_i,%20p_{i+1},%20\frac{w_1}{w_0+w_1}\right)">, meaning we can sample at location <img src="https://latex.codecogs.com/png.image?\dpi{110}i+\frac{w_1}{w_0+w_1}"> with a total weight of <img src="https://latex.codecogs.com/png.image?\dpi{110}w_0+w_1">, and thanks to linear filtering this will evaluate to the total contribution of two pixels, at the expense of a single texture read. This lowers the number of texture reads to <img src="https://latex.codecogs.com/png.image?\dpi{110}N+1"> per pass, meaning a total of <img src="https://latex.codecogs.com/png.image?\dpi{110}2N+2"> per the full blur.
+
+To learn about small sigma correction, see <a href="https://bartwronski.com/2021/10/31/practical-gaussian-filter-binomial-filter-and-small-sigma-gaussians/">this post by Bart Wronski</a>.
+
+See also <a href="http://demofox.org/gauss.html">Alan Wolfe's</a> generator which uses a *support* instead of *radius* to figure out how many samples are needed.
