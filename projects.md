@@ -59,3 +59,15 @@ It is highly configurable, and supports different OpenGL-based APIs, versions, e
 <img src="https://www.khronos.org/assets/images/api_logos/opengl.svg">
 </td>
 </tr></table>
+
+---
+<center><a href="https://github.com/lisyarus/voxelizer"><h2>OBJ Voxelizer</h2></a></center>
+
+<table><tr>
+<td>
+A tool that converts 3D models in Wavefront OBJ format to a 3D RGBA texture, with the alpha channel containing the volume of intersection of the object with this voxel. Useful for e.g. <a href="https://en.wikipedia.org/wiki/Volume_rendering">volume rendering</a>.
+</td>
+<td>
+<img src="{{site.url}}/blog/media/projects/voxelizer.png">
+</td>
+</tr></table>
