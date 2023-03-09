@@ -45,3 +45,17 @@ It gradually builds up a simple framework for solving quantum mechanical problem
 <img src="{{site.url}}/blog/media/projects/chembook.png">
 </td>
 </tr></table>
+
+---
+<center><a href="https://github.com/lisyarus/opengl-loader-generator"><h2>OpenGL Loader Generator</h2></a></center>
+
+<table><tr>
+<td>
+Heavily influenced by (now obsolete) glLoadGen, a python script that takes a simple configuration file and produces an <a href="https://www.khronos.org/opengl/wiki/OpenGL_Loading_Library">OpenGL loader</a>, i.e. a pair of C++ header &amp; source files that contain all OpenGL constants & function definitions for the specified OpenGL version, and the routines for loading them.
+<br><br>
+It is highly configurable, and supports different OpenGL-based APIs, versions, extensions, and even code styles :)
+</td>
+<td>
+<img src="https://www.khronos.org/assets/images/api_logos/opengl.svg">
+</td>
+</tr></table>
