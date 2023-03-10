@@ -33,6 +33,7 @@ permalink: /about/
 .social-btn:hover {
   opacity: 0.65;
   color: #fff;
+  text-decoration: none;
 }
 
 .social-btn:visited {
