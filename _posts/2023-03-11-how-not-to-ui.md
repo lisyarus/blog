@@ -58,7 +58,7 @@ So I'm making my own UI library in C++, because I <s>love reinventing the wheel<
 
 * **Automatic layout**. This was probably the most important goal: even in a simplest case of window-centered text, it's so nice if it automatically positions itself in the window center and you don't have to write this code manually. Of course, there are much more complicated cases like some floating widget with buttons and text and scrollbars and stuff, all resizing perfectly. This becomes a huge pain without some automation:
 
-<center><video width="100%"><source src="{{site.url}}/blog/media/not_ui/merchants.mp4" type="video/mp4"></video></center>
+<center><video width="100%" controls><source src="{{site.url}}/blog/media/not_ui/merchants.mp4" type="video/mp4"></video></center>
 <div style="text-align: center"><i>An unfinished medieval trading game, abandoned largely because of the sheer amount of UI that I couldn't handle anymore.</i></div>
 <br>
 
