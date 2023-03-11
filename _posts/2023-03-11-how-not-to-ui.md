@@ -13,6 +13,9 @@ categories: programming
 
 </style>
 
+* TOC
+{:toc}
+
 *This post is a dive into the design of my UI library in my pet C++ game engine, as well as a lot of rants on what didn't work as well as I'd thought it would :) The library itself is located [here](https://bitbucket.org/lisyarus/psemek/src/master/libs/ui/).*
 
 I've noticed that literally in any project I make there is some kind of UI. Even a keyboard-only game needs some text and a few buttons:
