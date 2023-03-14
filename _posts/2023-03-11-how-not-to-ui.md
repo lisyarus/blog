@@ -406,6 +406,6 @@ I'll write a new post once I've finished designing and testing a new library (wh
 As usual, watch my devlogs:
 <iframe width="100%" style="aspect-ratio:16/9" src="https://www.youtube.com/embed/GazsE5NDMj8" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe><br/>
 
-try my <a href="https://lisyarus.itch.io/particle-simulator">particle simulator</a>, and huge thanks for reading!
+<iframe width="100%" style="aspect-ratio:16/9" src="https://www.youtube.com/embed/tea0qJx9_hs" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe><br/>
 
-<a href="https://lisyarus.itch.io/particle-simulator"><img width="100%" src="https://img.itch.zone/aW1hZ2UvMTg2MzkzNS8xMDk1MTQ2OC5wbmc=/original/CHcTAG.png"></a>
+and huge thanks for reading!

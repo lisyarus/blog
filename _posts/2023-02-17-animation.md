@@ -324,7 +324,7 @@ Was it worth it, i.e. is it really faster than a stupidly simpler solution? I do
 In the meanwhile, go watch my devlog on a completely unrelated project:
 <iframe width="100%" style="aspect-ratio:16/9" src="https://www.youtube.com/embed/GazsE5NDMj8" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe><br/>
 
-Also, I've made a particle simulator recently. It's available <a href="https://lisyarus.itch.io/particle-simulator">here</a> and I'll probably make a video about it as well.
-As always, thanks for reading!
+Also, I've made a particle simulator recently. It's available <a href="https://lisyarus.itch.io/particle-simulator">here</a> and I've made a devlog/tutorial about it as well:
+<iframe width="100%" style="aspect-ratio:16/9" src="https://www.youtube.com/embed/tea0qJx9_hs" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe><br/>
 
-<a href="https://lisyarus.itch.io/particle-simulator"><img width="100%" src="https://img.itch.zone/aW1hZ2UvMTg2MzkzNS8xMDk1MTQ2OC5wbmc=/original/CHcTAG.png"></a>
+As always, thanks for reading!
