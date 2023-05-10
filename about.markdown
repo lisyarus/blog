@@ -76,6 +76,8 @@ I also teach real-time computer graphics in Saint Petersburg State University.
 
 You can try some of my games [on itch.io](https://lisyarus.itch.io/). They're generally pretty bad, although I've been getting better over time.
 
+I've made [twitter thread](https://twitter.com/lisyarus/status/1318605976786919424) about making a very simple 2D physics engine.
+
 Check out my [projects]({{site.url}}/blog/projects) and social media accounts:
 
 <center>
