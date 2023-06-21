@@ -18,7 +18,7 @@ table, tr, td {
 </style>
 
 ---
-<center><a href="https://lisyarus.itch.io/particle-simulator"><h2>Costa Verde Transport Department</h2></a></center>
+<center><a href="https://store.steampowered.com/app/2403100/Costa_Verde_Transport_Department"><h2>Costa Verde Transport Department</h2></a></center>
 
 <table><tr>
 <td>
