@@ -2,6 +2,7 @@
 layout: page
 title: Projects
 permalink: /projects
+steamwidgets: yes
 ---
 
 <style>
@@ -15,6 +16,22 @@ table, tr, td {
 }
 
 </style>
+
+---
+<center><a href="https://lisyarus.itch.io/particle-simulator"><h2>Costa Verde Transport Department</h2></a></center>
+
+<table><tr>
+<td>
+A road building & traffic simulation game I'm working on. It's my first commercial game project, and I'm determined to release it in October, 2023. Most probably it won't be a great game, but I'll be happy with an OK game for a start :)
+<br><br>
+You can watch devlogs about it on my <a href="https://youtube.com/@lisyarus">YouTube channel</a>. It also has a dedicated <a href="https://discord.gg/Ab58J2rE2">Discord server</a>.
+<br><br>
+By the way, I'm quite struggling with marketing stuff (logos, Steam capsules, advertising, etc), so if you can offer me some help, be sure to write to <a href="mailto:lisyarus@gmail.com">lisyarus@gmail.com</a>.
+</td>
+<td>
+<steam-app appid="2403100"></steam-app>
+</td>
+</tr></table>
 
 ---
 <center><a href="https://lisyarus.itch.io/particle-simulator"><h2>Particle simulator</h2></a></center>
