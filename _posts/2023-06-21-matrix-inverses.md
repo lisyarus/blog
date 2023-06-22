@@ -47,6 +47,8 @@ This is exactly the reason why the [_matrix algebra_](https://en.wikipedia.org/w
 <center><img src="https://what-when-how.com/wp-content/uploads/2011/08/tmpD72_thumb2.jpg"></center>
 <br>
 
+Of course, you'll need [_homogeneous coordinates_](http://www.opengl-tutorial.org/beginners-tutorials/tutorial-3-matrices) to represent translations as matrices, which is common in e.g. 3D graphics.
+
 _In fact, starting with 3 dimensions, rotations only are already non-commutative._
 
 # Non-commutative inverses
