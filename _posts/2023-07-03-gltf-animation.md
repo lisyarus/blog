@@ -334,6 +334,8 @@ There's one more thing. Sometimes, it is convenient (for the artist, or for the 
 </details>
 <br>
 
+*Blender uses world-space vertex positions as the bind pose. If you model is located 20 units along the X-axis from the origin, it's raw vertex positions will be around X=20, and the inverse bind matrices will compensate for that. This effectively renders animated models exported from Blender impossible to use without animation.*
+
 # Transform recap
 
 In total, we have the following sequence of transformations applied to a vertex:
