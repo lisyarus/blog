@@ -202,8 +202,8 @@ As if $$z$$ and $$\bar z$$ were simply different unrelated variables. Really coo
 
 Let's look at a special case where $$f(z)$$ is a real-valued function of a complex variable. We can think of it as a complex-valued function which happens to only have real outputs, i.e. the imaginary part is zero. Can we compute the usual gradient $$\nabla f = \begin{pmatrix}\frac{\partial f}{\partial x} & \frac{\partial f}{\partial y}\end{pmatrix}$$ using the machinery of Wirtinger derivatives? Yes, we can! Recall that
 
-\\[ \frac{\partial}{\partial z} = \frac{1}{2}\left( \frac{\partial}{\partial x} + i\frac{\partial}{\partial y} \right) \\]
-\\[ \frac{\partial}{\partial\bar z} = \frac{1}{2}\left( \frac{\partial}{\partial x} - i\frac{\partial}{\partial y} \right) \\]
+\\[ \frac{\partial}{\partial z} = \frac{1}{2}\left( \frac{\partial}{\partial x} - i\frac{\partial}{\partial y} \right) \\]
+\\[ \frac{\partial}{\partial\bar z} = \frac{1}{2}\left( \frac{\partial}{\partial x} + i\frac{\partial}{\partial y} \right) \\]
 
 Therefore
 
