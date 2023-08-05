@@ -111,7 +111,7 @@ Let's look at a few examples. Take $$f(z) = z^2$$. In components (the real & ima
 
 The Jacobian (matrix of partial derivatives) then looks like this:
 
-\\[ J = \begin{pmatrix} \frac{du}{dx} & \frac{du}{dy} \\\\ \frac{dv}{dx} & \frac{dv}{dy} \end{pmatrix}  = \begin{pmatrix} 2x & -2y \\\\ 2y & 2x \end{pmatrix} = M_{2x+2yi} = M_{2z} \\]
+\\[ J = \begin{pmatrix} \frac{\partial u}{\partial  x} & \frac{\partial u}{\partial y} \\\\ \frac{\partial v}{\partial x} & \frac{\partial v}{\partial y} \end{pmatrix}  = \begin{pmatrix} 2x & -2y \\\\ 2y & 2x \end{pmatrix} = M_{2x+2yi} = M_{2z} \\]
 
 So, this matrix is equal to the matrix of multiplication by $$2z$$, meaning the complex derivative of $$z^2$$ is $$2z$$, as it should be!
 
@@ -138,6 +138,13 @@ for *some* matrix $$J$$ (that depends on $$z$$). For a function $$f:\mathbb C\ri
 where $$J$$ isn't an arbitrary matrix anymore, but $$J=M_c$$ for some complex number $$c$$. So, some complex functions are real-differentiable but aren't complex-differentiable because their Jacobian $$J$$ isn't of this specific form.
 
 This is exactly why complex-differentiable functions are so special. Their Jacobian is a matrix of multiplication by a complex number, meaning it can rotate and scale uniformly, but it cannot tilt or etc. This is exactly why these functions are [*conformal mappings*](https://en.wikipedia.org/wiki/Conformal_map), meaning they preserve angles locally despite doing pretty random stuff globally (becase rotations & uniform scalings preserve angles). This is exactly why complex analysis is so cool. *Well, also because most interesting functions are multi-valued and require thinking about manifolds aka Riemann surfaces.*
+
+By the way, let's try to express the condition $$J=M_c$$ without mentioning $$M_c$$, just as some equations on $$J$$.
+
+\\[ J = \begin{pmatrix} \frac{\partial u}{\partial  x} & \frac{\partial u}{\partial y} \\\\ \frac{\partial v}{\partial x} & \frac{\partial v}{\partial y} \end{pmatrix}  = \begin{pmatrix} a & -b \\\\ b & a \end{pmatrix} \Rightarrow \\]
+\\[ \Rightarrow \frac{\partial u}{\partial x} = \frac{\partial v}{\partial y} , \frac{\partial u}{\partial y} = - \frac{\partial v}{\partial x} \\]
+
+These are the [Cauchy-Riemann equations](https://en.wikipedia.org/wiki/Cauchy%E2%80%93Riemann_equations) for a function to be complex-differentiable. They look cryptic at first glance, but all they say is the same idea that the Jacobian is secretly a multiplication by a complex number.
 
 So, we miss some functions which are real-differentiable but not complex-differentiable. How much do we miss, exactly? Well, the space of $$2\times 2$$ real matrices is 4-dimensional, while the space of complex numbers is 2-dimensional, and so is the space of matrices of the form $$M_c$$. We miss half the dimensions!
 
