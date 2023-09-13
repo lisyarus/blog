@@ -7,6 +7,8 @@ mathjax: yes
 steamwidgets: yes
 ---
 
+<script async="" src="//platform.twitter.com/widgets.js" charset="utf-8"></script>
+
 This is a follow-up to my earlier [post about complex derivatives](https://lisyarus.github.io/blog/math/2023/08/03/complex-derivatives.html). I was hoping to use it for something like inverse kinematics, and I fot some relatively nice formulas, but it all worked in 2D. For 3D inverse kinematics we want [quaternions](https://en.wikipedia.org/wiki/Quaternion)! So, can we find a way to differentiate quaternions the same way we did with complex numbers, and use this for inverse kinematics? The answer is probably no, but we'll learn a lot about quaterions along the way.
 
 * TOC
