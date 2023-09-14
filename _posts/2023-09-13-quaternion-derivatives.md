@@ -57,7 +57,7 @@ If we differentiate this equation, we get
 
 Which means that the derivative $$f'(t)$$ is orthogonal to the quaternion itself $$f(t)$$. This happens every time you differentiate a normalized vector, in any dimension! It means that the vectors tangent to a sphere at a specific point are orthogonal to the vector from the center of the sphere to this point.
 
-# Should I normalized quaternions?
+# Should I normalize quaternions?
 
 We're always told that quaternions should be normalized when we use them to represent rotations, and we absolutely should, but I just wanted to show a few other points of view :)
 
@@ -164,13 +164,15 @@ So, quaternions are somehow very special. This is because they form a [*central 
 
 # Central simple algebras
 
-This is a very cool and incredibly important concept from algebra which is rarely taught to non-mathematicians. Fix your base field of scalars, -- for example, the real numbers $$\mathbb R$$. An *algebra* is just some set of elements that you can add, subtract, and multiply, which contains the scalars and obeys the usual rules of arithmetics.
+This is a very cool and incredibly important concept from algebra which is rarely taught to non-mathematicians. Fix your base field of scalars, -- for example, the real numbers $$\mathbb R$$. An *algebra* is just some set of elements that you can add, subtract, and multiply, which contains the scalars and obeys the usual rules of arithmetics. We say an algebra is defined _over_ it's field of scalars. 
+
+You've seen many algebras in your life. Polynomials with real coefficients $$\mathbb R[X]$$ are an algebra *over* the real numbers $$\mathbb R$$. Real-valued $$N\times N$$ matrices $$M_N(\mathbb R)$$ are an algebra *over* real numbers $$\mathbb R$$. Complex numbers $$\mathbb C$$ are an algebra *over* real numbers $$\mathbb R$$. Real numbers themselves $$\mathbb R$$ are an algebra *over* the rational numbers $$\mathbb Q$$! 
 
 A *simple* algebra means something technical, but you can think of it as not being decomposable into smaller pieces *(in terms of a [short exact sequence](https://en.wikipedia.org/wiki/Exact_sequence))*. A *central* algebra is one where the scalars are the only guys who commute with everything, i.e. if for some element $$a$$ we have $$ax=xa$$ for any $$x$$ from the algebra, then this $$a$$ must be a scalar from the base field.
 
-Quaternions are a central simple algebra, when the base field is the real numbers $$\mathbb R$$. The complex numbers $$\mathbb C$$, however, are not *central* over $$\mathbb R$$: in fact, they are commutative, so *all* elements are central, not just the real scalars. This is why the trick with matrices doens't work for complex numbers: they are *simple*, but not *central*.
+Quaternions are a central simple algebra, when the base field is the real numbers $$\mathbb R$$. The complex numbers $$\mathbb C$$, however, are *not central* over $$\mathbb R$$: in fact, they are commutative, so *all* elements commute with all others, not just the real scalars. This is why the trick with matrices doens't work for complex numbers: they are *simple*, but *not central*.
 
-By the way, the complex numbers $$\mathbb C$$ *are* a central simple algebra *over themselves*, i.e. if we consider complex numbers to be scalars and not just real numbers. Any field is a CAS over itself, which is a boring fact that won't help us in any way. *(Explaining why the choice of scalars matters would take a long detour into abstract algebra; I'll just note that it has to do with [tensor products](https://en.wikipedia.org/wiki/Tensor_product).)*
+By the way, the complex numbers $$\mathbb C$$ *are* a central simple algebra *over themselves*, i.e. if we consider complex numbers to be scalars instead of real numbers. Any field is a CAS over itself, which is a boring fact that won't help us in any way. *(Explaining why the choice of scalars matters would take a long detour into abstract algebra; I'll just note that it has to do with [tensor products](https://en.wikipedia.org/wiki/Tensor_product).)*
 
 In fact, quaternions $$\mathbb H$$ are *the only* central simple algebra over the real numbers $$\mathbb R$$ other than the real numbers themselves! So they are really, *really*, ***really*** special. (*We only consider finite-dimensional algebras here.)*
 
@@ -239,6 +241,14 @@ So
 \\[ (q^{-1})' = - q^{-1} \cdot dq \cdot q^{-1} \\]
 
 We could try to differentiate some analytic functions like $$\exp$$ or $$\sin$$ using their Taylor series, but I guess it becomes a bit complicated.
+
+# Arbitrary algebras
+
+Note that the formulas we've developed above didn't really use the fact that $$q$$ is a quaternion. Sure, we *did* use the fact that *any* derivative can be represented this way, but we don't need this fact for the derivative of a *specific function*.
+
+For example, all the formulas above work for matrices instead of quaternions. See for example [this post](https://math.stackexchange.com/questions/1471825/derivative-of-the-inverse-of-a-matrix) about the derivative of an inverse matrix -- we get literally the same formula, just with a slight difference in notation.
+
+So, if you can derive a formula for a derivative like what we did in the previous section, this formula works *in any algebra*, not just for matrices or quaternions! Cool, huh.
 
 # Inverse kinematics?
 
