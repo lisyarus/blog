@@ -23,11 +23,9 @@ table, tr, td {
 
 <table class="project_table"><tr>
 <td>
-A road building & traffic simulation game I'm working on. It's my first commercial game project, and I'm determined to release it in October, 2023. Most probably it won't be a great game, but I'll be happy with an OK game for a start :)
+A road building & traffic simulation game I've released in 2023. It's my first commercial game project, and the first big enough released game. A lot of things went wrong during development, and I'm not happy with the final result, but at least I've learned a lot. The game still managed to find a thankful audience, though :)
 <br><br>
-You can watch devlogs about it on my <a href="https://youtube.com/@lisyarus">YouTube channel</a>. It also has a dedicated <a href="https://discord.gg/Ab58J2rE2">Discord server</a>.
-<br><br>
-By the way, I'm quite struggling with marketing stuff (logos, Steam capsules, advertising, etc), so if you can offer me some help, be sure to write to <a href="mailto:lisyarus@gmail.com">lisyarus@gmail.com</a>.
+You can watch devlogs about it on my <a href="https://youtube.com/@lisyarus">YouTube channel</a>.
 </td>
 <td>
 <center><steam-app appid="2403100"></steam-app></center>
