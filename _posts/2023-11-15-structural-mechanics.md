@@ -22,7 +22,7 @@ table, tbody, tr, td {
 }
 </style>
 
-<script async src="//platform.twitter.com/widgets.js" charset="utf-8"></script>
+<script async="" src="//platform.twitter.com/widgets.js" charset="utf-8"></script>
 
 <script>
 
@@ -2158,7 +2158,7 @@ As you can see, the error $$\|Ax-b\|^2$$ stays positive, i.e. the method converg
 
 When I [asked about it on twitter](https://x.com/lisyarus/status/1725997945856647505), people got confused, thinking I'm asking about some [ML-related regularization](https://en.wikipedia.org/wiki/Ridge_regression). A bit later we figured out that minimizing $$\|Ax-b\|^2+\|x\|^2$$ is **not** equivalent to solving $$Ax=b$$, but to some different equation:
 
-<center><blockquote class="twitter-tweet" data-lang="en"><a href="https://x.com/isenbaev/status/1726018037600678064"></a></blockquote></center>
+<center><blockquote class="twitter-tweet" data-lang="en"><a href="https://twitter.com/isenbaev/status/1726018037600678064"></a></blockquote></center>
 
 *That's what you get for relying on random blogs that don't cite sources, I guess.*
 
