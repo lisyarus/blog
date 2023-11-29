@@ -7,15 +7,86 @@ steamwidgets: yes
 
 <style>
 
-table, tr, td {
-	border: none!important;
-	table-layout: fixed;
-	border-spacing: 20px!important;
-	text-align: justify;
-	vertical-align: top!important;
-	background-color: #ffffff00!important;
-}
+	table, tr, td {
+		border: none!important;
+		table-layout: fixed;
+		border-spacing: 20px!important;
+		text-align: justify;
+		vertical-align: top!important;
+		background-color: #ffffff00!important;
+	}
 
+  .steamapp {
+    background-color: #282e39;
+    padding: 10px;
+    color: #8f8f8f;
+    box-shadow: 5px 5px 10px #7f7f7f;
+  	font-size: 24px;
+  	display: inline-block;
+    border-radius: 10px;
+  }
+
+  .steamapp-capsule {
+  	border-radius: 10px;
+  	box-shadow: 5px 5px 10px #000000;
+  }
+
+  table.steamapp-table, tbody.steamapp-table, tr.steamapp-table {
+    border: none!important;
+    background: transparent!important;
+    color: inherit;
+    margin: 0px;
+    padding: 0px;
+  }
+
+  td.steamapp-table {
+    border: none!important;
+    background: transparent!important;
+    color: inherit;
+    margin: 0px;
+    padding: 5px 0px;
+  }
+
+  .steamapp-title {
+  	font-weight: 600;
+    color: #ffffff;
+    display: inline;
+  }
+
+  .steamapp-button {
+  	background-color: #6da520;
+    display: inline;
+    color: #d9ebba;
+    padding: 15px 20px;
+    margin: 20px;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 5px;
+    transition: 0.25s;
+  }
+
+  .steamapp-button:hover {
+  	background-color: #91db2b;
+  	color: #ffffff;
+  	text-shadow: 0px 0px 10px #ffff00;
+  	box-shadow: 0px 0px 20px #91db2b;
+  }
+
+  .steamapp-link:hover {
+  	text-decoration: none;
+  }
+
+  .steamapp-logo {
+  	filter: brightness(0.75);
+  	height: 50px;
+  	transition: 0.25s;
+  	border-radius: 10px;
+  }
+
+  .steamapp-logo:hover {
+  	filter: brightness(1.0);
+  	box-shadow: 0px 0px 20px #ffffff;
+  }
 </style>
 
 ---
@@ -28,7 +99,16 @@ A road building & traffic simulation game I've released in 2023. It's my first c
 You can watch devlogs about it on my <a href="https://youtube.com/@lisyarus">YouTube channel</a>.
 </td>
 <td>
-<center><steam-app appid="2403100"></steam-app></center>
+<div class='steamapp'>
+<table class='steamapp-table' width='100%'>
+<tr class='steamapp-table'>
+<td class='steamapp-table'><img src="{{site.url}}/blog/media/costa_verde.png" class='steamapp-capsule'></td>
+</tr>
+<tr class='steamapp-table'>
+<td class='steamapp-table'><center><a href="https://store.steampowered.com/app/2403100/Costa_Verde_Transport_Department" class='steamapp-link'><div class='steamapp-button'>Buy on Steam</div><img src="{{site.url}}/blog/media/steam-256.png" class='steamapp-logo'></a></center></td>
+</tr>
+</table>
+</div>
 </td>
 </tr></table>
 
