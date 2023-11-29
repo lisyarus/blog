@@ -14,6 +14,15 @@ As always, check out my <a href="https://store.steampowered.com/app/2403100/Cost
   .steamapp-capsule {
   	border-radius: 10px;
   	box-shadow: 5px 5px 10px #000000;
+    transition: 0.25s;
+  }
+
+  .steamapp-capsule:hover {
+    margin-left: -5px;
+    margin-top:  -5px;
+    margin-right: 5px;
+    margin-bottom: 5px;
+    box-shadow: 10px 10px 10px #000000;
   }
 
   table, tbody, tr, td {
@@ -25,9 +34,17 @@ As always, check out my <a href="https://store.steampowered.com/app/2403100/Cost
   }
 
   .steamapp-title {
-  	font-weight: 600;
+    font-weight: 600;
     color: #ffffff;
     display: inline;
+    transition: 0.25s;
+  }
+
+  .steamapp-title:hover {
+    font-weight: 600;
+    color: #ffffff;
+    display: inline;
+    text-shadow: 0px 0px 10px #ffffff;
   }
 
   .steamapp-button {
@@ -70,8 +87,8 @@ As always, check out my <a href="https://store.steampowered.com/app/2403100/Cost
 <div class='steamapp'>
 <table class='steamapp-table' width='100%'>
 <tr>
-<td rowspan="2"><img src="{{site.url}}/blog/media/costa_verde.png" class='steamapp-capsule'></td>
-<td><div class='steamapp-title'>Costa Verde Transport Department</div> on Steam</td>
+<td rowspan="2"><a href="https://store.steampowered.com/app/2403100/Costa_Verde_Transport_Department"><img src="{{site.url}}/blog/media/costa_verde.png" class='steamapp-capsule'></a></td>
+<td><a href="https://store.steampowered.com/app/2403100/Costa_Verde_Transport_Department" class='steamapp-link'><div class='steamapp-title'>Costa Verde Transport Department</div></a> on Steam</td>
 </tr>
 <tr>
 <td><a href="https://store.steampowered.com/app/2403100/Costa_Verde_Transport_Department" class='steamapp-link'><div class='steamapp-button'>Buy on Steam</div><img src="{{site.url}}/blog/media/steam-256.png" class='steamapp-logo'></a></td>

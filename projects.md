@@ -29,6 +29,15 @@ steamwidgets: yes
   .steamapp-capsule {
   	border-radius: 10px;
   	box-shadow: 5px 5px 10px #000000;
+    transition: 0.25s;
+  }
+
+  .steamapp-capsule:hover {
+    margin-left: -5px;
+    margin-top:  -5px;
+    margin-right: 5px;
+    margin-bottom: 5px;
+    box-shadow: 10px 10px 10px #000000;
   }
 
   table.steamapp-table, tbody.steamapp-table, tr.steamapp-table {
@@ -102,7 +111,7 @@ You can watch devlogs about it on my <a href="https://youtube.com/@lisyarus">You
 <div class='steamapp'>
 <table class='steamapp-table' width='100%'>
 <tr class='steamapp-table'>
-<td class='steamapp-table'><img src="{{site.url}}/blog/media/costa_verde.png" class='steamapp-capsule'></td>
+<td class='steamapp-table'><a href="https://store.steampowered.com/app/2403100/Costa_Verde_Transport_Department"><img src="{{site.url}}/blog/media/costa_verde.png" class='steamapp-capsule'></a></td>
 </tr>
 <tr class='steamapp-table'>
 <td class='steamapp-table'><center><a href="https://store.steampowered.com/app/2403100/Costa_Verde_Transport_Department" class='steamapp-link'><div class='steamapp-button'>Buy on Steam</div><img src="{{site.url}}/blog/media/steam-256.png" class='steamapp-logo'></a></center></td>
