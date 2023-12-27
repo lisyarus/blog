@@ -69,25 +69,30 @@ Let's formalize our problem first. We have the initial vectors $$a_k$$ (think of
 
 \\[ E = \sum \| Ra_k - b_k \| ^2 \\]
 
-In 2D, a rotation is always of the form
+By expanding the squared length, we get
+
+\\[ \sum (Ra_k - b_k)\cdot (Ra_k - b_k) = \sum (Ra_k)\cdot(Ra_k) - 2 Ra_k\cdot b_k + b_k\cdot b_k = \\]
+\\[= \sum \|a_k\|^2 - 2 Ra_k\cdot b_k + \|b_k\|^2 \\]
+
+We've used that $$\|Ra_k\| = \|a_k\|$$, since $$R$$ is a rotation. Now, $$\|a_k\|^2$$ and $$\|b_k\|^2$$ don't depend on $$R$$, so we can throw them away, and we're left with minimizing
+
+\\[ \sum - 2 Ra_k\cdot b_k \\]
+
+or, changing signs and removing the useless factor of $$2$$, maximing
+
+\\[ \sum Ra_k\cdot b_k \\]
+
+This has a nice geometric interpretation: the dot product of $$Ra_k$$ and $$b_k$$ is largest when they point in the same direction, so we need to find a rotation $$R$$ such that the vector $$Ra_k$$ points in the direction of $$b_k$$ as much as possible, which sounds like exactly what we're trying to do!
+
+This was all not specific to 2D, and works in any dimension. Now let's turn to 2D, where any rotation is always of the form
 
 \\[ \begin{pmatrix} \cos \theta & -\sin \theta \\\\ \sin \theta & \cos \theta \end{pmatrix} \\]
 
 and we can analytically find the angle $$\theta$$ that minimizes the error $$E$$. However, we can use a different approach: complex numbers!
 
-By treating our 2D vectors $$a_k$$ and $$b_k$$ as complex numbers, we can represent a rotation by angle $$\theta$$ as complex multiplication by $$e^{i\theta}$$. What's more, we can replace the squared vector length $$\|v\|^2$$ by complex multiplication and complex conjugation: $$v \cdot \overline{v}$$. With this in mind, we can rewrite the error $$E$$ as
+By treating our 2D vectors $$a_k$$ and $$b_k$$ as complex numbers, we can represent a rotation by angle $$\theta$$ as complex multiplication by $$e^{i\theta}$$. What's more, we can express the dot product by complex multiplication, conjugation, and taking the real part: $$a \cdot b = \operatorname{Re}(a\overline{b})$$. With this in mind, we can rewrite the error $$E$$ as
 
-\\[ E = \sum \left\| e^{i\theta} a_k - b_k\right \| ^2 = \sum \left(e^{i\theta} a_k - b_k\right)\overline{\left(e^{i\theta} a_k - b_k\right)} = \\]
-\\[ = \sum e^{i\theta}\overline{e^{i\theta}}a_k\overline{a_k} - e^{i\theta}a_k\overline{b_k} - b_k \overline{e^{i\theta}a_k} + b_k\overline{b_k} = \\]
-\\[ = \sum \|a_k\|^2 - 2\operatorname{Re}\left(e^{i\theta}a_k\overline{b_k}\right) + \|b_k\|^2 \\]
-
-Now, since $$\|a_k\|^2$$ and $$\|b_k\|^2$$ don't depend on $$\theta$$, all we need is minimize
-
-\\[ \sum  - 2\operatorname{Re}\left(e^{i\theta}a_k\overline{b_k}\right)  \\]
-
-which is the same as maximize
-
-\\[ \sum \operatorname{Re}\left(e^{i\theta}a_k\overline{b_k}\right) = \operatorname{Re}\left(e^{i\theta}\sum a_k\overline{b_k}\right)  \\]
+\\[ E = \sum \operatorname{Re}\left(e^{i\theta}a_k\overline{b_k}\right) = \operatorname{Re}\left(e^{i\theta}\sum a_k\overline{b_k}\right)  \\]
 
 Now, $$z = \sum a_k\overline{b_k}$$ is just some complex number, and multiplication by $$e^{i\theta}$$ rotates it by $$\theta$$ radians counterclockwise. Maximizing the real part $$\operatorname{Re}$$ of the product $$e^{i\theta}z$$ means we need this product to point to the right from the origin in the complex plane, i.e. we want it to be a positive real number. In order to do this, we need to find the angle that $$z$$ forms with the positive real axis, and take $$\theta$$ to be *minus* that angle. This angle is
 
@@ -133,7 +138,7 @@ The dot product of two column vectors can be written in matrix form using the tr
 
 All $$S_k^TS_k$$ are symmetric positive-semidefinite $$2\times 2$$ matrices, and so is $$B$$. The expression $$r^T B r$$ is a *quadratic form*, and we need to minimize it.
 
-This is where we're golden: it is a well-known theorem that the minimum of a quadratic form applied to unit vectors is the smallest eigenvalue of the matrix $$B$$, and the actual minimizing vector is the corresponding eigenvalue! So, all we need to do is compute this $$2\times 2$$ matrix and slap an eigenvector algorithm on top of it!
+This is where we're golden: it is a well-known theorem that the minimum of a quadratic form applied to unit vectors is the smallest eigenvalue of the matrix $$B$$, and the actual minimizing vector is the corresponding eigenvector! So, all we need to do is compute this $$2\times 2$$ matrix and slap an eigenvector algorithm on top of it!
 
 This sure does sound much more complicated than an explicit formula, so why even bother? Well, because this is what actually generalizes to 3D.
 
@@ -157,7 +162,7 @@ Now, this $$qa_k-b_kq$$ is again a linear operator $$S_k$$ applied to $$q$$, onl
 
 Explicitly computing $$B$$ is a bit tiresome but still straightforward (just write in coordinates what $$qa_k - b_kq$$ does to the coordinates of $$q$$). And again we have a quadratic form, and we need to find the eigenvector corresponding to the smallest eigenvalue! This time the matrix is $$4\times 4$$ -- not too bad, but an explicit formula would involve solving a generic quartic equation, [which is nuts](https://en.wikipedia.org/wiki/Quartic_equation#The_general_case).
 
-Instead, we could use some iterative matrix-based algorithms, like the [Lanczos iteration](https://en.wikipedia.org/wiki/Lanczos_algorithm) or the [QR algorithm](https://en.wikipedia.org/wiki/QR_algorithm).
+In fact, computing eigenvalues is pretty much equivalent to computing roots of polynomials *(see the [companion matrix](https://en.wikipedia.org/wiki/Companion_matrix))*, so there is no general eigenvalue algorithm that just uses an explicit formula. Instead, all such algorithms are iterative, and converge to the solution as the number of iterations grows. [See here](https://en.wikipedia.org/wiki/Eigenvalue_algorithm#Iterative_algorithms) for a list of such algorithms.
 
 # The code
 
@@ -240,6 +245,6 @@ And this is how it looks in motion:
 
 # The end
 
-So, there's that! Honestly, if I were to make a 3D soft body physics engine, I'd probably do a QR decomposition instead, it shouldn't be too hard for a $$4\times 4$$ matrix. I hope to do that some day, maybe on another game jam :)
+So, there's that! Honestly, if I were to make a 3D soft body physics engine, I'd probably do a [QR algorithm](https://en.wikipedia.org/wiki/QR_algorithm) instead, or maybe the [Jacobi eigenvalue iteration](https://en.wikipedia.org/wiki/Jacobi_eigenvalue_algorithm) which works specifically for symmetric matrices. It shouldn't be too hard for a $$4\times 4$$ matrix. I hope to do that some day, maybe on another game jam :)
 
 {% include end_section.html %}
