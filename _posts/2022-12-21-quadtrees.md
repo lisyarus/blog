@@ -481,7 +481,7 @@ node_id build_impl(quadtree & tree, box const & bbox,
 
 We could make this `build_impl` function to be non-template now by either using indices directly instead of iterators (which would require a lot of boilerplate when calling `std::` algorithms, which still require iterators) or by using pointers to the contents of `tree.points` (which will be a painless swap: pointers *are* iterators).
 
-To iterate over the poitns of a node `id`, we simply do
+To iterate over the points of a node `id`, we simply do
 
 {% highlight cpp %}
 for (auto i = tree.node_points_begin[id];
