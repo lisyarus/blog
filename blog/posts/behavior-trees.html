@@ -1,0 +1,568 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <title>C++ behavior trees library design | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">C++ behavior trees library design</div></center><br/>
+            <center><span class="post-date">2022 Aug 22</span></center><br/>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-game-ai">Game AI</h2>
+
+            <p>Programming game AI is hard. Like, really hard. When dealing with hard problems, humans usually try to come up with patterns, frameworks, and guidelines, that help minimize errors and keep the cognitive load at a manageable level. In the case of game AI there are (apart from the obvious <i>"no pattern"</i> pattern) many popular choices: state machines, hierarchical state machines, utility systems, behavior trees, and others.</p>
+
+            <p>They all have their pros and cons; I won't talk about these here, mainly for the reason that I have zero experience with most of these. See <a href="https://www.youtube.com/watch?v=G5A0-_4dFLg">these</a> <a href="https://www.youtube.com/watch?v=5ZXfDFb4dzc">two</a> streams by <a href="https://twitter.com/Bobby_Anguelov">Bobby Anguelov</a> about these patterns and what types of AI each of them is good for. See also <a href="http://www.gameaipro.com">this</a> huge collection of articles on game AI.</p>
+
+            <p>Among all the AI patterns, behavior trees seemed most appealing to me, for a number of reasons:</p>
+
+            <ul>
+                <li>They are quite popular, meaning there are established best practices to learn and many implementations to be inspired by</li>
+                <li>They are naturally hierarchical, which is good for my little monkey brain</li>
+                <li>They are quite performant, with a lot of optimization oppotunities</li>
+                <li>They sound like a good programming excercise <i>(yes, I'm the reinvent-the-wheel type of person)</i></li>
+            </ul>
+
+            <p>So, I decided to try this approach and, naturally, to design my own implementation from scratch.</p>
+
+            <i>Why make my own library, if there are already good implementations available? The answer is the same as to why I'm making my own game engine in the first place: it's interesting, it's fun, it's a tremendeously valuable exprience, and I simply enjoy doing this.</i>
+
+            <h2 id="section-behavior-trees">Behavior trees</h2>
+
+            <i>The next few sections are more or less an introduction to behavior trees; feel free to skip to "Design goals" if you think you already know all that.</i>
+
+            <p>To begin with, what even are behavior trees? The idea goes roughly like this:</p>
+
+            <ul>
+                <li>A single AI entity is represented as a tree of nodes</li>
+                <li>Nodes do stuff, with only one node being active (doing it's stuff) at a time</li>
+                <li>Leaf nodes typically do concrete stuff, like cutting down a tree or navigating to the next path node</li>
+                <li>Inner (non-leaf) nodes typically do aggregation, like retry the child node 3 times until it succeeds, or run all the child nodes sequentially</li>
+            </ul>
+
+            <p>So, you implement some concrete nodes for your specific AI needs, combine them somehow using generic aggregation nodes (hopefully provided by your behavior trees library) and you have your tree ready to go.</p>
+
+            <p>The crucial thing about AI is that it is <b>asynchronous</b>: you can't just call it once and call it a day, you need to continuously run it. Coroutines or fibers would be perfect for this, but they are close to impossible to serialize (save & load) in a cross-platform way and hard to control precisely. Thus, behavior tree implementations usually use a tick-based approach, in some sense creating explicit coroutines: each behavior tree node has an <code>update()</code> function, and every frame (or every N frames) of game simulation the current active node's <code>update()</code> is called. The <code>update()</code> may have some <code>float dt</code> parameter so that the node knows how much time elapsed from the previous update. Inner tree nodes' <code>update()</code> can call their children's <code>update()</code> and return something based on what their children's status was.</p>
+
+            <p>To communicate with the rest of the tree, the node must be able to tell it's status: is it still running its stuff, or has it succeeded in doing its stuff, or has it failed? We can achieve this by simply returning this status from the update function.</p>
+
+            <p>So, putting all this together, a typical behavior tree node is a class that looks something like this:</p>
+
+            <pre><code class="language-cpp block">enum class status
+{
+    running,
+    success,
+    failure,
+};
+
+struct node
+{
+    status update(float dt)
+    {
+        // do stuff and return status
+    }
+
+    // ...
+};</code></pre>
+
+            <p>A concrete node for, say, cutting down a tree may look like this:</p>
+
+            <pre><code class="language-cpp block">struct cut_tree_node
+{
+    status update(float dt)
+    {
+        if (!tree_.valid())
+        {
+            // the tree is gone! maybe it was burned, or
+            // someone has already cut it down
+            return status::failure;
+        }
+
+        tree_.health -= woodcutter_.cutting_speed * dt;
+        if (tree_.health < 0.f)
+        {
+            woodcutter_.inventory.add_resources(tree_.resources);
+            tree_.remove();
+            return status::success;
+        }
+
+        return status::running;
+    }
+
+private:
+    entity tree_;
+    entity woodcutter_;
+};</code></pre>
+
+            <p>and an aggregate node that runs all child nodes sequentially might look like this:</p>
+
+            <pre><code class="language-cpp block">struct sequence_node
+{
+    status update(float dt)
+    {
+        if (current_index_ == children_.size())
+        {
+            current_index_ = 0;
+            return status::success;
+        }
+
+        status result = children_[current_index_].update(dt);
+        if (result == status::running)
+        {
+            // the child node is still running; thus, we are running as well
+            return status::running;
+        }
+        if (result == status::failure)
+        {
+            // the child node has failed; thus, the whole sequence has failed
+            return status::failure;
+        }
+
+        // the child succeeded; thus, we proceed to the next child and say
+        // that we still have work to do
+        ++current_index_;
+        return status::running;
+    }
+
+private:
+    std::size_t current_index_ = 0;
+    std::vector&lt;node&gt; children_;
+};</code></pre>
+
+            <p>You can see that such a simple idea of running a set of actions sequentially already takes quite a handful of code to implement. This is not a downside of behavior trees specifically, though: running a sequence of asynchronous, potentially failing actions is not as simple as you might think! The strength of behavior trees comes in part from this separation & reusability of generic aggregate nodes. I'll list a few of them:</p>
+
+            <ul>
+            <li><code>sequence</code> node, which runs all children in sequence and succeeds if <b>all</b> children succeeded</li>
+            <li><code>selector</code> node, which runs all children in sequence until <b>at least one</b> of them succeds (otherwise, the node fails)</li>
+            <li><code>retry</code> node, which runs it's child node until it succeds (and ignores all it's failures; <i>that would be a great trait for a parent or a teacher, huh?</i>)</li>
+            <li><code>repeat</code> node, which runs it's child node while it succeds (and stops once it fails)</li>
+            <li><code>success</code> node, which runs it's child until it finishes (successfully or otherwise), and reports that it succeeded</li>
+            <li><code>failure</code> node, which runs it's child until it finishes (successfully or otherwise), and reports that it failed</li>
+            <li><code>negate</code> node, which runs it's child until it finishes, then negates the child's result (reports success if the child failed, and vice versa)</li>
+            <li><code>forever</code> node, which simply runs it's child forever, ignoring it's status (useful for e.g. the root of the tree if your AI should be active non-stop)</li>
+            <li><code>nop</code> node, which does nothing (may be useful as a fake child to other aggregate nodes)</li>
+            </ul>
+
+            <p>You might notice that the <code>forever(child)</code> node can be implemented as <code>retry(failure(child))</code> or <code>repeat(success(child))</code>. This compositional strength is probably what caught my eye with behavior trees in the first place. We can, for example, create a <code>repeat_until(condition, child)</code> generic node that returns success if the condition node returns success, otherwise it calls the child node and reports failure if it fails:</p>
+
+            <pre><code class="block">repeat_until(condition, child) =
+    sequence(
+        repeat(
+            sequence(
+                child,
+                negate(condition)
+            )
+        ),
+        condition
+    )</code></pre>
+
+            <ul>
+                <li>If the <code>child</code> node succeeds, we check for condition:</li>
+                <ul>
+                    <li>If it is satisfied, the <code>condtion</code> node returns success, the <code>negate</code> node returns failure, the inner <code>sequence</code> node returns failure, and the <code>repeat</code> node stops repeating (i.e. calling the inner <code>sequence</code> node)</li>
+                    <li>If it is not satisfied, the <code>condtion</code> node returns failure, the <code>negate</code> node returns success, the inner <code>sequence</code> node returns success, and the <code>repeat</code> node continues calling it's child (the inner <code>sequence</code> node)</li>
+                </ul>
+                <li>If the <code>child</code> node fails, the inner <code>sequence</code> node returns failure, and the <code>repeat</code> node stops repeating</li>
+                <li>After the <code>repeat</code> node stops, we check for the condition again, and the root <code>sequence</code> node returns whatever the second <code>condition</code> node returned:</li>
+                <ul>
+                    <li>If the condition is satisfied, we are done and return success</li>
+                    <li>If it isn't satisfied, the <code>child</code> node must have returned failure (otherwise the <code>repeat</code> would've still been repeating), and we return failure</li>
+                </ul>
+            </ul>
+
+            <p>All this might seem convoluted and definitely takes some time to get used to. However, composing simple to test atomic & aggregate nodes is way less error-prone than coding everything from scratch, and is arguably way more readable.</p>
+
+            <p>Note, however, that this implementation of <code>repeat_until</code> doesn't handle the situation when <code>child</code> failed but the <code>condition</code> is still somehow satisfied: it returns success in this case. This may be the desired behavior or it may not be. This example highlights a certain problem with behavior trees which tends to come up every now and then: there's no simple way to communicate nontrivial information across the tree (e.g. from a child's child to the root, etc) &ndash; a problem that would probably not arise in e.g. state machines. I never said behavior trees are perfect, did I? In this particular case, we could just implement the <code>repeat_until</code> node from scratch, though, and make it work exactly as we want it to.</p>
+
+            <h2 id="section-starting-node">Starting a node</h2>
+
+            <p>For many nodes, it is quite useful to know that a certain <code>update()</code> call is the first one since this node has last finished executing, i.e. that this node is just <b>starting</b> to run, to prepare/fetch some useful data, check some conditions, etc. There are two approaches to managing that:</p>
+
+            <ul>
+                <li>Each node tracks explicitly whether it has already finished or not; if an <code>update()</code> is called and the node has finished, it means the node is started running again</li>
+                <li>Have an explicit <code>start()</code> method for each node which gets called when the node is, well, started</li>
+            </ul>
+
+            <p>The downside of the first approach is that you have to duplicate this logic in every node that needs it. The downside of the second approach is that all generic aggregate nodes must carefully implement calling their children's <code>start()</code> method in appropriate times.</p>
+
+            <p>For no particular reason, I've chosen the second approach, meaning the interface of a node becomes</p>
+
+            <pre><code class="language-cpp block">struct node
+{
+    void start();
+    status update(float dt);
+};</code></pre>
+
+            <h2 id="section-waiting">Waiting</h2>
+
+            <p>Let's upgrade our <code>status</code> enum with a new value: <code>waiting</code>. This value should also come with a time period, like <code>waiting(1.5f)</code> meaning wait for 1.5 seconds. Semantically, this status is the same as <code>running</code>, but with an explicit hint that the node can be assumed to still be running for this amount of time (at least). The cool thing is that if the tree returns <code>waiting</code> status, we can <b>skip all updates to it entirely</b> for that duration, because we already know that it will still be running! This is a nice optimization, since AI is usually quite computationally heavy, and even traversing the tree all the way down to the node that is currently active and checking that it's still just running comes at a cost.</p>
+
+            <p>We can actually do much more: store all the <code>waiting</code> nodes in a <a href="https://en.wikipedia.org/wiki/Priority_queue">priority queue</a>, sorted by the time at which they need to be woken up. At each new AI update tick, we only call <code>update()</code> for non-waiting nodes, and also "wake up" the nodes whose time has come to be woken up (which is fast thanks to the priority queue). This way, you can not only skip calling the <code>update()</code> for waiting nodes, but you can <b>skip iterating over them</b>! This is a huge optimization, since, if done right, most of the time most of the AI agents will be just waiting for something. Moving to the next path node? Takes at least <code>distance / speed</code> time, so the AI just waits (actual movement & animation should be governed by some lower-level systems, not AI). Cooking a meal? Takes <code>cooking_time</code> time; wait for that long. Wandering around? Stop and wait for a random time period to make it look like you're admiring the view. I've found that even in a system with a few hundred agents, only a few (3-5) of them are actually active at a certain update; others are waiting!</p>
+
+            <p>Now, this <code>waiting</code> status can't be just another <code>enum</code> value, since it comes with a time duration value. We could do something like</p>
+
+
+            <pre><code class="language-cpp block">struct status
+{
+    enum {
+        running,
+        success,
+        failure,
+    } status;
+    float duration;
+};</code></pre>
+
+            <p>But it's 2022 already and C++ has standard sum types, so I'm doing it like this (also merging the <code>success</code> and <code>failure</code> states together):</p>
+
+            <pre><code class="language-cpp block">struct running{};
+
+struct finished
+{
+    // true for success, false for failure
+    bool result;
+};
+
+struct waiting
+{
+    float duration;
+};
+
+using status = std::variant&lt;running, finished, waiting&gt;;</code></pre>
+
+            <p>Some behavior tree implementations can have more status values. For example, some have an <code>idle</code> status, meaning this node isn't running at all. I simply consider calling an <code>update()</code> for a node that wasn't started a programming error; this might sound harder to debug, but honestly I haven't found any issues with this whatsoever <i>(or maybe I'm misunderstanding the <code>idle</code> status? Who knows)</i>.</p>
+
+            <h2 id="section-events">Events</h2>
+
+            <p>The final touch for our behavior tree node interface is responding to events. Say, your poor AI is cutting down a tree, while suddenly it spots an angry woolf nearby. It better run away, or prepare to fight! </p>
+
+            <p>How do we implement this in a behavior tree? Surely we could simply check for <b>all</b> such conditions in the beginning of <b>every</b> node's <code>update()</code> methods (or maybe just the leaf nodes). Needless to say, this is ridiculously wasteful, and doesn't work at all in the presence of the <code>waiting</code> optimization we talked about above.</p>
+
+            <p>A much nicer way is to make the nodes explicitly respond to events &ndash; have an <code>on_event()</code> method that gets the event that happened and decides what to do:</p>
+
+            <pre><code class="language-cpp block">struct node
+{
+    void start();
+    status update(float dt);
+    void on_event(event);
+};</code></pre>
+
+            <p>On a certain event, a node may e.g. record that it needs to fail at the next update, or something like that. We also have to immediately wake up a <code>waiting</code> node when an event happens, of course.</p>
+
+            <h2 id="section-design-goals">Design goals</h2>
+
+            <p>So, what do I want from my implementation of a generic, reusable behavior trees library? Quite a lot, to be honest:</p>
+
+            <ul>
+                <li><b>Arbitrary time type.</b> <code>float</code> is nice, but what if I'm making a roguelike with discrete equal time steps, and I want to use an integer for time? Or maybe I'm doing some nanorobots simulation and I have to use <code>double</code> not to lose precision? Or maybe I've gone completely bonkers and my time is a <code>complex</code> number or a <code>string</code>? <i>There definitely are use-cases for that, I promise!</i></li>
+                <li><b>Arbitrary event type.</b> This one is way less speculative than the time type &ndash; how does a generic library know anything about the specific AI event types? Ideally I'd like the <code>event</code> type to be a variant of all possible event types specific to this particular AI, or something like that.</li>
+                <li><b>Arbitrary extra parameters for <code>update()</code>.</b> A specific behavior tree runs for a specific agent; it needs access to this agent's data, as well as to some world data like buildings and pathfinder. These could go to the node's constructor, so that it would save them as members and access at any time. A much more flexible and memory-cheap approach is to put them directly to the <code>update()</code> method parameters at each update: this way, we can change the pathfinder or even the entity this tree controls, and it still should work (in theory)! More importantly, we wouldn't have to store this parameters in every node.</li>
+                <li><b>Readable <a href="https://en.wikipedia.org/wiki/Domain-specific_language">DSL</a>-like tree description.</b> Look at the <code>repeat_until</code> implementation above: wouldn't it be neat if this is what it actually looked like, in code? Instead of explicitly creating compound nodes as separate classes with a ton of boilerplate, we'd just write a nice behavior tree (or part of it) directly in code, with a readable & understandable syntax.</li>
+            </ul>
+
+            <p>With these goals in mind, I proceeded to design this library.</p>
+
+            <h2 id="section-first-attempt">First attempt</h2>
+
+            <p>Being such a C++ templates admirer, my first idea was to use the full power of compile-time ad-hoc polymorphism this language provides, and make each behavior tree node a separate template class with the interface outlined above, with no virtual methods:</p>
+
+            <pre><code class="language-cpp block">template &lt;typename Time, typename Event, typename ... Args&gt;
+struct node
+{
+    void start(Args ... args);
+    status update(Time dt, Args ... args);
+    void on_event(Event event, Args ... args);
+};</code></pre>
+
+            <p>When implementing, say, the <code>repeat</code> node, we also have to add the child's type to the template parameters:</p>
+
+            <pre><code class="language-cpp block">template &lt;typename Child, typename Time, typename Event, typename ... Args&gt;
+struct repeat
+{
+    Child child;
+
+    void start(Args ... args);
+    status update(Time dt, Args ... args);
+    void on_event(Event event, Args ... args);
+};</code></pre>
+
+            <p>and the <code>sequence</code> node would be parametrized by the types of all it's children:</p>
+
+            <pre><code class="language-cpp block">template &lt;typename ... Children, typename Time, typename Event, typename ... Args&gt;
+struct sequence
+{
+    std::tuple&lt;Children...&gt; children;
+
+    void start(Args ... args);
+    status update(Time dt, Args ... args);
+    void on_event(Event event, Args ... args);
+};</code></pre>
+
+            <p>Now, the children types can be easily deduced thanks to C++17 <a href="https://en.cppreference.com/w/cpp/language/class_template_argument_deduction">class template argument deduction</a>, but we still have all the other template parameters, and argument deduction can either deduce all or deduce nothing. Even if we could omit the children types, it would be a nightmare to have to write code like</p>
+
+            <pre><code class="language-cpp block">sequence&lt;float, event, entity_id, ai_context&gt;(
+    repeat&lt;float, event, entity_id, ai_context&gt;(
+        ...
+    ),
+    ...
+)</code></pre>
+
+            <p>We clearly need a way to deduce all this parameters as well. I've actually found a nice solution later, which I discuss below in the "Second attempt" section, but at the time I only managed to come up with this:</p>
+
+            <ul>
+                <li>Make a class called <code>behavior_tree</code> which is parametrized by all the common types (<code>Time, Event, Args...</code>)</li>
+                <li>Implement all the generic aggregate nodes as inner classes within this main class; they implicitly have all the template parameters of the parent</li>
+            </ul>
+
+            <p>It looked roughly like this:</p>
+
+            <pre><code class="language-cpp block">template &lt;typename Time, typename Event, typename ... Args&gt;
+struct behavior_tree
+{
+    template &lt;typename Child&gt;
+    struct repeat
+    {
+        Child child;
+
+        void start(Args ... args);
+        status update(Time dt, Args ... args);
+        void on_event(Event event, Args ... args);
+    };
+
+    template &lt;typename ... Children&gt;
+    struct sequence
+    {
+        std::tuple&lt;Children...&gt; children;
+
+        void start(Args ... args);
+        status update(Time dt, Args ... args);
+        void on_event(Event event, Args ... args);
+    };
+};</code></pre>
+
+            <p>Now, to actually use it, you have to <b>inherit</b> the <code>behavior_tree</code> with the required types, and implement <b>all of your AI</b> inside that derived class:
+
+            <pre><code class="language-cpp block">struct human_behavior_tree
+    : behavior_tree&lt;float, event, entity_id, ai_context&gt;
+{
+    static auto follow_path()
+    {
+        return sequence{
+            repeat{
+                ...
+            },
+            ...,
+            ...
+        };
+    }
+};</code></pre>
+
+            <p>So, you'd implement leaf nodes as classes within the <code>human_behavior_tree</code> class, and compound nodes are constructed via static methods. Here's an actual snippet from a project where I tested this approach on:
+
+            <pre><code class="language-cpp block">static auto do_catch_fish()
+{
+    return sequence{
+        log("Catching fish"),
+        ensure_instrument(item::fishing_rod),
+        condition{[](world * w, int id){
+            auto & h = w->humans[id];
+
+            auto p = w->closest_water(h.position);
+            if (!p)
+                return false;
+
+            h.target_tile = *p;
+            return true;
+        }},
+        find_path{false},
+        follow_path(),
+        wait{[](world * w, int){
+            return random::uniform(w->rng, FISH_CATCH_INTERVAL);
+        }},
+        condition{[](world * w, int id){
+            auto & h = w->humans[id];
+
+            h.left_hand = item{item::fish};
+
+            return true;
+        }},
+    };
+}</code></pre>
+
+            <p>Amusingly, it actually works! The benefits of this approach are:</p>
+
+            <ul>
+                <li>The whole tree is a single enormous object without any pointers to children (they are just class members!), so the allocator & cache are quite happy</li>
+                <li>Everything is known at compile-time, meaning the compiler has all the opportunities to optimize, inline, and do other magic</li>
+            </ul>
+
+            <p>Unfortunately, it also has a number of downsides:</p>
+
+            <ul>
+                <li>Everything is known at compile time. I can't replace part of the tree somewhere mid-game, I can't make a mod that e.g. replaces just a single part of the tree with a different implementation.</li>
+                <li>You have to declare everything in a single class in a single file. C++ doesn't support splitting a class definition across multiple files; and we need this single class to overcome that type deduction problem I mentioned before <i>(as I've said, I've actually found a better solution for this particular problem)</i></li>
+                <li>The whole behavior tree takes approximately forever to compile</li>
+                <li>I'm relying on <b>deducing template arguments for a class which is nested within another template class</b>. C++ being C++, this is actually a <b>defect in the standard</b>, meaning it isn't clearly specified how this should work. <a href="https://bugs.llvm.org/show_bug.cgi?id=35107">Clang fails to compile</a> this and it will do so until the defect is resolved. This can be fixed by manually adding deduction guides, which in turn <a href="https://gcc.gnu.org/bugzilla/show_bug.cgi?id=79501">breaks under GCC</a> and this isn't going to be fixed either, due to the very same defect (without deduction guides, GCC compiles this happily, &ndash; this is why I managed to actually use this approach on a test project for quite a while).</li>
+            </ul>
+
+            <p><a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/util/include/psemek/util/behavior_tree.hpp">Here's the source</a> for this "library". It consists of a single 800-line file (due to having to implement everything inside the <code>behavior_tree</code> template class) full of nothing but templates.</p>
+
+            <p>The disadvantages of this approach are quite serious, so I decided to abandon it, together with the test project.</p>
+
+            <center><img src="/blog/media/behavior-trees/first.gif" class="image-embed"></center>
+            <center><i>Poorly drawn hoomans cutting down poorly drawn trees</i></center>
+
+            <h2 id="section-second-attempt">Second attempt</h2>
+
+            <p>All this was somewhere in November 2021. Fast-forward to June 2022, I'm once again working on something with agents doing their typical AI stuff like navigating and building <i>(and I'm much more determined this time, I promise!)</i> So, I decided to give behavior trees another try.</p>
+
+            <p>First, remove the child-nodes-as-template-parameters nonsense. Make it an actual interface:</p>
+
+            <pre><code class="language-cpp block">template &lt;typename Time, typename Event, typename ... Args&gt;
+struct node
+{
+    virtual void start(Args ... args) = 0;
+    virtual status update(Time dt, Args ... args) = 0;
+    virtual void on_event(Event event, Args ... args) = 0;
+};</code></pre>
+
+            <p>Now, actual nodes implement this interface, are stored by pointers (or, better, <code>unique_ptr</code>), and created dynamically. We still have the problem deducing the template parameters, though!</p>
+
+            <p>That's when it occurred to me that an aggregate node can easily deduce all the tree's template parameters from its child nodes! We'll only have to specify them for leaf nodes, which is not perfect but still bearable. To make things easier, I made something like a <b>traits</b> class that only stores these types:</p>
+
+            <pre><code class="language-cpp block">template &lt;typename Time, typename Event, typename ... Args&gt;
+struct tree
+{
+    using time_type = Time;
+    using event_type = Event;
+    using args_type = std::tuple&lt;Args...&gt;;
+};</code></pre>
+
+            <p>Now I can specify the types of a specific AI tree like this:</p>
+
+            <pre><code class="language-cpp block">using droid_ai = tree&lt;float, event, ai_context, entity_id&gt;;</code></pre>
+
+            <p>and use this <code>droid_ai</code> type whenever I need to refer to this particular setup of a behavior tree.</p>
+
+            <p>Next, all the behavior tree library templates depend not on the types <code>Time, Event, Args...</code> themselves, but on this <b>traits</b> type, and use partial specialization:</p>
+
+            <pre><code class="language-cpp block">template &lt;typename Tree&gt;
+struct node;
+
+template &lt;typename Time, typename Event, typename ... Args&gt;
+struct node&lt;tree&lt;Time, Event, Args...&gt;&gt;
+{
+    struct running
+    {};
+
+    struct finished
+    {
+        bool result;
+    };
+
+    struct suspended
+    {
+        Time duration;
+    };
+
+    using status = std::variant&lt;running, finished, suspended&gt;;
+
+    virtual void start(Args ...) = 0;
+    virtual status update(Time dt, Args ... args) = 0;
+    virtual bool event(Event const &, Args ...) = 0;
+
+    virtual ~node() {}
+};
+
+template &lt;typename Tree&gt;
+using node_ptr = std::unique_ptr&lt;node&lt;Tree&gt;&gt;;</code></pre>
+
+            <p>Now, to refer to the base node type for droids, I don't have to type <code>node&lt;float, event, ai_context, entity_id&gt;</code>, I just say <code>node&lt;droid_ai&gt;</code>, and I think it's beautiful.</droid_ai>
+
+            <p>Finally, to make aggregate nodes work, I make special constuctor-like functions that help deduce the <b>traits</b> type:</p>
+
+            <pre><code class="language-cpp block">template &lt;typename Tree&gt;
+struct repeat_node;
+
+template &lt;typename Time, typename Event, typename ... Args&gt;
+struct repeat_node&lt;tree&lt;Time, Event, Args...&gt;&gt;
+    : node&lt;tree&lt;Time, Event, Args...&gt;&gt;
+{
+    // ...
+};
+
+template &lt;typename Tree&gt;
+node_ptr&lt;Tree&gt; repeat(node_ptr&lt;Tree&gt; child)
+{
+    return std::make_unique&lt;repeat_node&lt;Tree&gt;&gt;(std::move(child));
+}</code></pre>
+
+            <p>And that's it! Implementing generic nodes is still quite a handful of boilerplate (although this time each of them can live in it's own file), but using them is a breeze. Here's the code for the node that tries to find resources required for a droid's task (<code>bt</code> is the behavior tree library namespace):</p>
+
+            <pre><code class="language-cpp block">bt::node_ptr&lt;droid&gt; get_task_resources()
+{
+    return
+        bt::sequence(
+            fill_task_required_resources(),
+            can_find_task_resources(),
+            bt::selector(
+                task_required_resources_empty(),
+                bt::success(
+                    bt::sequence(
+                        fill_unload_resources_task(),
+                        unload_inventory()
+                    )
+                )
+            ),
+            bt::repeat(
+                bt::sequence(
+                    bt::negate(task_required_resources_empty()),
+                    bt::selector(
+                        select_task_resources_container(),
+                        bt::failure(mark_task_unsupported())
+                    ),
+                    wait_for_path(),
+                    follow_path(),
+                    do_get_task_resources(),
+                    wait(interaction_time)
+                )
+            ),
+            task_min_required_resources_empty()
+        );
+}</code></pre>
+
+            <p>And here's a leaf node that waits for a specific time duration, using the generic <code>bt::wait</code> library node (note that <code>&lt;droid&gt;</code> is enough to specify the tree type):
+
+            <pre><code class="language-cpp block">bt::node_ptr&lt;droid&gt; wait(float duration)
+{
+    return bt::wait&lt;droid&gt;([=](droid_context const &, util::ecs::entity_handle){
+        return duration;
+    });
+}</code></pre>
+
+            <p>Pretty neat, I'd say! We've lost the cache and allocator-friendliness, though we could restore them by supplying our own allocator for the whole tree. We've also lost the possibility for heavy inlining, which we can't really do anything about. Having used this for quite a while by now I'd say that it is a pretty good approach, and seems to handle most complicated situations relatively well. <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/bt/include/psemek/bt">Here's the source code</a> for this second approach. It is pretty much self-contained.</p>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/behavior-trees/second.mp4" type="video/mp4"></video></center>
+            <center><i>AI droids doing their stuff. Most of them got stuck trying to</i></center>
+            <center><i>pick up resources from a container on the right, but they did it consciously!</i></center>
+            <center><i>If you're interested in this project, I've published <a href="https://www.youtube.com/watch?v=_sTvgTeqXAM">my first ever devlog</a> about it a few days ago.</i></center>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
