@@ -1,0 +1,141 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <title>Projects | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/favicon.ico">
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+
+            <br/><center><a class="project-title" href="https://lisyarus.github.io/webgl/orbitals.html">Atomic orbitals vizualisation</a></center>
+            <table class="project-table">
+                <tr>
+                    <td>
+                        <p>WebGL-based visualization of atomic orbitals using volumetric raymarching.</p>
+
+                        <p>It can show all orbitals from 1s to 4f as either a density cloud or a solid isosurface. I'm quite proud of how this thing turned out :)</p>
+                    </td>
+                    <td class="project-separator"></td>
+                    <td>
+                        <a href="https://lisyarus.github.io/webgl/orbitals.html">
+                            <img src="/blog/media/projects/orbitals.png" class="project-image">
+                        </a>
+                    </td>
+                </tr>
+            </table>
+
+            <hr>
+            <br/><center><a class="project-title" href="https://github.com/lisyarus/webgpu-demo">WebGPU demo</a></center>
+            <table class="project-table">
+                <tr>
+                    <td>
+                        <a href="https://github.com/lisyarus/webgpu-demo">
+                            <img src="/blog/media/projects/webgpu-demo.png" class="project-image">
+                        </a>
+                    </td>
+                    <td class="project-separator"></td>
+                    <td>
+                        <p>A demo WebGPU project that renders the Sponza scene with shadows, several light sources, volumetric fires, simulated cloth and water.</p>
+
+                        <p>I made it mostly to get familiar with WebGPU and to see how usable and stable the API is.</p>
+                    </td>
+                </tr>
+            </table>
+
+            <hr>
+            <br/><center><a class="project-title" href="https://store.steampowered.com/app/2403100/Costa_Verde_Transport_Department">Costa Verde Transport Department</a></center>
+            <table class="project-table">
+                <tr>
+                    <td>
+                        <p>A road building & traffic simulation game I've released in 2023. It's my first commercial game project, and the first big enough released game. A lot of things went wrong during development, and I'm not happy with the final result, but at least I've learned a lot. The game still managed to find a thankful audience, though :)</p>
+
+                        <p>You can watch devlogs about it on my <a href="https://youtube.com/@lisyarus">YouTube channel</a>.</p>
+                    </td>
+                    <td class="project-separator"></td>
+                    <td>
+                        <a href="https://store.steampowered.com/app/2403100/Costa_Verde_Transport_Department">
+                            <img src="/blog/media/projects/costa_verde.png" class="project-image">
+                        </a>
+                    </td>
+                </tr>
+            </table>
+
+            <hr>
+            <br/><center><a class="project-title" href="https://lisyarus.itch.io/particle-simulator">Particle simulator</a></center>
+            <table class="project-table">
+                <tr>
+                    <td>
+                        <a href="https://lisyarus.itch.io/particle-simulator">
+                            <img src="/blog/media/projects/particle-simulator.png" class="project-image">
+                        </a>
+                    </td>
+                    <td class="project-separator"></td>
+                    <td>
+                        <p>A particle simulator supporting charges, gravity, springs, and external force fields. It's quite simple but powerful and fun to play with.</p>
+
+                        <p>It uses a simple JSON format to serialize the simulation state, so you can generate your own simulations to feed into it, or save the simulation results and load them in your own tool.</p>
+
+                        <p>The simulator's code is <a href="https://bitbucket.org/lisyarus/particle-simulator/src/master">open-sourced here</a>.</p>
+                    </td>
+                </tr>
+            </table>
+
+            <hr>
+            <br/><center><a class="project-title" href="https://github.com/lisyarus/chembook">Quantum Chemistry Done Wrong</a></center>
+            <table class="project-table">
+                <tr>
+                    <td>
+                        <p>An extremely introductory book on quantum chemistry, with a fairly low amount of prerequisite knowledge required (mostly linear algebra & Python).</p>
+
+                        <p>It gradually builds up a simple framework for solving quantum mechanical problems, explaining what's going on along the way. All the resulting code is available <a href="https://github.com/lisyarus/chembook/tree/master/code">in the same repository</a>, and all the nasty integral computations are <a href="https://github.com/lisyarus/chembook/blob/master/code/hgto.py">already done for you</a>.</p>
+                    </td>
+                    <td class="project-separator"></td>
+                    <td>
+                        <a href="https://github.com/lisyarus/chembook">
+                            <img src="/blog/media/projects/chembook.png" class="project-image">
+                        </a>
+                    </td>
+                </tr>
+            </table>
+
+            <hr>
+            <br/><center><a class="project-title" href="https://github.com/lisyarus/opengl-loader-generator">OpenGL Loader Generator</a></center>
+            <table class="project-table">
+                <tr>
+                    <td>
+                        <a href="https://github.com/lisyarus/opengl-loader-generator">
+                            <img src="/blog/media/projects/opengl.png" class="project-image">
+                        </a>
+                    </td>
+                    <td class="project-separator"></td>
+                    <td>
+                        <p>Heavily influenced by (now obsolete) glLoadGen, a python script that takes a simple configuration file and produces an <a href="https://www.khronos.org/opengl/wiki/OpenGL_Loading_Library">OpenGL loader</a>, i.e. a pair of C++ header & source files that contain all OpenGL constants & function definitions for the specified OpenGL version, and the routines for loading them.</p>
+
+                        <p>It is highly configurable, and supports different OpenGL-based APIs, versions, extensions, and even code styles :)</p>
+                    </td>
+                </tr>
+            </table>
+
+            <hr>
+            <br/><center><a class="project-title" href="https://github.com/lisyarus/voxelizer">OBJ Voxelizer</a></center>
+            <table class="project-table">
+                <tr>
+                    <td>
+                        <p>A tool that converts 3D models in Wavefront OBJ format to a 3D RGBA texture, with the alpha channel containing the volume of intersection of the object with this voxel. Useful for e.g. <a href="https://en.wikipedia.org/wiki/Volume_rendering">volume rendering</a>.</p>
+                    </td>
+                    <td class="project-separator"></td>
+                    <td>
+                        <a href="https://github.com/lisyarus/voxelizer">
+                            <img src="/blog/media/projects/voxelizer.png" class="project-image">
+                        </a>
+                    </td>
+                </tr>
+            </table>
+
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/header.js"></script>
+    </body>
+</html>
