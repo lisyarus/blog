@@ -209,6 +209,22 @@ table.data-table td {
 	border: 1px solid #888;
 }
 
+blockquote {
+	max-width: 640px;
+	border-radius: 20px;
+	background-color: #fff;
+	padding-top: 12px;
+	padding-bottom: 12px;
+	padding-left: 16px;
+	padding-right: 16px;
+	box-shadow: 0px 0px 10px 0px #0007;
+}
+
+audio {
+	border-radius: 30px;
+	box-shadow: 0px 0px 10px 0px #0007;
+}
+
 ::-webkit-scrollbar {
     width: 16px;
 }
