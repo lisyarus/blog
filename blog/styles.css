@@ -14,7 +14,7 @@ body {
 	padding: 20px;
  	background-color: #eee;
  	border-radius: 20px;
- 	box-shadow: 0px 0px 40px 20px #000a;
+ 	box-shadow: 0px 0px 40px 20px #0007;
 	font-family: sans-serif;
 	color: #444;
 	text-align: justify;
@@ -133,13 +133,13 @@ body {
 	margin-top: 20px;
 	margin-bottom: 20px;
     border-radius: 10px;
-	box-shadow: 0px 0px 10px 0px #000b;
+	box-shadow: 0px 0px 10px 0px #0007;
   	transition: 0.25s;
 }
 
 .project-image:hover {
 	transform: translate(-5px, -5px);
-	box-shadow: 5px 5px 10px 0px #000b;
+	box-shadow: 5px 5px 10px 0px #0007;
 }
 
 .project-separator {
