@@ -19,7 +19,14 @@
             <br/><center><div class="page-title">A better point light attenuation function</div></center><br/>
             <center><span class="post-date">2022 Jul 30</span></center><br/>
 
-            <h2>The problem</h2>
+            <h2>Contents</h2>
+
+            <ul>
+                <li><a href="#section-the-problem">The problem</a></li>
+                <li><a href="#section-the-solution">The solution</a></li>
+            </ul>
+
+            <h2 id="section-the-problem">The problem</h2>
 
             <p>So, recently I was adding lights support to the martian-droid-colony-building project I've been working on for a while. I used CPU-based <a href="https://www.aortiz.me/2018/12/21/CG.html">clustered shading</a>, storing the lights & clusters data in <a href="https://www.khronos.org/opengl/wiki/Buffer_Texture">buffer textures</a>, and managed to support about 4K lights at 60 FPS on my machine. <i>(I'm not using compute shaders and SSBO's because I'm stuck with OpenGL 3.3 so that even prehistoric microwaves can run my game; I'll probably add support for those through OpenGL extensions later.)</i> <a href="https://twitter.com/lisyarus/status/1552566798649802753">Here's</a> a twitter thread with some intermediate results, and here are some final screenshots:</p>
 
@@ -66,7 +73,7 @@
 
             <p>There are other popular attenuation functions: some <a href="https://geom.io/bakery/wiki/index.php?title=Point_Light_Attenuation">introduce a sharp cutoff</a> near \( d=0 \), some <a href="http://www.cemyuksel.com/research/pointlightattenuation">replace the point light with a spherical area light</a>, etc. What I don't like about all these options is that no formula gives a good way of constraining the light's influence to a certain radius: all these formulas are non-zero for arbirtarily large distances!
 
-            <h2>The solution</h2>
+            <h2 id="section-the-solution">The solution</h2>
 
             <p>So, I set off to find a different formula that</p>
 

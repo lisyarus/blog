@@ -19,7 +19,23 @@
             <br/><center><div class="page-title">Compute shaders in graphics: Gaussian blur</div></center><br/>
             <center><span class="post-date">2022 Apr 21</span></center><br/>
 
-            <h2>Why am I doing this?</h2>
+            <h2>Contents</h2>
+
+            <ul>
+                <li><a href="#section-why">Why am I doing this?</a></li>
+                <li><a href="#section-preparing">Preparing the scene</a></li>
+                <li><a href="#section-naive">Naive implementation</a></li>
+                <li><a href="#section-separable">Separable kernel</a></li>
+                <li><a href="#section-separable-hw">Separable kernel with hardware filtering</a></li>
+                <li><a href="#section-compute-naive">Compute naive</a></li>
+                <li><a href="#section-compute-naive-lds">Compute naive + LDS</a></li>
+                <li><a href="#section-compute-separable">Compute + separable kernel</a></li>
+                <li><a href="#section-compute-separable-lds">Compute + separable kernel + LDS</a></li>
+                <li><a href="#section-compute-separable-single-lds">Compute + separable kernel + single-pass + LDS</a></li>
+                <li><a href="#section-conclusion">Conclusion?</a></li>
+            </ul>
+
+            <h2 id="section-why">Why am I doing this?</h2>
 
             <p>I started learning real-time 3D graphics as soon as I started programming &ndash; that is, about 12 years ago. At the time, OpenGL 3 was still new, and most online tutorials covered the (now ancient)
             immediate mode commands (<code>glBegin/glEnd</code> and friends). Over the years, I've learned a lot: VBOs & VAOs, shaders, deferred shading, various optimization techniques. Here's a shameless plug of what I got for one of those scope-is-too-large-for-me-to-ever-finish-it projects with my own pure C++ & OpenGL engine:</p>
@@ -36,13 +52,13 @@
 
             <p><i><b>Disclaimer:</b> as I've said, I'm only learning all this stuff, and this is literally the first time I'm writing compute serious shaders and analyzing their performance. Beware of dramatic ignorance ahead :)</i></p>
 
-            <h2>Preparing the scene</h2>
+            <h2 id="section-preparing">Preparing the scene</h2>
 
             <p>First, let's render something cheap & animated that we will blur later. It doesn't matter much what to blur, since the algorithm is exactly the same whatever pixel values we have. I think a bunch of shiny rotating icosahedra would do:</p>
 
             <center><video autoplay muted loop class="video-embed"><source src="/blog/media/compute-blur/raw.mp4" type="video/mp4"></video></center>
 
-            <h2>Naive implementation</h2>
+            <h2 id="section-naive">Naive implementation</h2>
 
             <p>The first (and the simplest) way to implement blur is a full-screen post-process single-pass effect:</p>
 
@@ -103,7 +119,7 @@ void main()
 
             <p>The performance turns out to be pretty sad: <b>15ms</b> for the whole blur. This is clearly unsatisfactory (we typically have just 16ms for the whole frame!), so let's move on to a better approach.</p>
 
-            <h2>Separable kernel</h2>
+            <h2 id="section-separable">Separable kernel</h2>
 
             <p>If you've ever read any resources on Gaussian blur, you know that this single-pass implementation is the <b>wrong</b> way of doing it. It so happens that Gaussian filters are separable, meaning that the corresponding weight matrix has rank one and can be expressed as an outer product of two vectors:</p>
 
@@ -174,7 +190,7 @@ void main()
 
             <p>The result is significally better: <b>1ms</b> for the whole blur. A 15x improvement, meaning our 16.5x estimate wasn't that bad after all :)</p>
 
-            <h2>Separable kernel with hardware filtering</h2>
+            <h2 id="section-separable-hw">Separable kernel with hardware filtering</h2>
 
             <p>There's this neat trick that I've <a href="https://www.rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling">learnt long ago</a> but didn't have the opportunity to try. See, we're still bound by memory accesses: all the shader does is fetch texture data and do a pitiful amount of arithmetics. Modern GPUs are famously superior in terms of computing performance while not so much in terms of memory speed, so anything that decreases our texture access counts is a win.</p>
 
@@ -225,7 +241,7 @@ void main()
 
             <p>So, instead of N=33 texture fetches we now have 1+(N-1)/2=17 of them, leading to a theoretical 1.95x performance increase. Indeed, what I got was <b>0.54ms</b> for the whole blur, about 1.85x increase! It always fascinates me when theoretical performance predictions match reality. I wish this happened more often :)</p>
 
-            <h2>Compute naive</h2>
+            <h2 id="section-compute-naive">Compute naive</h2>
 
             <p>Now that we've settled on our baseline OpenGL 3.3 implementation, let's start doing compute shaders! For these, you need either OpenGL 4.3 or the <code>ARB_compute_shader</code> extension (I'm using the latter since I want the engine to work on older devices that only support OpenGL 3.3).</p>
 
@@ -345,7 +361,7 @@ void main()
 
             <p>Anyways, that's still about 1.6 times <i>worse</i> than the non-compute naive implementation. Let's get deeper.</p>
 
-            <h2>Compute naive + LDS</h2>
+            <h2 id="section-compute-naive-lds">Compute naive + LDS</h2>
 
             <p>My first instinct for improving the naive compute implementation was to use workgroup shared memory. After all, that's one of the unique features of compute shaders!</p>
 
@@ -387,7 +403,7 @@ void main()
 
             <p>It didn't let me create a 32x32 workgroup since the shared array size would exceed available shared workgroup memory size.</p>
 
-            <h2>Compute + separable kernel</h2>
+            <h2 id="section-compute-separable">Compute + separable kernel</h2>
 
             <p>Fine, probably compute shaders aren't as miraculously fast as I thought! Let's try the first optimization we did &ndash; doing two-pass blur &ndash; with compute shaders. Nothing essentially new here, except that this time we need three framebuffers:</p>
 
@@ -453,7 +469,7 @@ void main()
 
             <p>We're finally close to the performance we had with the non-compute implementation, although still about 3x slower.</p>
 
-            <h2>Compute + separable kernel + LDS</h2>
+            <h2 id="section-compute-separable-lds">Compute + separable kernel + LDS</h2>
 
             <p>Let's combine both optimizations! A two-pass blur, with each pass using a shared array to prefetch all the accessed input pixels. This time, I'm using Gx1 workgroups for horizontal blur, and 1xG for the vertical pass, since e.g. during a horizontal pass a pixel shares a lot of accessed input pixels with its horizontal heighbours, but none with its vertical neighbours.</p>
 
@@ -476,7 +492,7 @@ void main()
 
             <p>This is still slower than our non-compute implementation, though :)</p>
 
-            <h2>Compute + separable kernel + single-pass + LDS</h2>
+            <h2 id="section-compute-separable-single-lds">Compute + separable kernel + single-pass + LDS</h2>
 
             <p>The final idea I wanted to give a try is to get rid of the intermediary buffer used to store the result of horizontal blur. We have workgroup shared memory, why not use it? The algorithm is:</p>
 
@@ -502,7 +518,7 @@ void main()
 
             <p>Well, either I did something really wrong, or it was a bad idea.</p>
 
-            <h2>Conclusion?</h2>
+            <h2 id="section-conclusion">Conclusion?</h2>
 
             <p>So, what's happening here? The problem is I genuinely have no idea. <b>I'm still learning, remember? :)</b></p>
 
