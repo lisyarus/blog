@@ -1,0 +1,135 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <title>A better point light attenuation function | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/favicon.ico">
+        <link rel="stylesheet" href="/blog/panda-syntax-dark.css">
+        <script src="/blog/highlight.min.js"></script>
+        <script src="/blog/cpp.min.js"></script>
+        <script src="/blog/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">A better point light attenuation function</div></center><br/>
+            <center><span class="post-date">2022 Jul 30</span></center><br/>
+
+            <h2>The problem</h2>
+
+            <p>So, recently I was adding lights support to the martian-droid-colony-building project I've been working on for a while. I used CPU-based <a href="https://www.aortiz.me/2018/12/21/CG.html">clustered shading</a>, storing the lights & clusters data in <a href="https://www.khronos.org/opengl/wiki/Buffer_Texture">buffer textures</a>, and managed to support about 4K lights at 60 FPS on my machine. <i>(I'm not using compute shaders and SSBO's because I'm stuck with OpenGL 3.3 so that even prehistoric microwaves can run my game; I'll probably add support for those through OpenGL extensions later.)</i> <a href="https://twitter.com/lisyarus/status/1552566798649802753">Here's</a> a twitter thread with some intermediate results, and here are some final screenshots:</p>
+
+            <center><img src="/blog/media/point-light-attenuation/many.png" class="image-embed"></center><br/>
+            <center><img src="/blog/media/point-light-attenuation/spot.png" class="image-embed"></center><br/>
+            <center><img src="/blog/media/point-light-attenuation/iron.png" class="image-embed"></center><br/>
+            <center><img src="/blog/media/point-light-attenuation/copper.png" class="image-embed"></center>
+
+            <p>For light clustering to work, I need to clip the light's area of influence by a certain distance. The physically correct point light attenuation function (how much light some point in scene receives) is</p>
+
+            \[ \frac{A}{d^2} \]
+
+            <p>where A is the light's amplitude (intensity) and d is the distance from the light to an illuminated point. However, this function introduces a singularity at \( d=0 \), meaning that points too close to the light will receive unbounded amounts of lighting. This is an artefact of the point light abstraction: real lights are not points, they are physical objects of nonzero size. We don't want to throw away this nice abstraction, though, so we add a fake term that removes this singularity:</p>
+
+            \[ \frac{A}{1+d^2} \]
+
+            <p>This has the added benefit that A is now the maximal light intensity (achieved at \( d=0 \)). This function (red) isn't physically correct at small values of d, but is close to the correct one (blue) for large distances:
+
+            <center><img src="/blog/media/point-light-attenuation/plot1.png" class="image-embed"></center>
+
+            <p>However, this attenuation formula doesn't let us control the fallof, i.e. how fast does the intensity decrease with distance. This won't be physically correct either, but it allows for a greater artistic flexibility. So, introduce another parameter R:</p>
+
+            \[ \frac{A}{1+\left(\frac{d}{R}\right)^2} \]
+
+            <p>R is precisely the distance where the light intensity is half the maximal intensity. Larger values of R make the light attenuate (decrease in intensity) slower, increasing the effective light's area of influence. Here, the green function has \( R=1 \) and the purple one has \( R=3 \):</p>
+
+            <center><img src="/blog/media/point-light-attenuation/plot2.png" class="image-embed"></center>
+
+            <p>Finally, we can add another parameter Q, for which I don't have an intuitive explanation, but it allows us to control the shape of attenuation more precisely:</p>
+
+            \[ \frac{A}{1+\frac{d}{Q} + \left(\frac{d}{R}\right)^2} \]
+
+            <p>Small values of Q introduce a cusp at \( d=0 \), producing a faster fallof and a slightly different shape for the attenuation function (the blue one has \( Q=1 \)):</p>
+
+            <center><img src="/blog/media/point-light-attenuation/plot3.png" class="image-embed"></center><br/>
+
+            <p>Use can play with all this functions <a href="https://www.desmos.com/calculator/3si5gqopde">here</a>.</p>
+
+            <p>This type of function is usually presented in APIs/engines in a slightly different, arguably cleaner form (but with less intuitive parameters):</p>
+
+            \[ \frac{1}{C_0+C_1d+C_2d^2} \]
+
+            <p>I.e. light attenuation is the inverse of a quadratic function of distance. See e.g. <a href="http://learnwebgl.brown37.net/09_lights/lights_attenuation.html">here</a> or the docs for <a href="https://registry.khronos.org/OpenGL-Refpages/es1.1/xhtml/glLight.xml">OpenGL 1.0 lighting model</a>.
+
+            <p>There are other popular attenuation functions: some <a href="https://geom.io/bakery/wiki/index.php?title=Point_Light_Attenuation">introduce a sharp cutoff</a> near \( d=0 \), some <a href="http://www.cemyuksel.com/research/pointlightattenuation">replace the point light with a spherical area light</a>, etc. What I don't like about all these options is that no formula gives a good way of constraining the light's influence to a certain radius: all these formulas are non-zero for arbirtarily large distances!
+
+            <h2>The solution</h2>
+
+            <p>So, I set off to find a different formula that</p>
+
+            <ul>
+                <li>Looks a bit like the physically correct \( \frac{1}{d^2} \)</li>
+                <li>Is exactly zero at a certain distance R, so that I can use that distance for light-cluster intersections</li>
+                <li>Has zero derivative at distance R (otherwise the lightness will have a C^1 discontinuity, leading to a noticeable gradient edge)</li>
+            </ul>
+
+            <p>What I came up with looks incredibly simple:</p>
+
+            \[ A\frac{(1-s^2)^2}{1+Fs^2} \]
+
+            <p>where \( s = \frac{d}{R} \) is the normalized distance, and F allows you to control how fast it decays. It allows to separately control the maximum intensity A and the maximum radius R. You can play with this formula <a href="https://www.desmos.com/calculator/5eaerimi8q">here</a>. It is also fast to compute, since it doesn't use square roots, exponents, and other stuff, just a bit of arithmetic. Here's how it looks like for \( A = 2 \), \( R = 5 \), \( F = 1 \) (red) and \( F = 4 \) (blue):
+
+            <center><img src="/blog/media/point-light-attenuation/plot4.png" class="image-embed"></center>
+
+            <p>For distances less than \( \frac{R}{2} \) this function looks about the same as \( \frac{A}{1+4\left(\frac{d}{R}\right)^2} \), while for larger values it gradually goes to zero and is exactly zero at distance R. Note that it doesn't have a sharp cusp at d = 0, which can be for an artistic reason of wanting the attenuation to behave roughly like a spherical area light source near the light. For a version with cusp (which I'm actually using), you can simply remove the square in the denominator:</p>
+
+            \[ A\frac{(1-s^2)^2}{1+Fs} \]
+
+            Here's how it looks like for the same values of \( A = 2 \), \( R = 5 \), \( F = 1 \) (red) and \( F = 4 \) (blue):
+
+            <center><img src="/blog/media/point-light-attenuation/plot5.png" class="image-embed"></center>
+
+            <p>For the sake of completeness, here's a GLSL implementation. Note that we need to check for \( d < R \) (equivalently, for \( s < 1\)), otherwise we'd get wrong lightness values at larger distances.</p>
+
+            <pre><code class="language-glsl block">float sqr(float x)
+{
+    return x * x;
+}
+
+float attenuate_no_cusp(float distance, float radius,
+    float max_intensity, float falloff)
+{
+    float s = distance / radius;
+
+    if (s >= 1.0)
+        return 0.0;
+
+    float s2 = sqr(s);
+
+    return max_intensity * sqr(1 - s2) / (1 + falloff * s2);
+}
+
+float attenuate_cusp(float distance, float radius,
+    float max_intensity, float falloff)
+{
+    float s = distance / radius;
+
+    if (s >= 1.0)
+        return 0.0;
+
+    float s2 = sqr(s);
+
+    return max_intensity * sqr(1 - s2) / (1 + falloff * s);
+}</code></pre>
+
+            <p>That's it! Hope you'll find it usefull and thanks for reading.</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/header.js"></script>
+    </body>
+</html>
