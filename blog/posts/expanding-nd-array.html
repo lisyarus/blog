@@ -1,0 +1,208 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <title>A stupidly simple spatial data structure | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">A stupidly simple spatial data structure</div></center><br/>
+            <center><span class="post-date">2022 Aug 16</span></center><br/>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-preface">Preface</h2>
+
+            <p><i>Arrays are great.</i> Constant-time access by key (index), extremely cache-friendly iteration. Even if you want to add elements (say, to the end of the array), there's a <a href="https://en.wikipedia.org/wiki/Dynamic_array">well-established procedure</a>: allocate a new array twice the previous size, copy the previous array into the first half of the new one, and add your elements. By always allocating twice the previous array, we always need twice as many new elements to force another reallocation, thus the <a href="https://en.wikipedia.org/wiki/Amortized_analysis">amortized cost</a> of reallocations (cost averaged over all insert operations) is still constant. <i>Technically, it doesn't matter whether we reallocate exactly twice the size; multiplying by any constant greater than 1 would technically do. Something way bigger than 2 would waste too much memory; something around <a href="https://en.wikipedia.org/wiki/Golden_ratio">1.6</a> would work better with memory fragmentation. Note that fixed-sized increments don't work here: the amortized cost becomes linear instead of constant.</i></p>
+
+            <p>Unfortunately, arrays don't work when your keys are no longer consecutive non-negative integers, but are instead strings, points in space, or images.</p>
+
+            <p><i>Hashtables are great.</i> They are a nice enough generic solution for a generic key-value mapping; they allow you to map arbitrary keys to arbitrary values, as long as you know how to efficiently convert your keys to some meaningless random-ish numbers.</p>
+
+            <p>Unfortunately, hashtables have a lot of issues. Their performance depends heavily on how good your hash function is (a hash that is always equal to zero works perfectly fine, except that you've basically reduced the performance to a linked list); whether it uses <a href="https://en.wikipedia.org/wiki/Hash_table#Separate_chaining">closed</a> or <a href="https://en.wikipedia.org/wiki/Hash_table#Open_addressing">open</a> addressing; whether the API requires <a href="https://stackoverflow.com/a/39869063/2315602">persistent references</a> to stored objects or not. Iteration is typically done by maintaining a separate linked list of stored objects and is therefore quite cache-unfriendly.</p>
+
+            <h2 id="section-problem">The problem</h2>
+
+            <p>One day, I was profiling terrain rendering in my martian-colony-building project. Something that looks like this:</p>
+
+            <center><img src="/blog/media/expanding-nd-array/terrain.png" class="image-embed"></center>
+
+            <p><i>I hope you're not sick of these screenshots; I promise I'll work on more varied terrain generation in a month or two.</i></p>
+
+            <p>A substantial amount of time was spent in simply gathering the terrain chunks (32x32x32 batches of blocks) that need rendering. These chunks are referenced by their spatial ID (3 integers) and are stored in a standard <code>unordered_map</code>. Upon further investigation, I noticed that most time was spent in two functions:</p>
+
+            <ul>
+                <li>Computing the hash of a chunk ID</li>
+                <li>Comparing two chunk ID's</li>
+            </ul>
+
+            <p>Certainly, too many comparisons mean there are too many collisions, pointing that my hash function isn't good enough (it is something derived from <code>boost::hash_combine</code>). While there are numerous ways to improve performance with a better hash function & hash table implementation, I started to wonder whether I need a hash table at all?</p>
+
+            <p>My chunk ID's aren't random: if the player visited or saw a chunk, chances are they've also seen a lot of surrounding chunks. If the player has been to chunks A and B, most probably they travelled from A to B along some path & saw a huge number of chunks in between. What I'm saying is that it is reasonable to assume that chunks form a connected, maybe convex (but not necessarily) set. And, remember that chunks ID's are just triples of signed integers. Is there a data structure for this?</p>
+
+            <p>Of course there is! I'm not sure what to call it, though; I'm calling it a <code>spatial_array</code> in code, but it really is a multidimensional dynamic array expanding in all directions. Let me explain how it works, step by step.</p>
+
+            <h2 id="section-negative-indices">Negative indices</h2>
+
+            <p>The standard dynamic array has indices ranging from 0 to N-1 (inclusive), where N is the size of the array. The problem is that I don't want to assume that the player's starting location is 0; it can be pretty much anything. It could even be negative! In fact, I <i>want</i> to support negative indices in the array.</p>
+
+            <p>The solution is relatively simple: store a usual array, with indices from 0 to N-1, but keep track of the origin of this array. The element at position <code>0</code> actually corresponds to the key <code>origin</code>; element at position <code>1</code> corresponds to the key <code>origin + 1</code>, and so on up to <code>origin + N - 1</code>. Thus, using an array with modified indexing operator lets us represent a range <code>[origin, origin + N)</code> of indices, even when <code>origin</code> is negative. Here's the oversimplified code:
+
+            <pre><code class="language-cpp block">template &lt;typename T&gt;
+struct fancy_array
+{
+    // ... some initialization & resizing code
+
+    T & operator[] (int index)
+    {
+        return values_[index - origin_];
+    }
+
+private:
+    std::vector&lt;T&gt; values_;
+    int origin_;
+};</code></pre>
+
+            <h2 id="section-expanding">Expanding</h2>
+
+            <p>Now we have an array that represents a range <code>[origin, origin + N)</code> of indices, with <code>origin</code> possibly being negative. What if I want to add an element at a position that doesn't fall into this range? Expand the range until it contains the new index!
+
+            <ul>
+                <li>If the index is to the right of the range (<code>index >= origin + N</code>), multiply the size <code>N</code> by two until the new index fits in the range</li>
+                <li>If the new index is to the left (<code>index < origin</code>), multiply the size <code>N</code> by two <b>and</b> shift the origin to the left (so that the new end <code>origin + N</code> coincides with the old one) until the new index fits</li>
+            </ul>
+
+            <p>We're reusing that "multiply size by two" idea from classical dynamic arrays to make sure that reallocations occur rarely here. In code:</p>
+
+            <pre><code class="language-cpp block">template &lt;typename T&gt;
+struct fancy_array
+{
+    // ... other useful methods
+
+    void expand(int index)
+    {
+        // need static_cast to signed, otherwise the addition & comparison
+        // will implicitly cast to unsigned type of values_.size()
+        if (index >= origin_ && index < origin_ + static_cast&lt;int&gt;(values_.size()))
+            return;
+
+        if (values_.empty())
+        {
+            // first expansion: initialize to single element and return
+            values_.resize(1);
+            origin_ = index;
+            return;
+        }
+
+        int new_origin = origin_;
+        int new_size = values_.size();
+
+        while (index >= new_origin + new_size)
+            new_size *= 2;
+
+        while (index < new_origin)
+        {
+            new_origin -= new_size;
+            new_size *= 2;
+        }
+
+        std::vector&lt;T&gt; new_values(new_size);
+        for (int i = 0; i < values_.size(); ++i)
+            new_values[i + (origin_ - new_origin)] = values_[i];
+
+        values_ = std::move(new_values);
+        origin_ = new_origin;
+    }
+
+private:
+    std::vector&lt;T&gt; values_;
+    int origin_;
+};</code></pre>
+
+            Becoming a bit complicated, but still manageable.
+
+            <h2 id="section-dimensions">Multiple dimensions</h2>
+
+            <p>That's all nice, but I wanted a 3D array, not a 1D one! How do we implement a multidimensional (say, of size NxMxK) array, then?</p>
+
+            <p>The obvious choice of simply using an array of arrays (e.g. <code>vector&lt;vector&lt;T&gt;&gt;</code> for a 2D one) is bad for numerous reasons:</p>
+
+            <ul>
+                <li>Every inner array separately stores its size, despite all their sizes being equal; this is data duplication which is error-prone and just wasteful</li>
+                <li>Access by a 2D <code>(i,j)</code> index requires two memory reads: one to read the <code>values_[i]</code> and figure out its internal pointers, one to finally get to <code>values_[i][j]</code>; the second memory read depends on the result of the first, so they can't be executed in parallel (the same applied to 3D arrays with 3 memory reads)</li>
+                <li>Iteration is fine (mostly cache-friendly, except at times when you switch to the next inner array), as long as you do it in the right order: e.g. <code>for (i:0..N) for (j:0..M) values_[i][j];</code> is order of magnitude faster than <code>for (j:0..M) for (i:0..N) values_[i][j];</code></li>
+                <li>Resizing is bad: you need to separately resize each of the inner arrays, meaning a separate allocation for each of them (a ton of smaller allocations isn't typically faster than a single large one in this case)</li>
+            </ul>
+
+            <p>So far, so good. The alternative is to store all the elements of a, say, 2D NxM array in a single array of size NxM and to compute the proper index at access time:</p>
+
+            <pre><code class="language-cpp block">template &lt;typename T&gt;
+struct array_2d
+{
+    // ... some initialization & resizing code
+
+    // using operator() because operator[] cannot have
+    // multiple arguments in C++
+    T & operator() (int i, int j)
+    {
+        return values_[i + width_ * j];
+    }
+
+private:
+    std::vector&lt;T&gt; values_;
+    std::size_t width_, height_;
+}</code></pre>
+
+            <p>With this layout:</p>
+
+            <ul>
+                <li>No data duplication (technically, the <code>values_</code> field still stores its size, but we can replace it with <code>std::unique_ptr&lt;T[]&gt;</code> or similar)</li>
+                <li>Element access is just one memory read (technically, we also need to read the <code>values_</code> pointer and <code>width_</code> value; however, both these are regular class members and you'll probably already have them on the stack / in cache / in registers / etc)</li>
+                <li>Iteration is as good as it gets (just traverse the whole flat array), although <code>for(i) for(j)</code> and <code>for(j) for(i)</code> still have <b>very</b> different performance (thus, it's a good idea for such a class to provide a <a href="https://en.cppreference.com/w/cpp/language/range-for">range interface</a> that implements the right iteration order)</li>
+                <li>Resizing is fine: we'd need one reallocation and some careful code to copy old values to new places</li>
+            </ul>
+
+            For a 3D version, you'd need to store three sizes, and index computation is a bit more involved:
+
+            <pre><code class="language-cpp block">T & operator() (int i, int j, int k)
+{
+    return values_[i + width_ * (j + k * height_)];
+}</code></pre>
+
+            <h2 id="section-putting-together">Putting it all together</h2>
+
+            <p>So, how do we make an auto-expanding in all directions 3D array?</p>
+
+            <ul>
+                <li>Store elements in a flat array</li>
+                <li>Store the size of the array along each dimension (3 integers)</li>
+                <li>Store the origin of the array along each dimension (3 integers)</li>
+                <li>When inserting a new index, expand the array (the size and/or the origin, in each dimension independently) as needed (don't forget to copy old values to new places in the new array)</li>
+                <li>When accessing by 3D index, subtract the origin, then use the formula above for a flat 3D array</li>
+            </ul>
+
+            <p>I won't put the code here, for it gets pretty large (but still not that complicated). You can find my implementation <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/util/include/psemek/util/spatial_array.hpp">here</a> (although it isn't strictly a single-header library, it doesn't have a lot of dependencies). It actually supports an arbitrary number of dimensions (specified at compile-time), thanks to some C++ template trickery. The "multidimensional array" part, without auto-expansion and support for negative indicies, is extracted into a separate class <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/util/include/psemek/util/array.hpp">here</a> (which I'm also using for all sorts of N-D arrays, like images or 2D bitmasks).</p>
+
+            <p>This data structure comes with its problems, as well. You might have also noticed that it doesn't behave as a traditional "set" data structure: when you insert an index, a lot of other indices get implicitly inserted as well upon expansion. This can be solved either by storing <code>optional&lt;T&gt;</code>, or by using some sentinel value to indicate absence of value (<code>nullptr</code> / <code>UINT_MAX</code> / etc). I'm actually storing map chunks by <code>unique_ptr</code>, so a null pointer indicates no chunk.</p>
+
+            <p>Probably most importantly, this structure doesn't work well when you store some heavy, complex, expensive objects, due to huge amount of potentially unused space. It is also bad in case your indices are sparse, for the same reason. As I've said, in my case I'm storing just pointers, and I have good reasons to believe the used indices are pretty dense (would be a good idea to check that, though!).</p>
+
+            <p>So, by replacing a few terrain chunk hash maps with this fancy array, I reduced the time of chunk traversal from 1ms down to about 50μs (about 20x speedup), and the whole frame time from 3ms to 2ms, while the array itself takes about 1Mb of memory (it's just pointers to actual terrain chunks, remember?). I'd say it's a win! Of course, this structure is far from ubiquitous, and quad/octrees or hash tables might work much better in your particular case, but I guess it's still worth knowing. Anyway, hope this was helpful in some way for you, and thanks for reading.</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
