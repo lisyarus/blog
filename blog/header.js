@@ -33,3 +33,13 @@ document.getElementById("blog-header").innerHTML = headerHTML;
 document.getElementById("blog-footer").innerHTML = footerHTML;
 if (document.getElementById("end-section"))
     document.getElementById("end-section").innerHTML = endSectionHTML;
+
+if (document.getElementById("contents")) {
+    let contents = document.getElementById("contents");
+    let sections = document.getElementsByTagName("h2");
+    for (let section of sections) {
+        if (section.id) {
+            contents.innerHTML += '<li><a href="#' + section.id + '">' + section.innerHTML + '</a></li>'
+        }
+    }
+}
