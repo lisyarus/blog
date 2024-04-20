@@ -2,6 +2,7 @@ body {
 	margin: 0px;
 	background-image: url("/blog/assets/background.png");
 	background-attachment: fixed;
+	overflow: visible;
 /* 	background-color: #444;*/
 }
 
@@ -165,6 +166,8 @@ a:hover {
 	width: 640px;
 	height: 360px;
 	border-radius: 20px;
+	margin-top: 16px;
+	margin-bottom: 16px;
 	box-shadow: 0px 0px 10px 0px #0007;
 }
 
@@ -172,12 +175,16 @@ a:hover {
 	width: 640px;
 	height: 360px;
 	border-radius: 20px;
+	margin-top: 16px;
+	margin-bottom: 16px;
 	box-shadow: 0px 0px 10px 0px #0007;
 }
 
 .image-embed {
 	max-width: 640px;
 	border-radius: 20px;
+	margin-top: 16px;
+	margin-bottom: 16px;
 	box-shadow: 0px 0px 10px 0px #0007;
 }
 
