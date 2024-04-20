@@ -192,6 +192,10 @@ code {
 	color: #cc5e91;
 }
 
+a code {
+	color: #c60;
+}
+
 code.block {
 	border-radius: 20px;
 	width: 640px;
