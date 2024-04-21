@@ -1,0 +1,133 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <title>Two-pass Gaussian blur coeffifients generator | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+        <style>
+            .input-error{
+                outline: 2px solid red;
+            }
+        </style>
+
+        <script defer src="/blog/scripts/blur-coefficients-generator.js"></script>
+
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Two-pass Gaussian blur coeffifients generator</div></center><br/>
+            <center><span class="post-date">2023 Feb 24</span></center><br/>
+
+            <p>This tool generates sample offsets and weights for a two-pass Gaussian blur GLSL shader that uses linear texture filtering to sample two weighted pixels using a single texture read.</p>
+
+            <form>
+            <label for="radius">Blur radius:</label>
+            <input id="radius" value="5">
+            <div id="warning" style="color: red; float: right"></div>
+            <br>
+            <label for="sigma">Blur sigma:</label>
+            <input id="sigma" value="3">
+            <br>
+            <label for="linear">Linear filtering:</label>
+            <input type="checkbox" id="linear" checked>
+            <br>
+            <label for="correction">Small sigma correction:</label>
+            <input type="checkbox" id="correction" checked>
+            </form>
+
+            <pre><code id="result" class="language-glsl block"></code></pre>
+
+            <h2 id="section-how-to-use">How to use it?</h2>
+
+            <p><code>OFFSETS</code> are offsets in pixels from the destination pixel to the input sample pixels (along the current blurring axis, i.e. horizontal or vertical).</p>
+
+            <p><code>WEIGHTS</code> are the corresponding weights, i.e. how much contribution each input sample gives to the output value. They are already normalized &ndash; their sum is 1.</p>
+
+            <p>Here's an example GLSL function that does the blurring:</p>
+
+            <pre><code class="language-glsl block">// blurDirection is:
+//     vec2(1,0) for horizontal pass
+//     vec2(0,1) for vertical pass
+// The sourceTexture to be blurred MUST use linear filtering!
+// pixelCoord is in [0..1]
+vec4 blur(in sampler2D sourceTexture, vec2 blurDirection, vec2 pixelCoord)
+{
+    vec4 result = vec4(0.0);
+    vec2 size = textureSize(sourceTexture, 0);
+    for (int i = 0; i < SAMPLE_COUNT; ++i)
+    {
+        vec2 offset = blurDirection * OFFSETS[i] / size;
+        float weight = WEIGHTS[i];
+        result += texture(sourceTexture, pixelCoord + offset) * weight;
+    }
+    return result;
+}</code></pre>
+
+            <h2 id="section-premultiplied-blur">Transparency-aware blur</h2>
+
+            <p>Note that in many cases it makes sense to weight the pixel contributions by their alpha channel, to prevent the color of nearby transparent pixels from "bleeding" into non-transparent regions. This would work automatically if your input image is already <a href="https://en.wikipedia.org/wiki/Alpha_compositing#Straight_versus_premultiplied">premultiplied</a>. However, if you cannot use premultiplied format, you'll have to tweak your blur shader to effectively premultiply before blurring and un-premultiply after that:</p>
+
+            <pre><code class="language-glsl block">vec4 premult(vec4 color)
+{
+    return vec4(color.rgb * color.a, color.a);
+}
+
+vec4 unpremult(vec4 color)
+{
+    // Prevent division by zero
+    if (color.a == 0.0)
+        return vec4(0.0);
+        
+    return vec4(color.rgb / color.a, color.a);
+}
+
+// Transparency-aware blur
+vec4 blur(in sampler2D sourceTexture, vec2 blurDirection, vec2 pixelCoord)
+{
+    vec4 result = vec4(0.0);
+    vec2 size = textureSize(sourceTexture, 0);
+    for (int i = 0; i < SAMPLE_COUNT; ++i)
+    {
+        vec2 offset = blurDirection * OFFSETS[i] / size;
+        float weight = WEIGHTS[i];
+        result += premult(texture(sourceTexture, pixelCoord + offset)) * weight;
+    }
+    return unpremult(result);
+}</code></pre>
+
+            <h2 id="section-how-does-it-work">How does it work?</h2>
+
+            <p>A <i>two-dimentional Gaussian filter</i> uses weights in the form of \( \exp\left(-\frac{x^2+y^2}{\sigma^2}\right) \), sampling the input texture in a \( (2N+1)\times (2N+1) \) square (in the \( [-N\dots N]\times[-N\dots N] \) range around the current pixel), making a total of \( (2N+1)^2 \) texture reads in a single fragment shader invocation.</p>
+
+            <p>A <i>separable</i> filter makes use of the observation that</p>
+
+            \[ \exp\left(-\frac{x^2+y^2}{\sigma^2}\right)=\exp\left(-\frac{x^2}{\sigma^2}\right)\cdot\exp\left(-\frac{y^2}{\sigma^2}\right) \]
+
+            <p>which means that we can blur horizontally over the range \( [-N\dots N] \) around the current pixel, and then blur the result vertically to get the final blur (or blur vertically first and horizontally after that, doesn't matter). This cuts down the number of texture reads to 2N+1 per pass, meaning 4N+2 in total (for both the horizontal and vertical passes).</p>
+
+            <p>Using linear filtering for the input texture, we can further reduce the number of required texture reads. Say, we want to to read two neighbouring pixels \( p_i \) and \( p_{i+1} \) (I'm using 1D indexing because we're talking about separable blur, so all pixels read in a single shader invocation are in the same row or column) with weights \( w_0 \) and \( w_1 \). The total contribution of these two pixels is \( w_0p_i + w_1p_{i+1} \). Rewriting it as a lerp, we get</p>
+
+            \[ w_0p_i + w_1p_{i+1} = (w_0+w_1)\cdot\text{lerp}\left( p_i, p_{i+1}, \frac{w_1}{w_0+w_1}\right) \]
+
+            <p>meaning we can sample at location \( i + \frac{w_1}{w_0+w_1} \) with a total weight of \( w_0 + w_1 \), and thanks to linear filtering this will evaluate to the total contribution of two pixels, at the expense of a single texture read. This lowers the number of texture reads to N+1 per pass, meaning a total of 2N+2 per the full blur.</p>
+
+            <p>To learn about small sigma correction, see <a href="https://bartwronski.com/2021/10/31/practical-gaussian-filter-binomial-filter-and-small-sigma-gaussians/">this post by Bart Wronski</a>.</p>
+
+            <p>See also <a href="http://demofox.org/gauss.html">Alan Wolfe's</a> generator which uses a <i>support</i> instead of <i>radius</i> to figure out how many samples are needed.</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
