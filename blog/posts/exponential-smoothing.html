@@ -1,0 +1,294 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <title>My favourite animation trick: exponential smoothing | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+        <script src="/blog/scripts/exponential-smoothing.js"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">My favourite animation trick: exponential smoothing</div></center><br/>
+            <center><span class="post-date">2023 Feb 21</span></center><br/>
+
+            <p>There's a certain simple animation thing that I've been using almost since I've ever started doing anything related to graphics. I use it for rotating & moving the camera, for moving figures in a turn-based game, for moving UI elements, for smoothing volume changes in <a href="/blog/posts/audio-mixing.html">my audio lib</a>, everywhere! So I decided I'll write about it. The trick itself is nothing new, &ndash; in fact, you've probably already heard about or even used it, &ndash; but I'll also show it in some examples and explain how it works mathematically :)</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-toggle-buttons">Toggle buttons</h2>
+
+            <p>Speaking of UI, say you're making some UI component, maybe a toggle button. Something like this (click it!):</p>
+
+            <center><canvas id="toggle-none"></canvas></center>
+            <script> makeToggle('toggle-none', 'none', 1); </script>
+
+            <p>This simply computes the position of the switch as a function of its state:</p>
+
+            <pre><code class="language-cpp block">position.x = turned_on ? max_x : min_x;</code></pre>
+
+            <p>This works perfectly, but feels a bit lifeless. Adding some <i>animation</i> to it would be cool! Animations are not just a fancy visual thing, they help the user understand what's going on. Instead of teleporting the toggle indicator to its new position, let's move it smoothly:</p>
+
+            <center><canvas id="toggle-linear"></canvas></center>
+            <script> makeToggle('toggle-linear', 'linear', 8); </script>
+
+            <p>The downside is that we need to run some updating animation now:</p>
+
+            <pre><code class="language-cpp block">position.x += (turned_on ? 1 : -1) * speed * dt;
+position.x = clamp(position.x, min_x, max_x);</code></pre>
+
+            <p>However, this still looks a bit clumsy due to having a constant speed (i.e. the position is a <i>linear</i> function of time). Let's add some <a href="https://easings.net/">easing</a> function on top of that, like the <a href="https://en.wikipedia.org/wiki/Smoothstep">classic cubic</a> \( 3t^2-2t^3 \):</p>
+
+            <center><canvas id="toggle-cubic"></canvas></center>
+            <script> makeToggle('toggle-cubic', 'cubic', 8); </script>
+
+            <p>or a square root \( \sqrt t \):</p>
+
+            <center><canvas id="toggle-sqrt"></canvas></center>
+            <script> makeToggle('toggle-sqrt', 'sqrt', 8); </script>
+
+            <p>The difference between these may be hard to see, so let's slow down the animation by a factor of 8:</p>
+
+            <center>
+            <table style="table-layout: fixed; border: 0px;">
+            <tr><td><div align="right">Linear:     </div></td><td><center><canvas id="toggle-compare1-linear"></canvas></center></td><td></td></tr>
+            <tr><td><div align="right">Cubic:      </div></td><td><center><canvas id="toggle-compare1-cubic" ></canvas></center></td><td></td></tr>
+            <tr><td><div align="right">Square root:</div></td><td><center><canvas id="toggle-compare1-sqrt"  ></canvas></center></td><td></td></tr>
+            </table>
+            </center>
+            <script>
+            var state = makeToggleState(1);
+            makeSharedToggle(state, 'toggle-compare1-linear', 'linear');
+            makeSharedToggle(state, 'toggle-compare1-cubic',  'cubic' );
+            makeSharedToggle(state, 'toggle-compare1-sqrt',   'sqrt'  );
+            </script>
+
+            <p>This time, instead of just updating the switch position, we have to keep track of some extra animation state:</p>
+
+            <pre><code class="language-cpp block">t += (turned_on ? 1 : -1) * speed * dt;
+t = clamp(t, 0, 1);
+ease = (3 * t * t - 2 * t * t * t);
+position.x = lerp(min_x, max_x, ease);</code></pre>
+
+            <p>Here, I'm using the fact that <code>smoothstep</code> is symmetric in the following sense: <code>1 - f(t) = f(1 - t)</code>, meaning the forward and backward animations can use the same code. With <code>sqrt</code> things are a bit different: we have to explicitly use a different easing function depending on the animation's direction:</p>
+
+            <pre><code class="language-cpp block">ease = turned_on ? sqrt(t) : 1 - sqrt(1 - t);</code></pre>
+
+            <p>Whichever looks best is arguably a matter of taste, but of all these <code>sqrt</code> is my favourite: the switch starts moving really fast (this is because <code>sqrt</code> has infinite derivative at zero), but then slows down nicely as it reaches the destination (the cubic one is my second favourite, though). The downside of this version is that we need quite a lot of bookkeeping even in the simplest possible case of a two-state toggle button (later in the article I'll show how this becomes a nightmare in more complicated scenarios). Another downside is that it has a discontinuity: it jumps suddenly if the user clicks on it the middle of animation (try it!).</p>
+
+            <p>Thankfully there's a similar version which uses the minimal possible state and doesn't have the "jumping" problem:</p>
+
+            <center><canvas id="toggle-exp"></canvas></center>
+            <script> makeToggle('toggle-exp', 'exp', 8); </script>
+
+            <p>I call it <i>exponential smoothing</i> (for reasons that will become clear later). I've also heard it being called <i>approach</i>, and I'm certain it has it's own name in every engine. Here it is slowed down 8x and compared to <code>sqrt</code>:</p>
+
+            <center>
+            <table style="table-layout: fixed">
+            <tr><td><div align="right">Square root:</div></td><td><center><canvas id="toggle-compare2-sqrt"></canvas></center></td><td></td></tr>
+            <tr><td><div align="right">Exponential:</div></td><td><center><canvas id="toggle-compare2-exp" ></canvas></center></td><td></td></tr>
+            </table>
+            </center>
+            <script>
+            var state = makeToggleState(1);
+            makeSharedToggle(state, 'toggle-compare2-sqrt', 'sqrt' );
+            makeSharedToggle(state, 'toggle-compare2-exp',  'exp'  );
+            </script>
+            <br>
+
+            <p>Here's the code for the exponential version:</p>
+
+            <pre><code class="language-cpp block">target = (state.value ? max_x : min_x);
+position.x += (target - position.x) * (1 - exp(- dt * speed));</code></pre>
+
+            <p>Intuitively, on each frame we nudge the current position towards its <i>target position</i> (which is determind by the on/off state). However, the amount of nudging <code>(1 - exp(- dt * speed))</code> looks really weird, doesn't it? Before we see where it comes from, let's have a look at some more complicated animations.</p>
+
+            <h2 id="section-camera-movement">Camera movement</h2>
+
+            <p>Say we have some kind of map, and a camera scrolling/moving around.</p>
+
+            <center><canvas id="camera-none"></canvas></center>
+            <script> makeCamera('camera-none', 'none', 8); </script>
+
+            <p><i>Yes I've made a whole procedural map generator & renderer just for this example, and I have zero regrets.</i></p>
+
+            <p>Again, this begs us to add some animation. Let's interpolate it with constant speed:</p>
+
+            <center><canvas id="camera-linear-jitter"></canvas></center>
+            <script> makeCamera('camera-linear-jitter', 'linear-jitter', 8); </script>
+
+            <p>Here's the code:</p>
+
+            <pre><code class="language-cpp block">position.x += sign(target.x - position.x) * speed * dt;
+            position.y += sign(target.y - position.y) * speed * dt;</code></pre>
+
+            <p>See this jittering after the animation completes? That's because <code>target.x - position.x</code> keeps alternating between being positive and negative. Instead of <code>sign(delta)</code> we need some function that clamps the delta:</p>
+
+            <pre><code class="language-cpp block">float update(float & value, float target, float max_delta)
+{
+    float delta = target - value;
+    delta = min(delta,  max_delta);
+    delta = max(delta, -max_delta);
+    value += delta;
+}
+
+update(position.x, target.x, speed * dt);
+update(position.y, target.y, speed * dt);</code></pre>
+
+            <p>Quite a mouthful for such a simple thing! And here's the result:</p>
+
+            <center><canvas id="camera-linear"></canvas></center>
+            <script> makeCamera('camera-linear', 'linear', 8); </script>
+
+            <p>Much better, although it's still a bit clumsy and also weird if we move the camera faster than the animation completes. We could, as before, add some easing function, like the cubic one:</p>
+
+            <center><canvas id="camera-cubic"></canvas></center>
+            <script> makeCamera('camera-cubic', 'cubic', 8); </script>
+
+            <p>although this time it gets really complicated: we have to maintain a queue of requested movement events, and animate them one by one (otherwise I have no idea how to slap the easing function here). This still looks a bit weird when moving the camera fast enough. We could just ignore user's input while the animation is active, but this is a deadly sin as it is infuriatingly frustrating from the user's perspective.</p>
+
+            <p>The perfect solution? Why, exponential smoothing of course! The code barely changes compared to the toggle button example:</p>
+
+            <pre><code class="language-cpp block">position.x += (target.x - position.x) * (1.0 - exp(- speed * dt));
+            position.y += (target.y - position.y) * (1.0 - exp(- speed * dt));</code></pre>
+
+            <p>and here's how it looks like:</p>
+
+            <center><canvas id="camera-exp"></canvas></center>
+            <script> makeCamera('camera-exp', 'exp', 8); </script>
+
+            <p>Pretty nice, if you ask me! Notice how it speeds up naturally if you click fast enough.</p>
+
+            <h2 id="section-under-the-hood">Under the hood</h2>
+
+            <p>Ok, so what's up with this <code>1 - exp(- speed * dt)</code>, what on Earth is that?</p>
+
+            <p>Let's start with a simplified version: we have some animation, it has a current <code>position</code> and the new position <code>target</code> which it must move towards with some <code>speed</code>. To make the movement faster when the difference between <code>position</code> and <code>target</code> is large, we make the speed proportional to this difference:</p>
+
+            <pre><code class="language-cpp block">position += (target - position) * speed * dt;</code></pre>
+
+            <p>Notice how it doesn't require maintaining <i>any</i> state other than the current and the target position! (<code>speed</code> is usually a constant.) It even doesn't need to keep track of time that elapsed since the start of the animation, and it adjusts automatically if the <code>target</code> suddenly changes.</p>
+
+            <p>Now this already works perfectly in many situations, but there's a small catch. Here's the toggle button again, with the above udpate code:</p>
+
+            <center><canvas id="toggle-exp-bad"></canvas></center>
+            <script> makeToggle('toggle-exp-bad', 'expBad', 110); </script>
+
+            <p>See the jittering? That's because I've set the <code>speed</code> value so high that <code>speed * dt</code> became larger than 1! Specifically, I used <code>speed = 220</code> and <code>dt = 1 / 125</code>.</p>
+
+            <p>To understand what's happening, it is useful to rewrite the code above using <code>lerp</code>:</p>
+
+            <pre><code class="language-cpp block">position = lerp(position, target, speed * dt);</code></pre>
+
+            <p>You can check that this is ultimately the same formula. We can clearly see what's going on: the formula interpolates between the current value and the target value. The closer the interpolation parameter <code>speed * dt</code> to zero, the slower the interpolation. The closer it is to one, the faster the movement.</p>
+
+            <p>Now, what happens when <code>speed * dt</code> is larger than 1 is that the interpolation <i>overshoots</i>! The only reason it still works is that <code>speed * dt</code> is less than 2, so that the <i>absolute</i> delta between <code>position</code> and <code>target</code> still decreases with time. Here's an example with <code>speed * dt = 248 / 125 < 2</code>:</p>
+
+            <center><canvas id="toggle-exp-bad2"></canvas></center>
+            <script> makeToggle('toggle-exp-bad2', 'expBad', 124); </script>
+
+            <p>and here's one with <code>speed * dt = 252 / 125 > 2</code>:</p>
+
+            <center><canvas id="toggle-exp-bad3"></canvas></center>
+            <script> makeToggle('toggle-exp-bad3', 'expBad', 126); </script>
+
+            <p>The last one doesn't do anything useful at all.</p>
+
+            <p>To solve this, we could simply clamp the value by 1:</p>
+
+            <pre><code class="language-cpp block">position = lerp(position, target, min(1, speed * dt));</code></pre>
+
+            <p>However, this doesn't seem like the right thing to do in all scenarios. Consider why <code>speed * dt</code> might actually happen to be so large?</p>
+
+            <p>One reason is that your <code>speed</code> value is too large because you want a really quick animation. However, as we've seen with the above toggle buttons, this is actually way too quick for any reasonable user &ndash; the actual animation is impossible to notice. So, our <code>speed</code> value is usually not that high.</p>
+
+            <p>The other reason is that <code>dt</code> is too large. Maybe because your code runs too slow, and your framerate is dropping. Maybe because the user moved to a different tab/window and your code was sleeping, and now it got woken up with a <code>dt</code> of many seconds.</p>
+
+            <p>When applying such a <code>dt</code> to something like physics, you certainly want to clamp it, or subdivide into several updates, etc. With animations, however, wouldn't it be cool if everything worked perfectly even in this case? Even if your physics might lag, at least the camera & buttons would still work nicely &ndash; as a user, I would really appreciate such care.</p>
+
+            <h2 id="section-differential-equations">Differential equations (oh no)</h2>
+
+            <p>Ok, we want to solve the problem, but how? Here's the two-step recipe:</p>
+
+            <ol>
+                <li>Realize that what we're doing is numerically solving a certain differential equation</li>
+                <li>Solve the equation symbolically and use the result directly</li>
+            </ol>
+
+            <p>Time-dependent update that works for small <code>dt</code> but breaks for large <code>dt</code> is pretty typical for numerical solvers of differential equations. What equation does <code>position += (target - position) * speed * dt</code> solve? Whenever you see <code>A += B * dt</code>, this corresponds to an equation
+
+            \[ \frac{d}{dt}A=B \]
+
+            In our case, the equation is
+
+            \[ \frac{d}{dt}\text{position} = (\text{target} - \text{position})\cdot\text{speed} \]
+
+            <p>I will die if I keep typing these formulas with all words spelled out, so let's make a few variable changes: call \( x = \text{position} \), \( a = \text{target} \), and \( c = \text{speed} \):</p>
+
+            \[ \frac{d}{dt}x = (a-x)\cdot c \]
+
+            Solving this needs just a few tricks:
+
+            \[ \frac{d}{dt}(x-a) = \frac{d}{dt}x = (a-x)\cdot c = -(x-a)\cdot c \]
+
+            \[ x-a = (x_0-a)\cdot\exp{-c\cdot t} \]
+            \[ x = a - (a-x_0)\cdot\exp{-c\cdot t} \]
+            \[ x = x_0 + (a-x_0)\cdot\left(1-\exp{-c\cdot t}\right) \]
+
+            <p><i>Btw, a similar exponent appears in e.g. volumetric rendering for pretty similar reasons.</i></p>
+
+            <p>It's not important to understand exactly where this all comes from. The point is that if we believe that <code>position += (target - position) * speed * dt</code> is the right formula for <i>small</i> <code>dt</code>, then the formula <code>position += (target - position) * (1 - exp(- speed * dt))</code> is the right formula to use for <i>any</i> <code>dt</code>. This is further supported by expanding the latter equation in terms of Taylor series for the exponent: \( \exp(x) \approx 1 + x \), so that</p>
+
+            \[ 1 - \exp(- \text{speed} \cdot \text{dt}) \approx 1 - (1 - \text{speed} \cdot \text{dt}) = \text{speed} \cdot \text{dt} \]
+
+            <p>i.e. we get exactly the former equation.</p>
+
+            <p>The cool thing is that it doesn't care about old values: if you have your previous value \( x_0 \) and you know how much time has passed between the previous and the current iteration, you can compute the new value. (This is a direct consequence of being a first-order differential equation.)</p>
+
+            <p>So, the TL;DR is that</p>
+
+            <pre><code class="language-cpp block">position += (target - position) * (1 - exp(- speed * dt))</code></pre>
+
+            <p>is the right formula that works for any <code>speed</code> and <code>dt</code>. Even if the product <code>speed * dt</code> is too large, <code>exp(- speed * dt)</code> handles it nicely, since <code>exp</code> of a large negative number is just something close to zero, so <code>1 - exp</code> will be close to one.</p>
+
+            <p>We can, as before, rewrite this using <code>lerp</code>: <code>position = lerp(position, target, 1 - exp(- speed * dt))</code> or even <code>position = lerp(target, position, exp(- speed * dt))</code>. There are many ways to rewrite this equtaion.</p>
+
+            <h2 id="section-choosing-speed">Choosing the speed</h2>
+
+            <p>Usually, we think of animation in terms of its <i>duration</i>. Like, the toggle button should move to the new place in 0.125 seconds (the actual value used in the examples in the beginning of the post), after that it stops moving. With this exponential formula, however, the animation technically takes <i>infinite</i> time to complete! <code>exp(- speed * time)</code> gets smaller with time, but it <i>never</i> equals zero, so that <code>position</code> technically <i>never</i> equals <code>target</code> (provided they were different to start with).</p>
+
+            <p>However, in practice we have a ton of limitations. If <code>position</code> is a floating-point number, it quickly reaches the precision limit, and it becomes equal to <code>target</code> in practice. If it is, say, the camera position, the user probably won't notice that the animation is still going since the delta <code>target - position</code> gets ridiculously small even before it hits floating-point precision limits.</p>
+
+            <p>So, what does the <code>speed</code> parameter mean, exactly? It means the following: <code>1 / speed</code> is the time in which <code>position</code> becomes closer to <code>target</code> by a factor of <code>e = 2.71828...</code> exactly. Do whatever you want with this information.</p>
+
+            <p>I usually set the <code>speed</code> to something in the range 5..50. For a linear/cubic animation of a certain <code>speed</code>, I usually set the exponential version speed to be <code>2 * speed</code>, this feels about right (again, this is what was used in the examples above).</p>
+
+            <h2 id="section-exponential-smoothing">Exponential smoothing</h2>
+
+            <p>If you google "exponential smoothing" (or "exponential moving average"), you might find the <a href="https://en.wikipedia.org/wiki/Exponential_smoothing">wiki article</a> on something completely unrelated which, nevertheless, features some pretty similar formulas. It actually is the discrete analogue of what we were talking about in this post!</p>
+
+            <p>Suppose that our <code>dt</code> is always the same; also suppose that <code>target</code> changes as often as every iteration. Then, indexing the values with the iteration number, we compute something like <code>position[i] = (target[i] - position[i - 1]) * factor</code>, where <code>factor = 1 - exp(- speed * dt)</code>. In this case, one typically sets <code>factor</code> directly to some value between 0 and 1 instead of deriving it from other values (although the aforementioned wiki article <a href="https://en.wikipedia.org/wiki/Exponential_smoothing#Time_constant">does explain</a> what this <code>factor</code> actually means).</p>
+
+            <p>People use it in signal processing for the same reasons I do for animations: it doesn't require maintaining previous values or any other obscure state, just the current averaged value. They also use it in digital audio, where you typically have a fixed <code>dt</code> of <code>1 / freq</code> the inverse sampling frequency (e.g. <code>1/44100</code> or <code>1/48000</code>).
+
+            <h2 id="section-last-paragraph">Last paragraph title</h2>
+
+            <p>I had the idea of this post for many months, glad to finally get it done :)</p>
+
+            <p>As always, thanks for reading!</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
