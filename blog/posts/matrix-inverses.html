@@ -1,0 +1,193 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <title>Uniqueness of matrix inverses | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Uniqueness of matrix inverses</div></center><br/>
+            <center><span class="post-date">2023 Jun 21</span></center><br/>
+
+            <p><i>This post is much more math-y than my usual stuff. I just got this in my head for a while and decided to write it up. I even added MathJax to my blog for that!</i></p>
+
+            <p>When we think about inverses, we usually take uniqueness for granted. Like, 0.5 is the inverse of 2, and how can there be anything else?</p>
+
+            <p>However, the question of inverses is much more delicate when we work with something non-commutative, or worse, infinite-dimensional, as I'll show in this post.</p>
+
+            <p>Don't be scared of terminology; I explain everything we need as we go.</p>
+
+            <p>Let's start with simple stuff, though.</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-numbers">Numbers</h2>
+
+            <p>Say, we're working with numbers. <a href="https://en.wikipedia.org/wiki/Rational_number">Rational numbers</a> \(\mathbb Q\), <a href="https://en.wikipedia.org/wiki/Real_numbers">real numbers</a> \(\mathbb R\), <a href="https://en.wikipedia.org/wiki/Complex_number">complex numbers</a> \(\mathbb C\), it doesn't really matter, as long as we can do arithmetics with them, including division (i.e. they form a <a href="https://en.wikipedia.org/wiki/Field_(mathematics)"><i>field</i></a>).</p>
+
+            <p>We have a number \(a\), and some number \(b\) is its inverse, meaning \(a\cdot b=1\). Let's say we have another number \(c\) which is also the inverse of \(a\), meaning \(a\cdot c=1\). Can it be that \(b \neq c\), i.e. \(a\) has two different inverses?</p>
+
+            <p>The answer is no, and the proof is two lines of school-level algebra: consider the number \(c\cdot a\cdot b\):</p>
+
+            \[c\cdot a\cdot b = c\cdot (a\cdot b) = c \cdot 1 = c\]
+
+            \[c\cdot a\cdot b = (c\cdot a)\cdot b = 1 \cdot b = b\]
+
+            <p>Since \(b\) and \(c\) are both equal to the same thing, they are just equal. QED.</p>
+
+            <p>Unfortunately, if you google "uniqueness of matrix inverse", you get a dozen posts with the very same proof. I'll show that this question is much deeper than that!</p>
+
+            <h2 id="section-noncommutative-alberas">Non-commutative algebras</h2>
+
+            <p>When talking about things that can be both added and multiplied (like numbers, polynomials, matrices, etc), "non-commutative" always refers to multiplication. Such structures (with addition & multiplication) are called <a href="https://en.wikipedia.org/wiki/Algebra_over_a_field"><i>algebras</i></a>, and a <i>non-commutative</i> algebra is one where it happens that \(a\cdot b \neq b\cdot a\).</p>
+
+            <p>It makes a lot of sense if we think of elements of our algebra as some <i>operations</i> or <i>processes</i>: many things work differently when combined in different orders! Say, I paint my wall in black, and then I paint it in yellow, or vice versa &ndash; the result clearly depends on the order of these actions. Or maybe I sit on my wooden chair, and then break it into pieces with an axe. Try doing that in a different order! You get the idea.</p>
+
+            <p>This is exactly the reason why the <a href="https://en.wikipedia.org/wiki/Matrix_(mathematics)"><i>matrix algebra</i></a> is non-commutative: matrices represent linear transformations of vectors, i.e. some <i>operations</i> on vectors, and matrix multiplication is composition of these operations, and the result depends on the order of composition. The classical example is composing rotation and translation:</p>
+
+            <center><img src="/blog/media/matrix-inverses/translation-rotation.jpg" class="image-embed"></center>
+
+            <p>Of course, you'll need <a href="http://www.opengl-tutorial.org/beginners-tutorials/tutorial-3-matrices"><i>homogeneous coordinates</i></a> to represent translations as matrices, which is common in e.g. 3D graphics.</p>
+
+            <p><i>In fact, starting with 3 dimensions, rotations only are already non-commutative.</i></p>
+
+            <h2 id="section-noncommutative-inverses">Non-commutative inverses</h2>
+
+            <p>So, non-commutativity is natural and expected, but also a huge pain. What does an <i>inverse</i> even mean in this case?</p>
+
+            <p>If we have two elements \(a\) and \(b\) such that \(a\cdot b=1\), do we say that they are inverses of each other? Well, that wouldn't be a good idea in general, because we know nothing about \(b\cdot a\)! We didn't have this problem with numbers because numbers were commutative: \(a\cdot b = b\cdot a\).</p>
+
+            <p>In the non-commutative case we talk about <i>left inverses</i> and <i>right inverses</i> separately. If \(a\cdot b=1\), we say that \(a\) is a <i>left inverse</i> of \(b\), and \(b\) is a <i>right inverse</i> of \(a\).</p>
+
+            <p>So, what about their uniqueness? Suppose that an element \(a\) has two <i>right inverses</i>: \(a\cdot b=1\) and \(a\cdot c=1\). Let's try repeating the proof above:</p>
+
+            \[c\cdot a\cdot b = c\cdot (a\cdot b) = c \cdot 1 = c\]
+
+            \[c\cdot a\cdot b = (\color{red}{c\cdot a})\cdot b = (\color{red}{???}) \cdot b = \color{red}{???}\]
+
+            <p>The proof doesn't work: it wants \(c\cdot a\), but we only know that \(a\cdot c = 1\)!</p>
+
+            <p>However, you might have noticed that if \(c\) is a <i>left inverse</i> of \(a\), i.e. if \(c\cdot a=1\), the proof works without any changes! I'll repeat this in full: if an element \(a\) has a <i>right inverse</i> \(b\) and a <i>left inverse</i> \(c\), then they are equal: \(b = c\).</p>
+
+            <p>So, any two different-sided inverses (i.e. one left and one right) are equal. In this case, if an element has many right inverses and at least one left inverse, all these right inverses are equal to this left inverse, and so they are equal to each other. In other words, if an element has at least one left inverse and at least one right inverse, all its inverses are equal, i.e. it has a <i>unique inverse</i>!</p>
+
+            <p>So, can it happen that an element has e.g. left inverses but no right inverse? Oh yes it can.</p>
+
+            <h2 id="section-infinite-dimensional-algebras">Infinite-dimensional algebras</h2>
+
+            <p>Sounds cool already, huh?</p>
+
+            <p>Let's talk about infinite sequences of real numbers (or any other numbers, it doesn't matter). These are of the form \((x_0, x_1, x_2, \dots)\). They form a vector space: you can add them (component-wise), you can multiply them by a number (multiply all coordinates by the number), etc.</p>
+
+            <p>If they are a vector space, there are linear operators on this space. Something like a matrix, but with an infinite number of entries. To be honest, it is a bit hard to think about these operators in terms of infinite matrices, and a simpler point of view is just to think what every operator <i>does</i> to the input sequence.</p>
+
+            <p>Consider the <i>right-shift operator</i> \(R\): it shifts the sequence to the right, and appends a zero at the beginning:</p>
+
+            \[ R(x_0, x_1, \dots) = (0, x_0, x_1, \dots) \]
+
+            <p>Similarily, a <p>left-shift operator</p> \(L\) shifts the sequence to the left, dropping the first term:</p>
+
+            \[ L(x_0, x_1, x_2, \dots) = (x_1, x_2, \dots) \]
+
+            <p>What happens if we multiply this operators? Remember, multiplication and composition are the same for linear operators (by definition):</p>
+
+            \[ (L\cdot R) (x_0, x_1, x_2, \dots) = L(R(x_0, x_1, x_2, \dots)) = L(0, x_0, x_1, x_2, \dots) = (x_0, x_1, x_2, \dots) \]
+            \[ (R\cdot L) (x_0, x_1, x_2, \dots) = R(L(x_0, x_1, x_2, \dots)) = R(x_1, x_2, \dots) = (0, x_1, x_2, \dots) \]
+
+            <p>So, \(L\cdot R\) doesn't change the input sequence, meaning \(L \cdot R=1\) (here, \(1\) is the identity operator), but \(R\cdot L\) replaces the first element of the sequence with zero, so \(R\cdot L\color{red}{\neq}1\). \(L\) is a <i>left inverse</i> of \(R\), and \(R\) is a <i>right inverse</i> of \(L\), but not the other way round.</p>
+
+            <p>This means that \(L\) doesn't have a left inverse at all, &ndash; otherwise, it would be equal to the right inverse, which is \(R\), so \(R\) would be a left inverse of \(L\), which would mean \(R\cdot L = 1\), which we know is false. Similarly, \(R\) doesn't have a right inverse.</p>
+
+            <p>In fact, if we define a family of operators \( R_s(x_0, x_1, \dots) = (s\cdot x_0, x_0, x_1, \dots) \) that do a right shift and append a copy of \(x_0\) multiplied by a fixed number \(s\) instead of zero, and all of them are right inverses of \(L\):</p>
+
+            \[ (L\cdot R_s) (x_0, x_1, x_2, \dots) = L(R_s(x_0, x_1, x_2, \dots)) = \\ = L(s \cdot x_0, x_0, x_1, x_2, \dots) = (x_0, x_1, x_2, \dots) \]
+
+            <p>So \(L\cdot R_s = 1\), meaning \(L\) has <i>many different right inverses</i>, which can only happen if it doesn't have a left inverse.</p>
+
+            <p>Spooky stuff, if you ask me.</p>
+
+            <h2 id="section-matrices">Matrices</h2>
+
+            <p>This doesn't happen to matrices, though. At least not in finite dimensions (whether or not to even call infinite-dimensional beasts <i>matrices</i> is a separate question).</p>
+
+            <p>A usual proof that matrices have two-sided inverses usually <a href="https://en.wikipedia.org/wiki/Cramer%27s_rule#Finding_inverse_matrix">explicitly computes</a> the inverse anyway:</p>
+
+            \[ A^{-1} = \frac{1}{\det A}\operatorname{adj}A \]
+
+            <p>where \(\det A\) is the <a href="https://en.wikipedia.org/wiki/Determinant"><i>determinant</i></a>, and \( \operatorname{adj}A \) is the <a href="https://en.wikipedia.org/wiki/Adjugate_matrix"><i>adjugate</i></a> of the matrix \(A\), formed by replacing each element with the determinant of the whole matrix without the current row and column (called the <a href="https://en.wikipedia.org/wiki/Cofactor_matrix"><i>cofactor matrix</i></a>), and taking the transpose.</p>
+
+            <p>Quite a lot of determinants involved. Needless to say, any computations with this monstrosity are terrifying.</p>
+
+            <p>However, we can prove that matrix inverses are unique without computing said inverses at all! In fact, this isn't special to matrices: this works in any <i>finite-dimensional algebra</i> (or, more generally, any <a href="https://en.wikipedia.org/wiki/Artinian_ring"><i>Artinian ring</i></a>).</p>
+
+            <h2 id="section-finite-dimensional-algebras">Finite-dimensional algebras</h2>
+
+            <p>Any algebra is a vector space, so we can speak of its dimension. The algebra \(M_N\) of \(N\times N\) matrices has dimension \(N^2\). The algebra of complex numbers \(\mathbb C\) has dimension 2 if the base scalar field is the real numbers \(\mathbb R\). The algebra of real polynomials in one variable \(\mathbb R[X]\) is infinite-dimensional. The <a href="https://en.wikipedia.org/wiki/Clifford_algebra">Clifford algebra</a> \(\operatorname{Cl}(\mathbb R^N)\) of an N-dimensional Euclidean space has dimension \(2^N\).</p>
+
+            <p>Finite-dimensional algebras are quite special, because we can often deduce some properties of them just by using the dimensions. This is exactly what I'm going to do with inverses.</p>
+
+            <p>I want to prove the following: in a <i>finite-dimensional algebra</i> \(\mathbb A\), if some element \(a\) is a <i>left inverse</i> of element \(b\), then \(a\) also <i>is a right inverse</i> for <i>some</i> element \(c\). In other words, if \(a\cdot b=1\), then \(c\cdot a=1\) for some element \(c\). From that it will follow, combining with all our previous discussions, that \(b=c\) and inverses are <i>unique</i> in this algebra.</p>
+
+            <h2 id="section-left-ideals">Left ideals</h2>
+
+            <p>To prove this, we will consider the sequence of sets \(I_n = \{x\cdot a^n, x \in \mathbb A\}\). These are called <a href="https://en.wikipedia.org/wiki/Principal_ideal"><i>principal left ideals</i></a> generated by powers of \(a\). <i>We don't need the full definition of a left ideal here, although it isn't much complicated. Also note that \(I_0 = \mathbb A\), which isn't relevant to us but still funny.</i></p>
+
+            <p>Two things are special about this sequence. First of all, each \(I_n\) is not just a <i>subset</i> of our algebra \(\mathbb A\), but a <i>vector subspace</i>. This is because \(I_n\) is closed under addition and multiplication by a scalar:</p>
+
+            \[ x\cdot a^n + y\cdot a^n = (x+y)\cdot a^n \in I_n \]
+
+            \[ \lambda \cdot (x\cdot a^n) = (\lambda\cdot x)\cdot a^n \in I_n \]
+
+            <p>As such, it has a dimension, which is necessarily finite (because the whole algebra has finite dimension).</p>
+
+            <p>Secondly, this sequence is a <a href="https://en.wikipedia.org/wiki/Ascending_chain_condition"><i>descending chain</i></a>, meaning each set is contained in the previous one \(I_{n+1} \subseteq I_n\). This is easy to show as well:</p>
+
+            \[ I_{n+1} \ni x\cdot a^{n+1} = x\cdot (a \cdot a^n) = (x\cdot a)\cdot a^n \in I_n \]
+
+            <h2 id="section-secret-ingredient">The secret ingredient</h2>
+
+            <p>So, we have a sequence of vector subspaces of our algebra, and each subspace is contained in the previous one, which means its dimension is less or equal to the dimension of the previous one \(\dim I_{n+1} \leq \dim I_n\). In other words, the sequence of dimensions \((\dim I_n)\) is <i>non-increasing</i>.</p>
+
+            <p>A non-increasing sequence of natural numbers (dimensions cannot be negative or fractional, not for vector spaces) is quite special: it cannot be <i>always decreasing</i>. I.e. it cannot happen that \(\dim I_0 > \dim I_1 > \dim I_2 > \dots\) and so on, with all inequalities being strict. If, for example, \(\dim I_0 = 4\), we could have a sequence \(4 > 3 > 2 > 1 > 0\) and now we cannot continue because there is no natural number less than zero! This is basically the property of natural numbers being <a href="https://en.wikipedia.org/wiki/Well-ordering_principle"><i>well-ordered</i></a>, the same property that enables induction.</p>
+
+            <p>So, the sequence of dimensions is <i>non-increasing</i>, but is also cannot be <i>always decreasing</i>. What this means is that at some point this sequence of dimensions has two equal consecutive elements, meaning \(\dim I_{n+1} = \dim I_n\) for some \(n\). This is the secret ingredient of the proof, the key observation which requires the algebra to be finite-dimensional.</p>
+
+            <h2 id="section-final-proof">Final proof</h2>
+
+            <p>So, \(\dim I_{n+1} = \dim I_n\), and these are vector spaces, and one contains the other. This means that they are simply equal: \(I_{n+1} = I_n\).</p>
+
+            <p>Now, \(I_n\) contains elements of the form \(x\cdot a^n\). Taking \(x=1\) we see that it contains \(a^n\). Since \(I_{n+1} = I_n\), \(I_{n+1}\) also contains \(a^n\).</p>
+
+            <p>Elements of \(I_{n+1}\) are of the form \(x \cdot a^{n+1}\), and \(I_{n+1}\) contains \(a^n\), which means it is also of this form \(c \cdot a^{n+1} = a^n\).</p>
+
+            <p>Remember that \(a\) has a <i>right inverse</i> \(b\), meaning that \(a\cdot b=1\). Let's multiply the equation \(c \cdot a^{n+1} = a^n\) by \(b\) <i>on the right</i> \(n\) times (or, equivalently, multiply by \(b^n\)):</p>
+
+            \[ \begin{align}c \cdot a^{n+1} \color{blue}{\cdot b} = a^n \color{blue}{\cdot b} &\Longrightarrow c \cdot a^n = a^{n-1} \\\ c \cdot a^n \color{blue}{\cdot b} = a^{n-1} \color{blue}{\cdot b} &\Longrightarrow c \cdot a^{n-1} = a^{n-2} \\\ &\dots \\\ c \cdot a^2\color{blue}{\cdot b} = a \color{blue}{\cdot b} &\Longrightarrow \color{blue}{c \cdot a = 1} \end{align} \]
+
+            <p>So, \(c\cdot a = 1\), meaning \(a\) has a left inverse. It also has a right inverse \(b\), which means \(b=c\) and all (left and right) inverses of \(a\) are equal, meaning it has a <i>unique inverse</i>. Hooray!</p>
+
+            <p>The argument applies to any finite-dimensional algebra. If you're working with Clifford algebras (also known as <i>geometric algebra</i>), inverses are unique there, too, and left inverses are automatically right inverses and vice versa. This should simplify some equations, I guess :)</p>
+
+            <h2 id="section-thats-it">Mmm...yeah, that's it!</h2>
+
+            <p>I don't think I'll stop writing on math topics anytime soon; I have at least a couple of other pure-math posts hatching in my head.</p>
+
+            <p>As always, thanks for reading!</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
