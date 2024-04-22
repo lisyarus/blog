@@ -1,0 +1,396 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <title>How not to design a UI library | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">How not to design a UI library</div></center><br/>
+            <center><span class="post-date">2023 Mar 11</span></center><br/>
+
+            <p><i>This post is a dive into the design of my UI library in my pet C++ game engine, as well as a lot of rants on what didn't work as well as I'd thought it would :) The library itself is located <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/ui">here</a>.</i></p>
+
+            <p>I've noticed that literally in any project I make there is some kind of UI. Even a keyboard-only game needs some text and a few buttons:</p>
+
+            <center><img src="/blog/media/how-not-to-ui/astrowind.png" class="image-embed"></center>
+            <center><i><a href="https://lisyarus.itch.io/astrowind">AstroWind</a>, my first jam game, made for Brackeys 2020.2</i></center>
+
+            <br>
+
+            <center><img src="/blog/media/how-not-to-ui/trackdizzia.png" class="image-embed"></center>
+            <center><i><a href="https://lisyarus.itch.io/trackdizzia">Trackdizzia</a>, my recent racing game made for Ludum Dare 51. It turned out surprisingly decent!</i></center>
+
+            <p>After making a bunch of jam games & random (mostly abandoned) projects, I decided I need a dedicated UI library in my engine.</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-alternatives">Alternatives?</h2>
+
+            <p>Before I get to the point of the post, let's briefly discuss some existing UI libraries:</p>
+
+            <ul>
+                <li><b>Qt</b></li>
+            </ul>
+
+            <center><img src="/blog/media/how-not-to-ui/qt.png" class="image-embed"></center>
+
+            <p>Qt is by far the best high-quality commercial UI library targetting C++. It is also an enormous clusterfuck in terms of how it approaches things. It has a lot of legacy (for a reason &ndash; the first version of the library <i>predates</i> the first C++ standard!), requires weird preprocessors for its signals mechanism (at least it supports lambdas here), does weird stuff with OpenGL (like flipping the Y coordinate for the default framebuffer and generally unpredictably altering the GL state), doesn't use modern C++ (raw pointers everywhere!), etc. It also wants to be in control of everything, while I'd like a library that I can seamlessly plug to a project. Not to mention I'll have to bundle petabytes of Qt DLLs with my games :)</p>
+
+            <ul>
+                <li><b>ImGUI</b></li>
+            </ul>
+
+            <center><img src="/blog/media/how-not-to-ui/imgui.png" class="image-embed"></center>
+
+            <p>Dear ImGUI is excellent, but it's targeting tools & not the end user (it says that directly in the description!). I also just don't really buy the immediate mode thing: I want the thing to flawlessly support e.g. tons of complex animations & formatted text, and re-submitting this every frame sounds painful.</p>
+
+            <p><i>There are also things like wxWidgets, GTK, and a ton of other libraries with some similar issues. I didn't conduct a thorough research into all these; this section is mostly to prevent questions like "but why didn't you just use <code>library_name</code>" :)</i></p>
+
+            <h2 id="section-goals">Goals</h2>
+
+            <p>So I'm making my own UI library in C++, because I <s>love reinventing the wheel</s> have genuinely valid reasons to. Whenever you design a library, you have some end goals in mind (maybe unconciously so). In my case these were:</p>
+
+            <ul>
+                <li><b>Automatic layout.</b> This was probably the most important goal: even in a simplest case of window-centered text, it's so nice if it automatically positions itself in the window center and you don't have to write this code manually. Of course, there are much more complicated cases like some floating widget with buttons and text and scrollbars and stuff, all resizing perfectly. This becomes a huge pain without some automation:</li>
+
+                <center><video controls class="video-embed"><source src="/blog/media/how-not-to-ui/merchants.mp4" type="video/mp4"></video></center>
+                <center><i>An unfinished medieval trading game, abandoned largely because of the sheer amount of UI that I couldn't handle anymore.</i></center>
+
+                <li><b>Easy integration.</b> I usually design all parts of my engine to be extremely decoupled, as self-contained as possible. I should be able to add UI to my project at any point and not have to rewrite everything.</li>
+                <li><b>Customization.</b> Naturally, I'd want to use different UI styles for different projects, so I need some way of customizing the appearance of various UI components.</li>
+                <li><b>Separation of logic and appearance.</b> Maybe I want to make a button that starts spinning and emitting sparkles when I mouseover it? I should be able to implement it without duplicating all the essential button logic.</li>
+                <li><b>Performance.</b> As I've said, I want to use it for ginormously complex user-facing UI's and I want it to behave smoothly.</li>
+                <li><b>Flexibility.</b> If I want to make a UI element that flies around the screen as a propelled spacecraft, I should be able to.</li>
+
+            </ul>
+
+            <h2 id="section-design">Design</h2>
+
+            <p>I started prototyping the library some two years ago in a certain map generation project, and then moved it inside my pet engine to continue there.</p>
+
+            <center><img src="/blog/media/how-not-to-ui/anthropos.png" class="image-embed"></center>
+            <center><i>An abandoned map generation project. Gosh I have dozens of these.</i></center>
+
+            <p>I decided to go the old-school, Qt-like OOP-heavy style: you have a base <code>element</code> class that everything inherits from, with a ton of virtual methods that you can override to customize your UI element. Something like</p>
+
+            <pre><code class="language-cpp block">struct element
+{
+    virtual void draw() const = 0;
+
+    virtual bool event(mouse_move) = 0;
+    virtual bool event(mouse_click) = 0;
+    virtual bool event(key_press) = 0;
+
+    virtual box shape() const = 0;
+    virtual void reshape(bbox) = 0;
+
+    virtual ~element() {}
+};</code></pre>
+
+            <p>This actually worked surprisingly well and was flexible enough, but every time I wanted to add something radically new to the library, the easiest option was to add yet another method to this base class, and after two years it grew <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/ui_legacy/include/psemek/ui/element.hpp">obnoxiously</a>.</p>
+
+            <p>The <code>draw()</code> method doesn't actually draw anything itself, it has a <code>painter</code> argument that does the actual drawing, rouhgly like</p>
+
+            <pre><code class="language-cpp block">void my_element::draw(painter & p) const
+{
+    p.draw_rect(0, 0, 100, 100, gfx::red);
+    p.draw_text("Ok", 50, 50, gfx::white);
+}</code></pre>
+
+            <p>Say, if you want to implement a button class, you make something like</p>
+
+            <pre><code class="language-cpp block">struct button : element
+{
+    void draw() const override;
+
+    bool event(mouse_move) override;
+    bool event(mouse_click) override;
+
+    box shape() const override;
+    void reshape(bbox) override;
+
+    using callback = std::function&lt;void()&gt;;
+    void on_click(callback);
+
+private:
+    bool mouseover_ = false;
+    bool mousedown_ = false;
+    callback callback_;
+};</code></pre>
+
+            <p>and then implement all the state logic in the overriden methods. I'll talk about the <code>shape()/reshape()</code> methods a bit later in the article.</p>
+
+            <p>The elements form a tree hierarchy: each element has a parent and some (maybe zero) children:</p>
+
+            <pre><code class="language-cpp block">struct element
+{
+    // ...
+
+    element * parent();
+
+    virtual std::span&lt;element *&gt; children() = 0;
+};</code></pre>
+
+            <p>This allows implementing layout/container UI elements, like an element that lays out it's children in a horizontal row.</p>
+
+            <p>The <code>span&lt;element *&gt;</code> interface is an optimization so that the <code>children()</code> method needs no allocations (as opposed to returning e.g. and <code>vector</code>) and makes no assumptions about how the element stores it's children: via <code>unique_ptr/shared_ptr</code>, in a <code>vector</code>, or even simply by value. In practice, however, all UI elements are always stored by a <code>shared_ptr</code> because I might need to reference them elsewhere (e.g. to update their state from the logic code, to change their style, etc). This means that most container elements need to store their children twice: in a <code>vector&lt;shared_ptr&lt;element&gt;&gt;</code> for owning them, and in a <code>vector&lt;element *&gt;</code> to implement the <code>children()</code> method. Horrible.</p>
+
+            <p>The <code>event()</code> methods return a <code>bool</code> signifying whether the element did handle the event. When an event occurs (e.g. the user clicks somewhere), the library traverses the element tree bottom-up (from lowest children to the root) and stops when someone handles the event. There are certain conventions like nobody should handle (i.e. return <code>true</code> from) the <code>mouse_move</code> event, though you can still do that (to intercept the event, i.e. to prevent it from propagating further).</p>
+
+            <h2 id="section-customization">Customization</h2>
+
+            <p>To support customizing the appearance of my UI, I introduced the concept of <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/ui_legacy/include/psemek/ui/style.hpp"><i>styles</i></a>. A style is a struct with a bunch of data that controls the appearance, like</p>
+
+            <pre><code class="language-cpp block">struct style
+{
+    std::optional&lt;color&gt; color;
+    std::optional&lt;int&gt; border_width;
+    std::optional&lt;int&gt; text_size;
+    // etc...
+};</code></pre>
+
+            <p>All the fields are optional: an empty value means this value comes from the element's parent style. This way, I can set the default style to the UI root element, and override specific values in specific components, like make this particular button red-colored.</p>
+
+            <p>However, this would mean that on every <code>draw()</code> I'd have to look into the element's style, then look at it's parent style, then the parent's parent, etc up until the root style, to compute the final style of this element. That's way more operations than I'd want a single <code>draw()</code> call to do, so I added <i>style caching</i>: every element remembers the combined style of itself and the parent's combined style. Phew!</p>
+
+            <p>Of course, later I've faced situations where I want to add a specific style to an element <i>without</i> propagating it to the children! So, I added another style hierarchy, called <code>own_style</code>, and the element uses it's combined <code>style</code> and combined <code>own_style</code>. This solved the problem but I already felt like all this style-fu is awful :)</p>
+
+            <p><i>Of course</i>, later I needed to dynamically update the style. Say, the user changed some apperance settings: now I need a way to tell <i>all</i> the UI elements that use this particular style as <code>style</code> or <code>own_style</code> to recalculate their combined styles. So, I made the style store pointers (<code>weak_ptr</code>'s, actually) to all elements using the style, so that I could update it efficiently.</p>
+
+            <p><i>Wtf.</i></p>
+
+            <p>These aren't the only problems with this approach. What if I'm making my own UI implementation (see the next section) with very specific buttons comming from pre-made images, how do I interpret the <code>border_width</code> parameter? Do I ignore it completely, or do I try to use it somehow? What if I want some specific style option that only makes sense in this particular implementation of UI elements, do I add it to the <code>style</code> struct from the core library? Neither of this makes sense.</p>
+
+            <p>Overall, this solution kinda worked, but I'm really not happy with it (even though most UI frameworks seem to be doing something similar).</p>
+
+            <h2 id="section-separation">Separation of logic and appearance</h2>
+
+            <p>This part is actually pretty OK in my library. The base library contains implementations of common UI components, like <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/ui_legacy/include/psemek/ui/button.hpp">buttons</a>, <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/ui_legacy/include/psemek/ui/label.hpp">text views</a>, <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/ui_legacy/include/psemek/ui/grid_layout.hpp">grid layouts</a>, <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/ui_legacy/include/psemek/ui/slider.hpp">sliders</a>, etc, but only their core logic. For example, the button tracks whether the mouse is hovering the button and whether it is clicked, and calls the <code>on_click</code> callback when appropriate.</p>
+
+            <p>However, it doesn't know anything about it's shape and appearance. You're supposed to subclass this base button and implement these things yourself. I introduced a thing called an <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/ui_legacy/include/psemek/ui/element_factory.hpp"><i>element factory</i></a> &ndash; an interface that allows creating various UI components. It's basically just a bunch of <code>make_X</code> methods for every possible component type <code>X</code>:</p>
+
+            <pre><code class="language-cpp block">struct element_factory
+{
+    virtual std::shared_ptr&lt;button&gt; make_button() = 0;
+    virtual std::shared_ptr&lt;label&gt; make_label() = 0;
+    virtual std::shared_ptr&lt;slider&gt; make_slider() = 0;
+    // etc
+};</code></pre>
+
+            <p>The idea is that you implement this interface, providing implementations of all these elements. E.g. your button would look something like</p>
+
+            <pre><code class="language-cpp block">struct my_button : button
+{
+    void draw(painter &) override;
+};</code></pre>
+
+            <p>and then you'd have</p>
+
+            <pre><code class="language-cpp block">struct my_element_factory : element_factory
+{
+    std::shared_ptr&lt;button&gt; make_button() override
+    {
+        return std::make_shared&lt;my_button&gt;();
+    }
+};</code></pre>
+
+            <p>Then you could make complex reusable UI components, like a <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/ui_legacy/include/psemek/ui/color_picker.hpp">color picker</a>, that seamlessly work with any <code>element_factory</code> &ndash; they use it to create all the UI elements they consist of.</p>
+
+            <p>The library provides a simple <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/ui_legacy/source/default_element_factory.cpp">default implementation</a> of the <code>element_factory</code>, with element implementations that mostly look like colored rectangles (who needs more?):</p>
+
+            <center><img src="/blog/media/how-not-to-ui/villages.png" class="image-embed"></center>
+            <center><i>Another project where I've spent too much time on map generation. <br> I absolutely love these islands, though.</i></center>
+
+            <p>The <code>element_factory</code> also simplifies adopting the UI in a new project: you use the default factory at the beginning, and then gradually switch to a proper one when the time is right.</p>
+
+            <p>Separating logic into base classes and implementing drawing in derived ones works pretty well, but the <code>element_factory</code> approach has flaws. Having to list all possible UI components is already a burden; it also forces you to e.g. subclass the base <code>button</code> class when implementing your own <code>button</code> (it cannot be just <code>shared_ptr&lt;element&gt; make_button()</code> because we need extra functionality from the returned object).</p>
+
+            <p>What if I want my element factory to provide some extra components that don't have analogues in the base library? This happens more often then you think, e.g. a specialized time speed control that looks like buttons on an old radio that have to be precisely positioned together. I ended up just referring to the current project's element factory explicitly, without using the base <code>element_factory</code> abstraction.</p>
+
+            <p>What if there are some elements my factory doesn't support? I'd have to return <code>nullptr</code> from such methods or throw an exception. Ideally, though, I wouldn't have to implement these methods at all! (well actually this is exactly how it works: the base <code>element_factory</code> returns <code>nullptr</code> in most methods already, but still).</p>
+
+            <p>So far, so good.</p>
+
+            <h2 id="section-flexibility">Flexibility & Integration</h2>
+
+            <p>Flexibility is easy. You want a UI element that does god knows what? Subclass the base <code>element</code> class and do whatever you want.</p>
+
+            <p>To integrate the library, you create a simple <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/ui_legacy/include/psemek/ui/controller.hpp"><i>controller</i></a> object that stores the UI tree, distributes events & governs the rendering process. You don't <i>have</i> to use it, though: if, for some reason, you want a different event propagation logic or a completely different rendering implementation, you can do that! The whole UI tree doesn't know one bit about this <code>controller</code>.</p>
+
+            <p>I also made a <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/ui_legacy/source/ui_scene_legacy.cpp">gluing wrapper</a> to connect the UI with the SDL2-based application code.</p>
+
+            <p>Let's talk about the elephant in the room.</p>
+
+            <h2 id="section-automatic-layout">Automatic layout</h2>
+
+            <p>I was thinking about some constraint-based systems, like the auto layout in iOS, where you literally write equations on certain values, like <code>my_button.top = my_label.bottom + 10</code>, and then the library does some magic to solve these. This sounds cool, but after spending some time thinking about how it will work internally, I felt like this is way too much for my needs. I eventually settled on something like the <a href="https://swiftui-lab.com/layout-protocol-part-1">SwiftUI layout protocol</a> (which I didn't know was a thing when I was designing my solution).</p>
+
+            <p>Each UI element has a <code>shape</code> &ndash; an interface with just two methods:</p>
+
+            <pre><code class="language-cpp block">struct shape
+{
+    virtual bool contains(point) const = 0;
+    virtual box bbox() const = 0;
+};</code></pre>
+
+            <p><i>(A <code>box</code> is an axis-aligned box.)</i></p>
+
+            <p>The idea was that I'll support a plethora of different shapes &ndash; boxes, triangles, circles, hexagons, anything! In practice I almost exclusively used a rectangle shape, and there's a triangle shape implementation used only for arrow buttons (and nobody would probably notice if they used a rectangular shape anyway). However, this arbitrary shape support didn't really get in my way, so maybe it's a good thing, I'm still not sure.</p>
+
+            <p>Then, each UI element has two methods that retrieve it's current <code>shape()</code> and force it to <code>reshape()</code> into a new bounding box:</p>
+
+            <pre><code class="language-cpp block">struct element
+{
+    virtual struct shape const & shape() const = 0;
+    virtual void reshape(box) = 0;
+
+    // ...
+};</code></pre>
+
+            <p>So, if I want a button to start at X=100, Y=200 and to be 50 pixels wide and 20 pixels in height, I do something like <code>button.reshape({100, 200, 150, 220})</code>, but in practice it is not the user who sets exact element layouts.</p>
+
+            <p>Finally, each element can report its <i>size constraints</i> &ndash; how big or small can it be in both dimensions:</p>
+
+            <pre><code class="language-cpp block">struct element
+{
+    virtual box size_constraints() const = 0;
+
+    // ...
+};</code></pre>
+
+            <p>Say, if the element can be anything from 20 to 175 pixels wide, it returns the range [20, 175] in the X part of the returned box. If the element doesn't have a lower constraint, it returns 0 as the minimum value, and if it doesn't have an upper bound on it's size, it returns infinity as the maximal value. Nice and simple.</p>
+
+            <p>All this becomes an <i>automatic</i> layout system when parent elements start communicating with their children. Say, we have a horozintal grid (also knows as hstack) layout with two children. First, someone asks it for it's <code>size_constraints()</code>. It in turns asks it's children' <code>size_constraints()</code>; then, the minimum X size of the layout is the sum of minimal X sizes of the children plus some spacing between them, and the maximal Y size is the minimum of the maximal Y sizes of the children, etc.</p>
+
+            <p>Then, the layout's parent tells it to <code>reshape()</code> into a new bounding box. It computes the sizes and positions of it's children, and calls <code>reshape()</code> on each of them with the respective bounding boxes.</p>
+
+            <p>All this was hard to get right, and I got a lot of bugs caused by the <code>size_constraints()</code> and <code>reshape()</code> not being in sync with each other (e.g. forgetting about spacing in one but not the other method), but eventually I got there:</p>
+
+            <center><video autoplay muted loop class="image-embed"><source src="/blog/media/how-not-to-ui/merchants_layout.mp4" type="video/mp4"></video></center>
+            <center><i>Even the UI scale changes nicely!</i></center>
+
+            <p>The grid layouts also support weights. By default they are set to 1, but if I want a certain element to take twice as much space as the others, I set it's weight to 2. A weight of 0 means this element should use it's minimal possible size. This last bit complicates the layout algorithm: I have to allocate space for minimized elements first, and then distribute what's left among the elements with nonzero weights.</p>
+
+            <p>I've spent quite a lot of time chasing bugs with this system that eventually turned out to be intended behaviours. You set some weight to be zero and then some seemingly unrelated elements disappear. You add a sixth button and for some reason it is larger than other five. This just drove me mad.</p>
+
+            <p>Other container elements may implement their own logic in these layout methods. A <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/ui_legacy/include/psemek/ui/screen.hpp">screen</a> (also known as a <i>stack</i>) simply puts it's children on top of each other. A <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/ui_legacy/include/psemek/ui/scroller.hpp">scroller</a> allows to scroll it's child vertically and/or horizontally, etc.</p>
+
+            <p>This all worked marvelously until I went more serious about showing text. You see, if you have multiline text that can stretch and shrink and wrap and occupy a variable number of lines, what are it's size constraints? The minimum width is something like the width of the widest letter (or maybe the widest word), because the text can wrap to many lines. The minimum height is the height of a text line, because the whole text can fit into a single, very long line. Does it mean that the minimum (width,height) pair is (width of letter, height of text line)? Bollocks! That would only fit one letter.</p>
+
+            <p>With wrapping text, the width and height aren't independent. In fact, there isn't such a thing as the minimal (width,height) pair, rather a set of minimal pairs all occupying roughly the same area (<a href="https://en.wikipedia.org/wiki/Maximal_and_minimal_elements"><i>minimal elements</i></a> but not <a href="https://en.wikipedia.org/wiki/Greatest_element_and_least_element"><i>least elements</i></a> from the order-theoretic perspective). I spent some time thinking about this <i>occupying same area</i> idea: maybe I should constrain the <i>product</i> of width and height as well? However, adding some quadratic optimization to the already shaky process seemed like way too much.</p>
+
+            <p>Instead, I figured that if the width and height aren't independent anymore, let's just decide on one of them first, and then use the decided size to decide on the second. But what should be the first &ndash; width or height? This is how the <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/ui_legacy/include/psemek/ui/asymmetric.hpp"><code>asymmetric</code></a> class appeared in my library:</p>
+
+            <pre><code class="language-cpp block">struct asymmetric
+    : element
+{
+    virtual void set_width_first(bool value) = 0;
+};</code></pre>
+
+            <p>An <code>asymmetric</code> element is one that supports this new protocol: select a width first, then use it to select a height, or the other way round. <i>Now that I think of it, there was no reason to make it into a separate interface &ndash; I should've merged it into the base <code>element</code> interface.</i></p>
+
+            <p>Two new methods are added to the <code>element</code> base class:</p>
+
+            <pre><code class="language-cpp block">struct element
+{
+    virtual interval width_constraints(float height) const = 0;
+    virtual interval height_constraints(float width) const = 0;
+
+    // ...
+};</code></pre>
+
+            <p>So, each element can tell its width constraints for a fixed height, and vice versa, similar to Qt's <a href="https://doc.qt.io/qt-6/qwidget.html#heightForWidth"><code>heightForWidth()</code></a>. This complicated everything yet one more time, but solved the wrapping text problems.</p>
+
+            <center><video autoplay muted loop controls class="video-embed"><source src="/blog/media/how-not-to-ui/particles.mp4" type="video/mp4"></video></center>
+            <center><i>This <a href="https://lisyarus.itch.io/particle-simulator">particle simulator</a> manual was a lot of text.</i></center>
+
+            <p>Transitioning to a new protocol is something I still haven't finished (and probably won't &ndash; see the <a href="#section-whats-next">What's next</a> section). I gradually implemented these methods every time I noticed something being broken, and it was always a long and painful debugging session. I think that if I'd adopted this scheme from the start and was more careful with the amount of settings each widget supported (i.e. don't let the same widget do margins, borders, spacings, and whatnot), this would have been a much smoother experience.</p>
+
+            <h2 id="section-performance">Performance</h2>
+
+            <p>So, I've talked about performance being a goal, but is this thing performant at all, with all that complexity? Well, it is, but I had to work hard to achieve that (jokes on me). Here are the major bottlenecks:</p>
+
+            <ul>
+                <li>Style updating & caching, which I've talked about earlier.</li>
+                <li>Reshaping (i.e. layout change) loops, i.e. a reshape occurs and changes some property and triggers another reshape. I genuinely don't remember where these came from, but I do remember fighting them a lot.</li>
+                <li>Text views. You don't want to re-position all glyphs each frame, so the prepared & positioned glyphs are cached until a new reshape happens.</li>
+                <li>Rendering. Don't issue a draw call for each glyph/image, batch them as much as possible and you'll be happy.</li>
+            </ul>
+
+            <p>So, caching solves most problems, not writing stupid code solves the remaining ones. Easy.</p>
+
+            <p><i>*Cries in infinite loops.*</i></p>
+
+            <h2 id="section-other-problems">Other problems</h2>
+
+            <p>A few other things I wasn't satisfied with in this library:</p>
+
+            <ul>
+                <li><b>Mouse handling.</b> The current mouse position & button clicked state wasn't stored anywhere. Instead, each element is supposed to handle the respective events and cache everything it needs. However, if something else intercepts the <code>mouse_move</code> event, the elements continue thinking that the mouse is still where it used to be. This lead to a huge number of minor bugs with element states, like a button thinking it's still pressed or a scrollbar continuing to scroll even if the mouse is way off the scrollbar area.</li>
+                <li><b>Diamond inheritance.</b> A classic pitfall of OOP, solved in C++ be the virtual inheritance feature. I moved all extra functionality in separate subclasses of the base <code>element</code>, and after some time I inevitably needed to inherit from more than one of them. I slapped <code>virtual</code> to all places inheriting the base <code>element</code> class, which solved 95% of such problems, but that still feels really dirty.</li>
+                <li><b>Lifetime hell.</b> I've said that I used <code>shared_ptr</code>'s everywhere to store the elements, and of course sometimes there were memory leaks due to long element->callback->callback->element->callback->element pointer loops. Another problem is when you need something very dynamic, like a table of values that change all the time and the number of rows varies and there are buttons on each row. You can't recreate the elements from scratch on each frame, since the buttons' state will be reset and it will forget that you've put a mouse over it. In these cases, I ended up implementing ad-hoc versions of something like React's <a href="https://reactjs.org/docs/reconciliation.html">reconciliation</a>, and I don't recommend trying this at home.</li>
+            </ul>
+
+            <p>If you think I'm overengineering everything, well first of all yes I am, but really look at any UI library in the wild or, better, try making one yourself: it is a really, genuinely hard thing to get right.</p>
+
+            <h2 id="section-whats-next">What's next?</h2>
+
+            <p>All this works or can be made to work eventually, but over two years I've become really tired of this library. Too much to fix, too much to debug, too much legacy, too many unintuitive behaviours. Will I use an existing, production-tested solution instead, then? Hell, no :)</p>
+
+            <p>Designing complex systems is something I love so, so much, that I just cannot miss the oportunity to do it one more time! I've spent the last weeks reading about React, SwiftUI and Flexbox, and came up with some ideas on what the new library should look like:</p>
+
+            <ul>
+                <li>The <b>object-oriented style</b> is probably going to stay, but will be <i>hidden</i> from the user as much as possible.</li>
+                <li><b>Automatic layout</b> is probably fine, I like it the way it is, but it will be re-implemented carefully from scratch in an <b>asymmetric</b> way.</li>
+                <li>The <b>events model</b> is also OK, but I probably need to add something like <code>mouse_enter/mouse_leave</code> events.</li>
+                <li>The user won't <b>own</b> the UI elements; they will be owned by the library.</li>
+                <li>Instead, the user will provide some <b>declarative description</b> of the UI, which will be <b>reconciliated</b> upon change using a dedicated <b>element factory</b>.</li>
+                <li>All UI changes should happen only through changes in a network of <a href="https://en.wikipedia.org/wiki/Reactive_programming"><b>reactive variables</b></a>, and the library will make sure to do all the required updates as locally as possible.</li>
+                <li>The <b>style</b> will either be turned into something incredibly generic (like a map of string values), or completely removed, and only one global style set in the <b>element factory</b> will be supported. You want a red button? Implement a <code>make_red_button()</code> method. This should also make the UI look more uniform.</li>
+                <li>Remove the <b>element factory</b> interface, but still provide a default implementation for easy integration.</li>
+            </ul>
+
+            This is roughly what I want my new UI description to look like:
+
+            <pre><code class="language-cpp block">ui::any make_ui()
+{
+    auto value = react::source(0);
+    auto text = react::map(util::to_string, value);
+
+    return ui::hlayout {{
+        ui::button {
+            .on_click = [value]{
+                value.set(*value + 1);
+            },
+            .child = ui::label {
+                .text = "Add 1",
+            }
+        },
+        ui::label {
+            .text = text,
+        }
+    }};
+}</code></pre>
+
+            <p>I've already started prorotyping a new library <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/ui/">here</a>. I'll probably write a new post once I've finished designing and testing it (which might take months or years...).</p>
+
+            <p>As usual, huge thanks for reading!</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
