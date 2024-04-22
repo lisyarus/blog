@@ -1,0 +1,505 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <title>Making a 2D soft-body physics engine | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Making a 2D soft-body physics engine</div></center><br/>
+            <center><span class="post-date">2023 May 10</span></center><br/>
+
+            <p>Recently, I participated in <a href="https://ldjam.com/events/ludum-dare/53">Ludum Dare 53</a> and made a <a href="https://lisyarus.itch.io/andromeda-delivery-service">silly spaceship building game</a> based on a soft-body physics engine.</p>
+
+            <center><img src="/blog/media/soft-body-physics/spaceship.png" class="image-embed"></center>
+            <center><i>An example modular spaceship you can build in the game.</i></center>
+
+            <p>I figured I'd share how this physics engine works, since it's actually remarkably simple :)</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-solids-or-point-masses">Solids or point masses?</h2>
+
+            <p>When making a physics engine, there is always a question of whether you simulate actual solid objects like boxes, disks, capsules, etc, or stick to having just point masses instead. Here are a few things to consider:</p>
+
+            <ul>
+                <li>The state of a solid object consists of its <b>position</b>, <b>velocity</b>, <b>orientation</b>, and <b>angular velocity</b>. For point masses, you don't need the rotational stuff, just <b>position</b> and <b>velocity</b>. <i>(Rotation doesn't make sense for single points: the only point of this object is its center of mass, and the rotation of center of mass around itself is zero. The inertia tensor of a point mass is zero, etc.)</i> Rotation is tricky to handle, especially when your objects collide or you apply forces to specific points on an object (e.g. push by player, nearby explosion, etc).</li>
+                <li>Solid objects are more <b>physically correct</b>. We can emulate e.g. a box with four point masses together with some constraints that force them to maintain a box-like shape, but constraints are also tricky to do right and will usually be voilated from time to time, meaning your box won't be a box. Also four connected vertices have mass concentrated in the vertices, therefore it will have an inertia tensor different to that of a box, and this will affect how our improvised box reacts to forces & rotation. Imagine a shallow wooden box compared to solid filled polymeric foam box &ndash; the difference is quite similar to our case.</li>
+                <li>Collisions between point masses are basically meaningless, unless we pretend that our "points" actually have a radius and treat them as disks just for collisions (they're still not <i>rotating disks</i>, though, and you will notice that they behave a bit weird because of this). Collisions between point masses and static environment, on the other hand, are as easy as collisions go! Compare this to collisions between solids: they're easy if you only support disks (still need to correctly handle friction & rotation & etc), but if you want boxes/capsules/polygons you need to write some pretty non-trivial collision detection code, and in any case the collision response is quite involved.</li>
+            </ul>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/soft-body-physics/point_masses.mp4" type="video/mp4"></video></center>
+            <center><i>A <a href="https://twitter.com/lisyarus/status/1318605976786919424">physics engine</a> based on point masses can simulate a lot of fun stuff.</i></center>
+
+            <p>So, neither option is better or worse, they're just different and suit different use cases. Most physics engines are built on solid objects because that's a more universal (albeit much more complicated) approach. In my case, however, I wanted a <i>soft-body</i> engine, meaning my so-called solid objects will deform freely and stop being solids. I'm sure there are ways to handle this inside a typical solid object-based engine, but I decided to use the point masses instead: they are simpler to code, and they already allow for arbitrary deformations, just need to figure out how to force the points to loosely maintain some shape.</p>
+
+            <h2 id="section-velocity-integration">Velocity integration</h2>
+
+            <p>Let's write a 2D point mass physics engine without any constraints or extra forces. It's really just a few lines of code:</p>
+
+            <pre><code class="language-cpp block">struct point_mass
+{
+    vec2 position;
+    vec2 velocity;
+};
+
+struct engine
+{
+    std::vector&lt;point_mass&gt; points;
+    vec2 gravity;
+
+    void update(float dt)
+    {
+        for (auto & p : points)
+            p.velocity += gravity * dt;
+
+        for (auto & p : points)
+            p.position += p.velocity * dt;
+    }
+}</code></pre>
+
+            <p>First, we update the velocities using the external forces (called <code>gravity</code> here, but it can be any external force, and it can differ for different objects / points in space). Then, we update the positions using the velocities, and that's it. This is the <a href="https://en.wikipedia.org/wiki/Semi-implicit_Euler_method">symplectic Euler</a> integration method, known for good energy conservation properties. It is also remarkably simple; simpler than the universally beloved <a href="https://en.wikipedia.org/wiki/Verlet_integration">Vertet method</a>.</p>
+
+            <p>Right now, we have something like this:</p>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/soft-body-physics/point_masses_1.mp4" type="video/mp4"></video></center>
+            <center><i>There's no gravity here.</i></center>
+
+            <h2 id="section-collision-detection">Collision detection</h2>
+
+            <p>Since I'm planning to use these point masses only as building blocks for soft bodies, I don't care about collisions between two point masses. However, I still need collisions between points and the environment.</p>
+
+            <p>For the collision to work, we need a routine that computes the <i>collision normal</i> and <i>penetration depth</i> of the collision. For example, if my "environment" is just a floor below the Y=0 line, its collision normal points upwards, and the penetration depth for a point at (X, Y) is simply -Y:</p>
+
+            <pre><code class="language-cpp block">struct collision
+{
+    vec2 normal{0.f, 0.f};
+    float depth = -std::numeric_limits&lt;float&gt;::infinity();
+};
+
+collision find_collision(vec2 const & position)
+{
+    return collision{vec2{0.f, 1.f}, -position.y};
+}</code></pre>
+
+            <p>Negative penetration depth means there is no collision.</p>
+
+            <p>My game actually only uses collisions with planets, i.e. with static disks, which looks like this:</p>
+
+            <pre><code class="language-cpp block">struct planet
+{
+    vec2 center;
+    float radius;
+};
+
+collision find_collision(vec2 const & position, planet const & planet)
+{
+    vec2 delta = position - planet.center;
+    float distance = length(delta);
+    vec2 normal = delta / distance;
+    float depth = planet.radius - distance;
+    return collision{normal, depth};
+}</code></pre>
+
+            <p>If we have several colliding obstacles, we simply find the collision with the largest penetration depth &ndash; it is probably the most important one!</p>
+
+            <pre><code class="language-cpp block">collision find_collision(vec2 const & position, std::vector&lt;planet&gt; const & planets)
+{
+    collision result;
+    for (auto const & planet : planets)
+        if (auto c = collision(position, planet); c.depth > result.depth)
+            result = c;
+    return result;
+}</code></pre>
+
+            <p>Notice that we've initialized the depth to <code>-inf</code> in the <code>collision</code> constructor, so that a default-constructed <code>collision</code> acts as no collision, and its <code>depth</code> value is the neutral element with respect to <code>max</code>.</p>
+
+            <h2 id="section-collision-resolution">Collision resolution</h2>
+
+            <p>I'm very annoyed that most resources on physics engine collisions only mention collision detection. Like, it's usually the easy part! Especially with rotating solids. Especially in 3D!</p>
+
+            <p>Anyway, we got our collision normal & penetration depth. There are three things we need to do:</p>
+
+            <ol>
+                <li>Push the point mass along the collision normal so that no collision is present. Or, in fancy language, prevent collision constraint violation. This is important to do because even if we do the velocity update described next, something (external forces, springs, soft body constraints, etc) might still push our object inside the collider. This is known as <i>sinking</i>, or more generally as <i>constraint drifting</i>: we have fixed the <i>time derivative</i> of the constraint function, but we didn't fix the constraint itself. This pushing along collision normal can be problematic if you have some interaction forces, e.g. gravitational attraction: changing the position of an object changes the potential energy of this interaction, meaning our collisions will randomly add or remove energy to/from the system. Yikes! <i>(see <a href="/blog/posts/perfect-collisions.html">my another post</a> where I explore the specific problem of collision resolution messing up with gravity simulation)</i>. There is an alternative option to only resolve collision if the object is moving towards the collider, not away from it (i.e. if the dot product of the object's velocity and the collision normal is negative), but it only helps in very simple situations.</li>
+                <li>Update the normal component of the velocity. If you throw a ball towards a wall, it will bounce back. This is what things typically do when they collide something: they bounce back, maybe losing some energy in the process. This is usually captured as the <i>elasticity coefficient</i>, or <i>bounciness</i>: elasticity = 0 means the object will stop upon collision, elasticity = 1 means the object will retain its kinetic energy in full.</li>
+                <li>Update the tangentinal component of the velocity, or, in simple terms, apply friction. Our point masses don't rotate, so this will be relatively easy: we multiply the tangential component by a factor of the form <code>(1 - friction * dt)</code>, or a much more stable & precise alternative <code>exp(- friction * dt)</code> <i>(see <a href="/blog/posts/exponential-smoothing.html">another post of mine</a> for an explanation of this formula)</i>. This means that while our point mass is in contact with the collider, it's speed <i>along</i> the collider will get smaller over time. Notice that while elasticity is a unitless coefficient in the range [0..1], friction has units <code>1/TIME</code> and can be any positive number (at least if you use the stable formula, otherwise it cannot be larger than <code>1/dt</code>) and 1/friction is roughly <i>the time it takes for the object to drop 63% of it's speed</i>, something like that. <i>(0.63 is the value of <code>1 - exp(-1)</code>; again see <a href="/blog/posts/exponential-smoothing.html">this post</a> to learn where this comes from)</i>.</li>
+            </ol>
+
+            <p>Enough talking, here's the code:</p>
+
+            <pre><code class="language-cpp block">void engine::update(float dt)
+{
+    // ... velocity integration ...
+
+    for (auto & p : points)
+    {
+        collision c = find_collision(p.position, the_world);
+
+        // check if collision took place
+        if (c.depth < 0.f) continue;
+
+        // resolve the constraint
+        p.position += c.normal * c.depth;
+
+        // compute the normal & tangential velocity
+        auto vn = c.normal * dot(c.normal, p.velocity);
+        auto vt = p.velocity - vn;
+
+        // apply bouncing
+        vn = - elasticity * vn;
+
+        // apply friction
+        vt *= std::exp(- friction * dt);
+
+        // add up the new velocity
+        p.velocity = vn + vt;
+    }
+}</code></pre>
+
+            <p>Just a few formulas here and there and we get this:</p>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/soft-body-physics/point_masses_3.mp4" type="video/mp4"></video></center>
+            <center><i>Bouncing with elasticity = 0.5 and friction = 100.<br>Collisions are handled as if the points have a nonzero radius, but otherwise the logic is the same.</i></center>
+
+            <h2 id="section-hard-constraints">Hard constraints</h2>
+
+            <p>Say, I want to connect two objects in my physics engine with an invisible stick of a certain length. Or maybe I want to <i>constrain</i> the movement of an object to only happen along some predefined curve. This is what <i>constraints</i>, also known as <i>joints</i>, are for. Usually we're interested in <i>equality constraints</i>, meaning we want some function of our system to be equal to zero: \( f(\text{system}) = 0 \). For example, if I want a point mass to only move along the X=Y line, I'd do \( f(\text{system}) = p_X - p_Y \). If I want the distance between two points to be fixed to some value R, I'd do \( f(\text{system}) = |p_0 - p_1| - R \), etc.</p>
+
+            <p>Collisions are an example of an <i>inequality constraint</i> \( f(\text{system}) \leq 0 \). We resolve the collision if the penetration depth is positive, but once it is negative, we don't care. Some engines (like <a href="https://box2d.org/">Box2D</a>) treat collisions together with other constraints in a single constraint resolution framework; others (like <a href="https://github.com/bulletphysics/bullet3">Bullet</a>, iirc) treat them as a separate thing entirely.</p>
+
+            <p>Constraint resolution is a pretty complicated topic in general, but in some cases we can hack them a bit. For example, to resolve the distance constraint between a pair of point masses, we can simply move the two points along the line between them so that the distance is as required:</p>
+
+            <pre><code class="language-cpp block">struct distance_constraint
+{
+    uint32_t index0, index1;
+    float distance;
+};
+
+struct engine
+{
+    // ...
+
+    std::vector&lt;distance_constraint&gt; constraints;
+};
+
+void engine::update(float dt)
+{
+    // ... velocity integration ...
+    // ... collision resolution ...
+
+    for (auto const & c : constraints)
+    {
+        auto & p0 = points[c.index0].position;
+        auto & p1 = points[c.index1].position;
+
+        auto delta = p1 - p0;
+        auto distance = length(delta);
+
+        auto required_delta = delta * (c.distance / distance);
+        auto offset = required_delta - delta;
+
+        p0 -= offset / 2.0;
+        p1 += offset / 2.0;
+    }
+}</code></pre>
+
+            <p>This is an example of a <i>hard constraint</i>: we force the constraint to be always satisfied, to behave as a <i>rigid</i> thing.</p>
+
+            <h2 id="section-soft-constraints">Soft constraints</h2>
+
+            <p>We could instead move the objects bound by a constraint a bit every frame, so that the constraint gets satisfied if we wait long enough:</p>
+
+            <pre><code class="language-cpp block">void engine::update(float dt)
+{
+    // ... velocity integration ...
+    // ... collision resolution ...
+
+    for (auto const & c : constraints)
+    {
+        auto & p0 = points[c.index0].position;
+        auto & p1 = points[c.index1].position;
+
+        auto delta = p1 - p0;
+        auto distance = length(delta);
+
+        auto required_delta = delta * (c.distance / distance);
+        float damping_factor = 1.f - std::exp(- constraint_damping * dt);
+        auto offset = (required_delta - delta) * damping_factor;
+
+        p0 -= offset / 2.0;
+        p1 += offset / 2.0;
+    }
+}</code></pre>
+
+            <p>Or we could use <i>force-based</i> constraints instead: apply forces to the constraint-bound objects that would move the system towards a state when the constraint is satisfied. For the distance constraint, the corresponding force-based thing is called a <i>spring</i>:</p>
+
+            <pre><code class="language-cpp block">void engine::update(float dt)
+{
+    // ... velocity integration ...
+    // ... collision resolution ...
+
+    for (auto const & c : constraints)
+    {
+        auto p0 = points[c.index0].position;
+        auto p1 = points[c.index1].position;
+
+        auto delta = p1 - p0;
+        auto distance = length(delta);
+
+        auto required_delta = delta * (c.distance / distance);
+        auto force = spring_force * (required_delta - delta);
+
+        points[c.index0].velocity -= force * dt;
+        points[c.index1].velocity += force * dt;
+    }
+}</code></pre>
+
+            <p>And this is what we get:</p>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/soft-body-physics/spring_1.mp4" type="video/mp4"></video></center>
+            <center><i>dt = 0.001, spring_force = 100</i></center>
+
+            <p>Much better for a <i>soft-body</i> engine! However, we probably don't want it to oscillate indefinitely, so we need some damping. This is a bit tricky: we only want to dampen the wiggling along the spring, but we don't want to touch the movement of these two point masses as a whole, and we want to preserve its rotation.</p>
+
+            <p>To achieve this, we compute the relative velocity along the spring's direction, compute the dampened velocity, and split the velocity correction between the two point masses:</p>
+
+            <pre><code class="language-cpp block">void engine::update(float dt)
+{
+    // ... velocity integration ...
+    // ... collision resolution ...
+
+    for (auto const & c : constraints)
+    {
+        auto p0 = points[c.index0].position;
+        auto p1 = points[c.index1].position;
+        auto & v0 = points[c.index0].velocity;
+        auto & v1 = points[c.index1].velocity;
+
+        auto delta = p1 - p0;
+        auto distance = length(delta);
+        auto direction = delta / distance;
+
+        auto required_delta = direction * c.distance;
+        auto force = spring_force * (required_delta - delta);
+
+        v0 -= force * dt;
+        v1 += force * dt;
+
+        auto vrel = dot(v1 - v0, direction);
+        auto damping_factor = exp(- spring_damping * dt);
+        auto new_vrel = vrel * damping_factor;
+        auto vrel_delta = new_vrel - vrel;
+
+        v0 -= vrel_delta / 2.0;
+        v1 += vrel_delta / 2.0;
+    }
+}</code></pre>
+
+            <p>With this damped spring, we get a nice soft distance constraint:</p>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/soft-body-physics/spring_2.mp4" type="video/mp4"></video></center>
+            <center><i>dt = 0.001, spring_force = 100, damping = 10</i></center>
+
+            <p>We can crank up the constants a bit and get something that looks like a rigid, hard constraint, but is still a soft constraint:</p>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/soft-body-physics/spring_3.mp4" type="video/mp4"></video></center>
+            <center><i>dt = 0.001, spring_force = 10000, damping = 200</i></center>
+
+            <p>Of course, soft constraints have their downsides. They are <i>force-based</i>, so if there is a stronger force in the system (gravity, or another constraints), the constraint will be violated a lot. There are certain bounds on the constraint force (something like <code>spring_force * dt * dt < 1</code>), otherwise the system will be unstable. But for a soft-body physics engine, they work pretty great!</p>
+
+            <h2 id="section-soft-bodies">Soft bodies</h2>
+
+            <p>So, how do we use all that information to make a soft-body physics engine? Like, how do we make a soft box? The first idea that comes to mind is to connect all vertices of the box with springs, and it indeed works:</p>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/soft-body-physics/spring_4.mp4" type="video/mp4"></video></center>
+
+            <p>but there is a problem with this approach: it does exactly what it says, meaning it only maintains pairwise distances between the points and doesn't care about their overall shape. In particular, this box made of 6 springs can be easily turned inside-out to form a different box:</p>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/soft-body-physics/spring_5.mp4" type="video/mp4"></video></center>
+
+            <p>and this spring-based "wheel" can be messed up so bad that is starts to levitate on it's own:</p>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/soft-body-physics/spring_6.mp4" type="video/mp4"></video></center>
+
+            <p>We could add extra constraints on the <i>angles</i> between consecutive points, but this would only hide and overcomplicate the problem. <i>(However, this is very common in molecular dynamics simulations; they even use the angle between the two planes formed by four consecutive points!)</i></p>
+
+            <p>It turns out that there is a better way of simulating soft bodies.</p>
+
+            <h2 id="section-shape-matching">Shape matching</h2>
+
+            <p>I don't know a well-established name for this, and a quick google search failed to reveal anything of releavance, so I will call this method <i>shape matching</i>. If you know some resources on this, I would love to know them, since I had to derive all the equations myself :) It doesn't only apply to soft bodies or physics simulations, though: it is a much more general technique.</p>
+
+            <p>So, we want our points to <i>preserve their shape</i>. By <i>shape</i> we mean some solid object &ndash; a box or a polygon, for example. We want our points to form the vertices of this shape. However, in general they won't do that due to various forces acting on them.</p>
+
+            <p>Instead, let's do this: given the <i>current positions</i> of our points, let's find the <i>ideal position</i> of our solid shape so that it matches the <i>current shape</i> as much as possible. Since the <i>ideal shape</i> is solid, it can only move and rotate as a whole. <i>If I'm not mistaken, <a href="https://www.youtube.com/watch?v=3OmkehAJoyo">JellyCar physics engine</a> uses the same concept.</i></p>
+
+            <h2 id="section-a-bit-of-math">A bit of math</h2>
+
+            <p><i>If you don't care about the formula derivations, you can safely skip this part!</i></p>
+
+            <p>Let's say that we have N points, and our <i>ideal shape</i> is specified by the vectors \( q_i \) from the shape's center of mass towards the shape's vertices. Our <i>current points</i> are \( p_i \). First, let's compute the <i>current</i> center of mass:</p>
+
+            \[ C = \frac{1}{N} \sum p_i \]
+
+            <p>Then, compute the <i>current</i> points relative to the center of mass:</p>
+
+            \[ r_i = p_i - C \]
+
+            <p>It would be wrong to expect \( r_i = q_i \) because our <i>ideal shape</i> can be <i>rotated</i>! Let \( R_\theta \) be the <a href="https://en.wikipedia.org/wiki/Rotation_matrix">operator of rotation</a> by an angle \( \theta \):</p>
+
+            \[ R_\theta = \begin{pmatrix} \cos\theta & -\sin\theta \\ \sin\theta & \cos\theta \end{pmatrix} \]
+
+            <p>What we want is \( r_i = R_\theta\cdot q_i \), i.e. that the rotated <i>ideal shape</i> coincides with the <i>current shape</i>. This will, in general, not be true (again because of various other forces acting on our point masses), so we need to find a way to <i>force</i> it be true.</p>
+
+            <p>We can employ a classic trick of turning an equation into a minimization problem: let's try to minimize the sum of squared distances between the <i>current positions</i> and the <i>ideal positions</i>; the <i>ideal shape</i> that minimizes this value will be the shape we are looking for!</p>
+
+            \[ E = \sum (r_i - R_\theta\cdot q_i)^2 \]
+
+            <p>I've called it E because it resembles some energy formula, like for a <a href="https://en.wikipedia.org/wiki/Harmonic_oscillator">harmonic oscillator</a>.</p>
+
+            <p>The only unknown in the above equation is \( \theta \), so we need to differentiate the above formula with respect to this angle and set the derivative be equal to zero:</p>
+
+            \[ \frac{dE}{d\theta} = \sum 2(r_i-R_\theta\cdot q_i)\cdot\left(-\frac{dR_\theta}{d\theta}\cdot q_i\right) \]
+
+            <p>We're using the fact that the derivative of a squared length of a vector can be expressed using a dot product of the vector and it's derivative:</p>
+
+            \[ \frac{dA^2}{d\theta} = 2A\cdot \frac{dA}{d\theta} \]
+
+            <p>The expression for \( \frac{dE}{d\theta} \) above looks a bit intimidating, but don't fret, we'll deal with it step by step.</p>
+
+            <p>First, ignore the factor of 2, it can be simply divided away (i.e. dividing both sides by 2).</p>
+
+            <p>Next, each summand is a dot product of two vectors: \( r_i - R_\theta\cdot q_i \) and \( -\frac{dR_\theta}{d\theta}\cdot q_i \), the latter is a product of a matrix \( -\frac{dR_\theta}{d\theta} \) and a vector \( q_i \).</p>
+
+            <p>It so happens that \( \frac{dR_\theta}{d\theta} = R_{\theta+\frac{\pi}{2}} \), meaning this matrix rotates by an angle of \( \theta \) plus 90 degrees. This also means that for any vector \( v \)</p>
+
+            \[ (R_\theta\cdot v)\cdot \left(\frac{dR_\theta}{d\theta} \cdot v\right) = 0 \]
+
+            <p>because these two vectors are rotated by a straight angle, i.e. by 90 degrees, meaning they are orthogonal, and their dot product is zero.</p>
+
+            <p>What this means for us is that in each summand of our big formula, the \( (R\theta\cdot q_i)\cdot (\frac{dR\theta}{d\theta} \cdot q_i) \) part is zero, and we are only left with \( r_i \cdot \left(\frac{dR_\theta}{d\theta}\cdot q_i\right) \) (I've removed the minus sign which also doesn't add anything now).</p>
+
+            <p>So, we're left with this equation:</p>
+
+            \[ \sum r_i \cdot \left(\frac{dR_\theta}{d\theta}\cdot q_i\right) = 0 \]
+
+            <p>We probably could do some more tricks to derive a concise equation for \( \theta \) in matrix form, but I'll just expand everything in coordinates instead:</p>
+
+            \[ \frac{dR_\theta}{d\theta} = \begin{pmatrix} -\sin\theta & -\cos\theta \\ \cos\theta & -\sin\theta \end{pmatrix} \]
+
+            \[ \frac{dR_\theta}{d\theta}\cdot q_i = \begin{pmatrix} -q_i^X\sin\theta  -q_i^Y\cos\theta \\ q_i^X\cos\theta  -q_i^Y\sin\theta \end{pmatrix} \]
+
+            \[ r_i \cdot \left(\frac{dR_\theta}{d\theta}\cdot q_i \right) =r_i^X \cdot (-q_i^X\sin\theta  -q_i^Y\cos\theta) + r_i^Y \cdot (q_i^X\cos\theta  -q_i^Y\sin\theta) = \]
+            \[ = \sin\theta \cdot (-r_i^Xq_i^x - r_i^Yq_i^Y) + \cos\theta\cdot (-r_i^Xq_i^Y + r_i^Yq_i^X) = -\sin\theta\cdot(r_i \cdot q_i) - \cos\theta \cdot (r_i \times q_i) \]
+
+            <p>Here, a cross \( r_i\times q_i \) means the <a href="https://en.wikipedia.org/wiki/Exterior_algebra">exterior product</a>, also known as the <i>skew product</i> or the <i>pseudoscalar product</i>. It is the 2D analogue of a <a href="https://en.wikipedia.org/wiki/Cross_product">cross product</a> and equals the signed area of a parallelogram spanned by two vectors.</p>
+
+            <h2 id="section-final-formula">The final formula</h2>
+
+            <p>Our final equation now looks like this:</p>
+
+            \[ -\sin\theta\cdot(\sum r_i \cdot q_i) - \cos\theta \cdot (\sum r_i \times q_i) = 0 \]
+
+            <p>Which can be solved easily:</p>
+
+            \[ \tan\theta = -\frac{\sum r_i\times q_i}{\sum r_i\cdot q_i} \]
+
+            \[ \theta = - \text{atan2}\left(\sum r_i\times q_i, \sum r_i\cdot q_i\right) \]
+
+            <p>That's an extremely neat formula, if you ask me!</p>
+
+            <h2 id="section-at-last-soft-bodies">At last, soft bodies</h2>
+
+            <p>So we have a formula for the angle \( \theta \), meaning we can compute the <i>ideal positions</i> of our points that are as close to the <i>current positions</i> as possible. What do we do with them, though? We could simply move the points to these ideal positions, but that would be a <i>hard constraint</i> (although it would work much better than a distance constraint-based thing).</p>
+
+            <p>To make it into a <i>soft body</i>, we can add a spring-like force for each point mass towards it's <i>ideal position</i>:</p>
+
+            <pre><code class="language-cpp block">float cross(vec2 a, vec2 b)
+{
+    return a.x * b.y - a.y * b.x;
+}
+
+struct soft_body
+{
+    struct vertex
+    {
+        uint32_t index;
+        vec2 position;
+    };
+    std::vector&lt;vertex&gt; vertices;
+};
+
+struct engine
+{
+    // ...
+
+    std::vector&lt;soft_body&gt; soft_bodies;
+};
+
+void engine::update(float dt)
+{
+    // ... velocity integration ...
+    // ... collision resolution ...
+
+    for (auto const & b : soft_bodies)
+    {
+        // compute the center of mass
+        vec2 center = vec2(0.f, 0.f);
+        for (auto const & v : b.vertices)
+            center += points[v.index].position;
+        center /= (float)b.indices.size();
+
+        // compute the shape rotation angle
+        float A = 0.f, B = 0.f;
+        for (auto const & v : b.vertices)
+        {
+            auto r = points[v.index].position - center;
+            A += dot(r, v.position);
+            B += cross(r, v.position);
+        }
+        float angle = -atan2(B, A);
+
+        // apply spring forces
+        for (auto const & v : b.vertices)
+        {
+            auto target = center + rotate(v.position, angle);
+            auto delta = target - points[v.index].position;
+            points[v.index].velocity += spring_force * delta * dt;
+        }
+    }
+}</code></pre>
+
+            <p>This works great. Here's how it looks if every <code>soft_body</code> is just a square containing 4 points (note that different bodies can share points, allowing for complex structures made of several soft bodies):</p>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/soft-body-physics/final_1.mp4" type="video/mp4"></video></center>
+            <center><i>Weeee!</i></center>
+
+            <p>However, we see that it wiggles forever, because our springs aren't damped. In my implementation, I added damping between any pair of consecutive vertices of a soft body, but I think it is better to compute the velocity of the center of mass (i.e. just the average velocity of the points of a soft body), compute the average angular velocity of rotation around the center of mass, compute the <i>target velocity</i> of each point mass treating the whole soft body as a solid body, and then add damping by slowly interpolating the velocities towards these target velocities.</p>
+
+            <p>These two methods of adding damping seem to produce quite similar results:</p>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/soft-body-physics/final_2.mp4" type="video/mp4"></video></center>
+            <center><i>Giving different spring force constants to different bodies makes it wiggle differently depending on the overall structure.</i></center>
+
+            <h2 id="section-the-end">The end?</h2>
+
+            <p>As usual, I wanted to explain something small but ended up writing a whole tutorial :) Hope you liked it. Check out <a href="/blog/posts/3d-shape-matching-with-quaternions.html">my other article</a> generalizing this technique to 3D. And, as always, thanks for reading!</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
