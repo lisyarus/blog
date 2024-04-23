@@ -1,0 +1,1031 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <title>Computing forces in a system of beams | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+        <script type="text/javascript" src="/blog/scripts/structural-mechanics.js"></script>
+        <script async="" src="//platform.twitter.com/widgets.js" charset="utf-8"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Computing forces in a system of beams</div></center><br/>
+            <center><span class="post-date">2023 Oct 15</span></center><br/>
+
+            <p><i>What I'm describing in this post turned out to be a bad mathematical model, since I've missed one crucial component. If you want to skip this and learn about the actually good model, go straight to <a href="/blog/posts/structural-mechanics-2.html">this article</a>.</i></p>
+
+            <p>There is one idea I've been passively tinkering with in my head for years without any success. Imagine a game where you have some building blocks (cubes, walls, platforms, pillars, whatever), and you want them to be able to break under load. Imagine Minecraft, where you build a horizontal beam of blocks in the air, attached to some mountain, and the beam breaks if you build it too far. Or, say, the Sims, where a small wooden pillar breaks because your whole 5-floor concrete house was supported by this only pillar. You get the idea.</p>
+
+            <p>Game design issues aside, how do you even calculate this <i>load</i> on some supporting structure? We could probably do something simple, like if you have 5 pillars connecting the house to the ground, and the house weighs 50 tons, the load is 10 tons per pillar. This, however, ignores a lot of detail: what about supports that are not connected to the ground and instead connect different floors of the house? What about uneven mass distribution across the house? What about the center of gravity and how it affects the distribution of load? Etc, etc.</p>
+
+            <p>After thinking about Minecraft-like blocks for a while, I realized this is already too complicated, and I don't understand a lot of things involved here. <i>(Though, I've managed to come up with a really nice model, which I'll probably describe in a follow-up post.</i>) Then I decided to constrain myself to a hopefully much simpler case of <i>beams</i>.</p>
+
+            <p>By the way, of course I tried to research the topic from some physics books and didn't understand anything. I also tried to ask something related to this <a href="https://physics.stackexchange.com/questions/788654/computing-cauchy-stress-tensor-in-a-static-cube-of-uniform-isotropic-material">on physics.stackexchange</a>, got three answers, and didn't understand a single one of them either.</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-the-beams">The beams</h2>
+
+            <p>So, I have some configuration of beams. They can connect to walls, or the floor, or to each other. Something like this:</p>
+
+            <center><canvas id="canvas1"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.display = 'none';
+                state.topWall = false;
+                state.rightWall = false;
+                state.addBeam(0, 5, 5, 10);
+                state.addBeam(0, 5, 10, 5);
+                state.addBeam(5, 10, 10, 5);
+                state.addBeam(10, 5, 10, 10);
+                state.forceScale = 20;
+                makeWhiteboard('canvas1', state);
+            }
+            </script>
+            <br>
+
+            <p>Let's say they are all uniformly dense, and have the same density. We treat them as one-dimensional, so the density is in units mass per length. They are all affected by gravity.</p>
+
+            <p>Whenever a beam touches a wall/floor, or whenever two beams connect to each other via their ends, let's say this connection is done via an incredibly strong glue, so that the beams cannot rotate or somehow move around this connection. This connections are rigid and massless. I'm calling them <i>hinges</i> in my code, and despite them not being hinges, I'll still call them hinges throughout this post.</p>
+
+            <p>We also assume that the beams are static &ndash; they don't move, and are in an <i>equillibrium</i> (even if it is an unstable one).</p>
+
+            <p>What we want to compute are <i>the forces acting on each beam's two ends</i>. Something like this:</p>
+
+            <center><canvas id="canvas2"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.rightWall = false;
+                state.addBeam(0, 5, 5, 10);
+                state.addBeam(0, 5, 10, 5);
+                state.addBeam(5, 10, 10, 5);
+                state.addBeam(10, 5, 10, 10);
+                state.forceScale = 20;
+                makeWhiteboard('canvas2', state);
+            }
+            </script>
+            <br>
+
+            <p>From that, as we'll see later, we can compute how the beam is stretched or contracted, how much is it bent, and so on.</p>
+
+            <p>You might say: there is nothing simpler! Just write down the equations for these forces, solve them, and you're done! Well, you'd be mostly right, except for the <i>solving</i> part.</p>
+
+            <p>But before we discuss why is it so hard to solve these equations, let's look at some examples first.</p>
+
+            <h2 id="section-examples">Examples</h2>
+
+            <p>Say we have a single perfectly straight vertical beam. Its lower end touches the ground, while its upper end doesn't touch anything. The force on the upper end must be equal to zero, because there is nothing at this end acting on the beam (we ignore things like air pressure, wind, etc). Thus, the force at the lower end must point upwards and completely compensate the gravity force:</p>
+
+            <center><canvas id="canvas3"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+                state.addBeam(8, 10, 8, 5);
+                makeWhiteboard('canvas3', state);
+            }
+            </script>
+            <br>
+
+            <p>A similar example, but this time the beam is glued to the ceiling. The bottom force must be zero, and the top force must again point upwards to compensate for gravity:</p>
+
+            <center><canvas id="canvas4"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 5);
+                state.bottomWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+                state.addBeam(8, 0, 8, 2);
+                makeWhiteboard('canvas4', state);
+            }
+            </script>
+            <br>
+
+            <p>Another, somewhat silly, example: a beam is simply lying on the floor. However, in our model it can only glue to the floor on its ends, while the middle section of the beams is kind of above the floor by an infinitely small amount. In this case, the gravity must be compensated by two forces on the left and right ends, which should probably be equal due to symmetry:</p>
+
+            <center><canvas id="canvas5"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 5);
+                state.topWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+                state.addBeam(4, 5, 12, 5);
+                makeWhiteboard('canvas5', state);
+            }
+            </script>
+            <br>
+
+            <p>Ok fine, but what if our beam is sitting diagonally between a floor and a wall? Honestly, I don't have a good intuition about what should happen in this case. The forces must compensate the gravity, but other than that I'm pretty lost concerning how they should look like. Here's a fairly reasonable arrangement of forces:</p>
+
+            <center><canvas id="canvas6"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.rightWall = false;
+                state.addBeam(0, 5, 10, 10);
+                makeWhiteboard('canvas6', state);
+            }
+            </script>
+            <br>
+
+            <p>Note that the forces don't have to be orthogonal to the walls, as would happen if the beam was touching the wall without any glue.</p>
+
+            <p>What about more than one beam? Say we have two beams arranged in an upside-down V shape. They must be pushing each other sideways at the connection point, and they probably push the ground sideways as well, and the ground pushes them back. Something like this:</p>
+
+            <center><canvas id="canvas7"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+                state.addBeam(4, 10, 8, 5);
+                state.addBeam(12, 10, 8, 5);
+                makeWhiteboard('canvas7', state);
+            }
+            </script>
+            <br>
+
+            <p>Or consider this nice symmetric triangular arrangement of beams, kind of like a triangular house of cards:</p>
+
+            <center><canvas id="canvas9"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(24, 16);
+                state.topWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+
+                state.addBeam(4, 16, 6, 12);
+                state.addBeam(8, 16, 6, 12);
+                state.addBeam(8, 16, 10, 12);
+                state.addBeam(12, 16, 10, 12);
+                state.addBeam(12, 16, 14, 12);
+                state.addBeam(16, 16, 14, 12);
+                state.addBeam(16, 16, 18, 12);
+                state.addBeam(20, 16, 18, 12);
+
+                state.addBeam(6, 12, 10, 12);
+                state.addBeam(10, 12, 14, 12);
+                state.addBeam(14, 12, 18, 12);
+
+                state.addBeam(6, 12, 8, 8);
+                state.addBeam(10, 12, 8, 8);
+                state.addBeam(10, 12, 12, 8);
+                state.addBeam(14, 12, 12, 8);
+                state.addBeam(14, 12, 16, 8);
+                state.addBeam(18, 12, 16, 8);
+
+                state.addBeam(8, 8, 12, 8);
+                state.addBeam(12, 8, 16, 8);
+
+                state.addBeam(8, 8, 10, 4);
+                state.addBeam(12, 8, 10, 4);
+                state.addBeam(12, 8, 14, 4);
+                state.addBeam(16, 8, 14, 4);
+
+                state.addBeam(10, 4, 14, 4);
+
+                state.addBeam(10, 4, 12, 0);
+                state.addBeam(14, 4, 12, 0);
+
+                state.forceScale = 10;
+
+                makeWhiteboard('canvas9', state);
+            }
+            </script>
+            <br>
+
+            <p>Or maybe we go crazy and make a whole bunch of beams all touching the ground and connected to a single point:</p>
+
+            <center><canvas id="canvas8"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(36, 10);
+                state.topWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+                for (let i = -9; i <= 9; ++i)
+                {
+                    state.addBeam(18 + i * 2, 10, 18, 5);
+                }
+                state.forceScale = 10;
+                makeWhiteboard('canvas8', state);
+            }
+            </script>
+            <br>
+
+            <p>I hope you have an idea of what we're trying to calculate by now. Let's try making our model precise now.</p>
+
+            <h2 id="section-the-model">The model</h2>
+
+            <p>So, we want to compute the forces at both ends for each beam. This means that for each beam we have two unknown 2-dimensional force vectors \( F_a \) and \( F_b \).</p>
+
+            <p>We need some equations for these forces, which come from the assumption that our system is in a static equillibrium. We have three types of equations:</p>
+
+            <ol>
+                <li>The sum of the forces acting on each beam is zero.</li>
+                <li>The sum of the torques of the forces acting on each beam is zero.</li>
+                <li>The sum of the forces acting on each hinge is zero.</li>
+            </ol>
+
+            <p>There are only three forces acting on each beam: the two forces \( F_a, F_b \) acting on the beam's ends, and the gravity force \( mg \). So, the first equation tells us that</p>
+
+            \[ F_a + F_b + mg = 0 \]
+
+            <p>The torque, i.e. rotational moment, of a force \( F \) is computed as \( r \times F \), where \( r \) is the vector from the center of the body to the point where the force is applied to, and \( \times \) is a cross product. The gravitational force never does any rotation (<i>this is actually a nontrivial result from mechanics; we can think that gravity always acts on the body's center, in which case \( r = 0 \)</i>), so we're only left with the forces acting on the beam ends. Since the ends are symmetric with respect to the center of the beam, the \( r \) vectors are opposite for \( F_a \) and \( F_b \), and we get something like</p>
+
+            \[ F_a \times (-r) + F_b \times r = 0 \]
+
+            <p>or</p>
+
+            \[ (F_b - F_a) \times r = 0 \]
+
+            <p>Now, in 2D the cross product can be replaced with a dot product with a vector, orthogonal to \( r \). In our case \( r \) is the vector from the beam center to the beam's end, so an orthogonal vector is, for example, a vector \( n \) which is normal to the beam. We don't care about it's length, because our equation has a \( = 0\) in the right-hand side. So, our equation becomes</p>
+
+            \[ (F_b - F_a) \cdot n = 0 \]
+
+            <p>or</p>
+
+            \[ F_a \cdot n = F_b \cdot n \]
+
+            <p>which means that in order not to rotate the beam, the two forces must coincide in the normal direction. This makes total sense: if one force was stronger than the other, it would overcome it and rotate the beam. This also has the added benefit that the torque balance equation has the dimension of <i>forces</i> instead of <i>forces times lengths</i>, which <a href="#section-least-squares">will be useful later</a>.</p>
+
+            <p>The last equation is the sum of all the forces for each hinge. When a set of beams are connected in a single point, the sum of the forces acting this point must be zero. For example, if three beams are connected to a single hinge, with the first two being connected via their first end (where \( F_a \) acts), and the third being connected via its second end (where \( F_b \) acts), this gives us the equation</p>
+
+            \[ F_{a1} + F_{a2} + F_{b3} = 0 \]
+
+            <p>where \( F_{a1} \) is the \( F_a \) force of the first beam, and so on.</p>
+
+            <p>I've glossed over two special cases:</p>
+
+            <ol>
+                <li>The hinge connects the beam to the ground. In this case, there is an extra unknown ground force, which we don't care about, so this connection doesn't produce a useful equation. We could add both the unknown force and the balance equation to the system, which would only increase the computational efforts without adding any useful information.</li>
+                <li>A beam end doesn't connect to anything and simply floats in space. In this case it isn't a hinge or a connection of any sort, but it is still useful to consider it as a single-beam hinge, and the hinge equation would tell us that the force at this beam's free end must be zero (because it is static and isn't connected to anything).</li>
+            </ol>
+
+            <p>So, here's our final mathematical model of a set of beams:</p>
+
+            <ul>
+                <li>For each beam, we have 2 unknown 2D vectors \( F_a, F_b \) representing the forces acting on the beam's ends</li>
+                <li>For each beam, we have a vector equation \( F_a + F_b + mg = 0 \)</li>
+                <li>For each beam, we have a scalar equation \( F_a \cdot n = F_b \cdot n \)</li>
+                <li>For each hinge, we have a vector equation \( \sum F_i = 0 \) (<i>for this equation, wall connections aren't hinges, while free-floating beam ends are hinges</i>)</li>
+            </ul>
+
+            <p>Now let's talk about how we'd solve this equation.</p>
+
+            <h2 id="section-counting-equations">Counting equations</h2>
+
+            <p>The first thing that comes to mind about this set of equations is that it looks stupidly simple. A few sums here and there are equal to zero, that's it. Don't let these equations fool you: they are cursed as hell. <i>Well, maybe not that cursed, but still far from being completely tame.</i></p>
+
+            <p>The second thing that comes to mind about this set of equations is that it is <i>linear</i>. The components of our unknown forces are only added up and multiplied by scalars, that's it. This is <i>insanely</i> good: linear systems are basically the only thing humanity knowns how to reliably solve. If the system is good enough, that is. Is it?</p>
+
+            <p>For a linear system to be good, it must be <i>square</i>: the number of unknowns must be equal to the number of equations. Let's count how many of these we have:</p>
+
+            <ul>
+                <li>For each beam, we have 2 unknown 2D vectors, thus 4 scalar unknowns</li>
+                <li>For each beam, we have 1 vector equation and 1 scalar equation, so 3 scalar equations in total</li>
+                <li>For each hinge, we have 1 vector equation, which is 2 scalar equations</li>
+            </ul>
+
+            <p>In total, if we have \( B \) beams and \( H \) hinges, we have \( 4B \) unknowns and \( 3B+2H \) equations. Solving \( 4B=3B+2H \) gives us \( B=2H \), i.e. there must be twice as many beams as there are hinges. Must this always be the case? Hardly so!</p>
+
+            <p>Look at our first example, a beam standing vertically on the ground.</p>
+
+            <center><canvas id="canvas10"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+                state.addBeam(8, 10, 8, 5);
+                state.debug = true;
+                makeWhiteboard('canvas10', state);
+            }
+            </script>
+            <br>
+
+            <p>We have \( B=1 \) and \( H=1 \) (the free top end of the beam is a virtual hinge, remember?). In this case, we get \( 4B = 4 \) unknowns and \( 3B+2H=5 \) equations. Tsk-tsk.</p>
+
+            <p>Consider another example of a diagonal beam supported at both ends.</p>
+
+            <center><canvas id="canvas11"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.rightWall = false;
+                state.addBeam(0, 5, 10, 10);
+                state.debug = true;
+                makeWhiteboard('canvas11', state);
+            }
+            </script>
+            <br>
+
+            <p>\( B=1 \) beam and no hinges (the wall hinges don't lead to useful equations), so we get \( 4B=4 \) unknowns and only \( 3B+2H=3 \) equations.</p>
+
+            <p>Ok, but can we get a square system? Yes, sometimes, like in the upside-down V shape:</p>
+
+            <center><canvas id="canvas12"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+                state.addBeam(4, 10, 8, 5);
+                state.addBeam(12, 10, 8, 5);
+                state.debug = true;
+                makeWhiteboard('canvas12', state);
+            }
+            </script>
+            <br>
+
+            <p>Here, \( B=2 \) and \( H=1 \), leading to \( 4B=8 \) unknowns and \( 3B+2H=6+2=8 \) equations. Hooray!</p>
+
+            <p>Why is the number of unknowns and equations so important, you might ask? Well, because it tells us how <i>determined</i> our system is.</p>
+
+            <h2 id="section-determinacy">Determinacy</h2>
+
+            <p><i>I'm not even sure if "determinacy" is a word, but I like it.</i></p>
+
+            <p><i>Update: I googled it. It is, in fact, a word.</i></p>
+
+            <p>If the system is square, i.e. the number of equations is the same as the number of unknowns, basic linear algebra tells us that there is <i>usually</i> a single solution to the system. (<i>We'll talk about this "usually" in a bit.</i>)</p>
+
+            <p>If the number of equations is smaller than the number of unknowns, we have an <i>underdetermined</i> system: we didn't constrain our unknowns enough, and they have some wiggle room. In this case, <i>usually</i> there are many different solutions. Infinitely many, even.</p>
+
+            <p>If, however, the number of equations is larger than the number of unknowns, the system is <i>overdetermined</i>: we have more constraints than we can possibly satisfy. In this case, the system <i>usually</i> doesn't have a solution <i>at all</i>. Like, at all. No solution, period. Well, <i>usually</i>.</p>
+
+            <p>This is all somewhat shady, because we're talking about a physical system. Surely, it is a <i>model</i> of a system, but a seemingly good model nevertheless (<i>if you know a better model of the same thing &ndash; <a href="/blog/contacts.html">email me</a> immediately!</i>). Surely the physical world can compute some forces, but for some reason we can't? That is pants, if you ask me.</p>
+
+            <p>The case of an <i>underdetermined</i> system is easy to justify: probably the exact force distribution depends on the specific materials, on some friction coefficients, and so on. We don't include them in our model, hence there is no unique solution to the problem.</p>
+
+            <p>The case of an <i>overdetermined</i> system is harder. I mean, I have no idea why a system like this would be overdetermined, yet most interesting systems seem to be of that type. Somehow we included more equations that <i>physics itself allows for</i>, and I'm struggling to find a reasonable interpretation for that, except that maybe our model is just bad and wrong.</p>
+
+            <p><i>Or maybe I'm just not that good at physics.</i></p>
+
+            <p><i>Spoiler: I am indeed bad at physics, and as I've said in the beginning, the model is indeed bad and wrong, and I've <a href="/blog/posts/structural-mechanics-2.html">already figured</a> a better one.</i></p>
+
+            <h2 id="section-usually">Usually?</h2>
+
+            <p>What's up with that <i>usually</i> in the previous section? Well, even if a system is square, it might still be bad if the determinant of the matrix of the system is zero, or, equivalently, if the equations are not independent. In this case, we call the system <i>singular</i>, and the system can have no solutions (like for an overdetermined system), or have many solutions (like in an underdetermined system). Here's an example of how this might happen:</p>
+
+            \[ \begin{matrix} x+y=1 \\ 2x+2y=2 \end{matrix} \]
+
+            <p>Clearly, the second equation <i>follows from</i> the first one, so we could as well just throw it away and be left with 1 equation for two unknowns, which has infinitely many solutions.</p>
+
+            <p>For another example, consider a system</p>
+
+            \[ \begin{matrix} x+y=1 \\ 2x+2y=3 \end{matrix} \]
+
+            <p>Clearly, the second equation <i>contradicts</i> the first one, and there can be no solutions.</p>
+
+            <p>This only happens when the system has zero determinant, though, and a random system in the wild typically has a non-zero determinant.</p>
+
+            <p>However, this can also happen to an underdetermined or an overdetermined system, in which case the determinant doesn't make sense and we talk about the system having or not having a <i>full rank</i>.</p>
+
+            <p>Our systems come from a set of beams, and whether they are full-rank or not depends on a particular system, i.e. a particular arrangement of beams.</p>
+
+            <h2 id="section-solution-methods">Solution methods</h2>
+
+            <p>So, we have a system of linear equations, which might or might not have a solution, and which might have one or infinitely many solutions. Great.</p>
+
+            <p>What we want is to solve it, i.e. to find some arrangement of forces that satisfies all the equations, or at least satisfies them as much as possible. We have a few options to achieve this:</p>
+
+            <ol>
+                <li><a href="/blog/posts/structural-mechanics-2.html">Improve our model</a> to better reflect reality, so that it always produces a non-singular square system of equations</li>
+                <li>Solve our system in a least-squares sense, finding an arrangement of forces that is as close as possible to satisfying the equations</li>
+                <li>Slap a stupid iterative equation solver and hope for the best</li>
+            </ol>
+
+            <p>Guess what I tried first.</p>
+
+            <h2 id="section-stupid-solver">A stupid solver</h2>
+
+            <p>There's a really funny way of solving linear systems which works far more often than you'd think it should. Here's the recipe:</p>
+
+            <ol>
+                <li>Take an initial guess of the solution (setting all unknowns to zero works fine)</li>
+                <li>Iterate over all equations you have</li>
+                <li>For each equation of the form \( X+Y+Z=A \), compute the <i>current</i> value \( A' = X+Y+Z \), compute the <i>error</i> \( A - A' \), and change the values of the unknowns by evenly redistributing the error \( X \leftarrow X + (A-A')/3 \) (and so on for \( Y \) and \( Z \)), forcing this particular equation to be true</li>
+                <li> Repeate 2-3 until your unknowns converge to a solution</li>
+            </ol>
+
+            <p>As far as I've heard, this is called <i>iterative relaxation</i> or something like that. In some cases, like solving a <a href="https://en.wikipedia.org/wiki/Laplace%27s_equation">Laplace's equation</a> on a square grid, it directly corresponds to iterations of the <a href="https://en.wikipedia.org/wiki/Gauss%E2%80%93Seidel_method">Gauss-Seidel method</a> (<i>or at least I think it does...</i>), so at least this method isn't completely hopeless.</p>
+
+            <p>This solver doesn't take any assumptions about our system of equations, and is extremely easy to implement. The only problem is the torque balance equation, which is of the form</p>
+
+            \[ (F_b-F_a)\cdot n = 0 \]
+
+            <p>instead of being a simple sum. In this case, I'm computing the current value \( M = (F_b - F_a)\cdot n \), and alter the forces like this:</p>
+
+            \[ \begin{matrix} F_a \leftarrow F_a + \frac{M}{2} n \\ F_b \leftarrow F_b - \frac{M}{2} n  \end{matrix} \]
+
+            <p>If we compute the new value, we get</p>
+
+            \[ \left[\left(F_b-\frac{M}{2}n\right) - \left(F_a+\frac{M}{2}n\right)\right]\cdot n = (F_b-F_a)\cdot n - 2\frac{M}{2}(n\cdot n) = M - M = 0 \]
+
+            <p><i>(We used the fact that \( n \) is normalized).</i></p>
+
+            <p>So, this is an iterative method, and on each step it tries to force each equation to be true, one by one. Let's see how well it works.</p>
+
+            <p>First, a square system: it seems to converge to a reasonable solution pretty quickly:</p>
+
+            <center>
+            <div>
+            <canvas id="canvas13"></canvas>
+            <br>
+            <button type="button" onclick='resetForces("canvas13");'>Reset</button>
+            </div>
+            </center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+                state.addBeam(4, 10, 8, 5);
+                state.addBeam(12, 10, 8, 5);
+                state.debug = true;
+                state.solver = 'stupid';
+                makeWhiteboard('canvas13', state);
+            }
+            </script>
+            <br>
+
+            <p>Let's look at a few overdetermined systems &ndash; one that has a solution (a straight vertical beam), and one that doesn't (a beam that is diagonal but is still supported only by the floor):</p>
+
+            <center>
+            <table>
+            <tr>
+            <td><canvas id="canvas14"></canvas></td>
+            <td><canvas id="canvas15"></canvas></td>
+            </tr>
+            <tr>
+            <td><center><button type="button" onclick='resetForces("canvas14");'>Reset</button></center></td>
+            <td><center><button type="button" onclick='resetForces("canvas15");'>Reset</button></center></td>
+            </tr>
+            </table>
+            </center>
+
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+                state.addBeam(8, 10, 8, 5);
+                state.debug = true;
+                state.solver = 'stupid';
+                makeWhiteboard('canvas14', state);
+            }
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+                state.addBeam(7, 10, 9, 5);
+                state.debug = true;
+                state.solver = 'stupid';
+                makeWhiteboard('canvas15', state);
+            }
+            </script>
+            <br>
+
+            <p>The method manages to find a solution when it exists, even though the system is overdetermined, and also finds <i>some</i> solution if no proper solution is possible.</p>
+
+            <p>Let's have a look at an underdetermined system: a beam supported both by the floor and the wall. In fact, let's have two such beams simultaneously.</p>
+
+            <center>
+            <div>
+            <canvas id="canvas16"></canvas>
+            <br>
+            <button type="button" onclick='resetForces("canvas16");'>Reset</button>
+            </div>
+            </center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.addBeam(0, 5, 5, 10);
+                state.addBeam(11, 10, 16, 5);
+                state.debug = true;
+                state.solver = 'stupid';
+                makeWhiteboard('canvas16', state);
+            }
+            </script>
+            <br>
+
+            <p>The method seems to find a good enough solution! But, by the nature of the method, if we start from a different initial force arrangement, it will converge to a different solution. Here, I've manually set the starting forces to something non-zero:</p>
+
+            <center><canvas id="canvas17"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.addBeam(0, 5, 5, 10);
+                state.addBeam(11, 10, 16, 5);
+                state.beams[0].startForce = [1, 0];
+                state.beams[1].startForce = [-1, 0];
+                state.debug = true;
+                state.solver = 'stupid';
+                state.interactive = true;
+                makeWhiteboard('canvas17', state);
+            }
+            </script>
+            <br>
+
+            <p>This example is interactive, by the way! Click and drag to add new beams, right-click to remove beams. You can try to recreate the exact same beams and you'll see that the solution will depend on how exactly did you create this beams.</p>
+
+            <p>Let's also stress-test this method:</p>
+
+            <center>
+            <div>
+            <canvas id="canvas18"></canvas>
+            <br>
+            <button type="button" onclick='resetForces("canvas18");'>Reset</button>
+            </div>
+            </center>
+            <script>
+            {
+                const state = makeWhiteboardState(24, 16);
+                state.topWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+
+                state.addBeam(4, 16, 6, 12);
+                state.addBeam(8, 16, 6, 12);
+                state.addBeam(8, 16, 10, 12);
+                state.addBeam(12, 16, 10, 12);
+                state.addBeam(12, 16, 14, 12);
+                state.addBeam(16, 16, 14, 12);
+                state.addBeam(16, 16, 18, 12);
+                state.addBeam(20, 16, 18, 12);
+
+                state.addBeam(6, 12, 10, 12);
+                state.addBeam(10, 12, 14, 12);
+                state.addBeam(14, 12, 18, 12);
+
+                state.addBeam(6, 12, 8, 8);
+                state.addBeam(10, 12, 8, 8);
+                state.addBeam(10, 12, 12, 8);
+                state.addBeam(14, 12, 12, 8);
+                state.addBeam(14, 12, 16, 8);
+                state.addBeam(18, 12, 16, 8);
+
+                state.addBeam(8, 8, 12, 8);
+                state.addBeam(12, 8, 16, 8);
+
+                state.addBeam(8, 8, 10, 4);
+                state.addBeam(12, 8, 10, 4);
+                state.addBeam(12, 8, 14, 4);
+                state.addBeam(16, 8, 14, 4);
+
+                state.addBeam(10, 4, 14, 4);
+
+                state.addBeam(10, 4, 12, 0);
+                state.addBeam(14, 4, 12, 0);
+
+                state.forceScale = 10;
+
+                state.debug = true;
+                state.solver = 'stupid';
+
+                makeWhiteboard('canvas18', state);
+            }
+            </script>
+            <br>
+
+            <p>It does something reasonable (again, provided we zero-initialize all the forces), but it takes some time to converge.</p>
+
+            <p>I was still generally happy with this method, except for how it handles non-square systems:</p>
+
+            <ul>
+                <li>For overdetermined systems with no proper solution, it produces some set of forces, with no guarantee on how good this forces are</li>
+                <li>For underdetermined systems it produces some solution which might look pretty random if the initial guess is bad, or if we're adding beams on-the-fly</li>
+            </ul>
+
+            <p>Can we do something better?</p>
+
+            <h2 id="section-least-squared">Least squares</h2>
+
+            <p>There's a well-known trick of turning any equation into a minimization problem: instead of solving \( f(x)=0 \), you minimize \( f(x)^2 \). We square the thing so that it becomes positive and \( f(x)=0 \) will be the true minimum, and we don't do something like \( \|f(x)\| \) because squaring is a simple algebraic operation with nice properties. The benefit is that even if the original problem didn't have a solution, the minimization problem almost always has some solution.</p>
+
+            <p>So, in our case, instead of solving the overdetermined linear equation \( Ax=b \) which might not even have a solution, we try to minimize \( \|Ax-b\|^2 \). Note that this is a sum of squares of all the coordinates of the vector \( Ax-b \), and if these coordinates have different units, adding them up doesn't quite make sense. Here, though, we've already transformed the torque balance equations to have the same units as the force balance equations.</p>
+
+            <p>There are explicit formulas for that, which, however, require us to solve a square linear system in the process (using e.g. Gauss elimination), and I wanted to implement something in like 15 minutes to see if the whole idea can work at all. So, instead I decided to try gradient descent.</p>
+
+            <h2 id="section-gradient-descent">Least squares: gradient descent</h2>
+
+            <p>If you stare long enough into the formula \( \|Ax-b\|^2 \), you can figure out that the gradient of this scalar function with respect to vector \( x \) is equal to \( 2 A^T (Ax-b) \). Thus, we can try doing the usual gradient descent with a fixed step size (I used 0.25) and see what solution we get. This seems to work better (right image) for overdetermined systems than the stupid solver (left image):</p>
+
+            <center>
+            <table>
+            <tr>
+            <td><canvas id="canvas19"></canvas></td>
+            <td><canvas id="canvas20"></canvas></td>
+            </tr>
+            <tr>
+            <td><center><button type="button" onclick='resetForces("canvas19");'>Reset</button></center></td>
+            <td><center><button type="button" onclick='resetForces("canvas20");'>Reset</button></center></td>
+            </tr>
+            </table>
+            </center>
+
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+                state.addBeam(7, 10, 9, 5);
+                state.debug = true;
+                state.solver = 'stupid';
+                makeWhiteboard('canvas19', state);
+            }
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+                state.addBeam(7, 10, 9, 5);
+                state.debug = true;
+                state.solver = 'gradient';
+                makeWhiteboard('canvas20', state);
+            }
+            </script>
+            <br>
+
+            <p>This method found a better solution (i.e. the total error \( \|Ax-b\|^2 \) was smaller) at the expense of ignoring the physical reality and assigning some force to the free-floating top beam end.</p>
+
+            <p>For square systems, this method performs as good as the previous one, though it seems to converge a bit slower:</p>
+
+            <center>
+            <div>
+            <canvas id="canvas21"></canvas>
+            <br>
+            <button type="button" onclick='resetForces("canvas21");'>Reset</button>
+            </div>
+            </center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+                state.addBeam(4, 10, 8, 5);
+                state.addBeam(12, 10, 8, 5);
+                state.debug = true;
+                state.solver = 'gradient';
+                makeWhiteboard('canvas21', state);
+            }
+            </script>
+            <br>
+
+            <p>And for underdetermined systems this method is still sensitive to the initial guess or dynamic modifications of the system:</p>
+
+            <center><canvas id="canvas22"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.addBeam(0, 5, 5, 10);
+                state.addBeam(11, 10, 16, 5);
+                state.beams[0].startForce = [1, 0];
+                state.beams[1].startForce = [-1, 0];
+                state.debug = true;
+                state.solver = 'gradient';
+                state.interactive = true;
+                makeWhiteboard('canvas22', state);
+            }
+            </script>
+            <br>
+
+            <p>(This simulation is also interactive.)</p>
+
+            <p>And, as usual, a stress-test:</p>
+
+            <center>
+            <div>
+            <canvas id="canvas23"></canvas>
+            <br>
+            <button type="button" onclick='resetForces("canvas23");'>Reset</button>
+            </div>
+            </center>
+            <script>
+            {
+                const state = makeWhiteboardState(24, 16);
+                state.topWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+
+                state.addBeam(4, 16, 6, 12);
+                state.addBeam(8, 16, 6, 12);
+                state.addBeam(8, 16, 10, 12);
+                state.addBeam(12, 16, 10, 12);
+                state.addBeam(12, 16, 14, 12);
+                state.addBeam(16, 16, 14, 12);
+                state.addBeam(16, 16, 18, 12);
+                state.addBeam(20, 16, 18, 12);
+
+                state.addBeam(6, 12, 10, 12);
+                state.addBeam(10, 12, 14, 12);
+                state.addBeam(14, 12, 18, 12);
+
+                state.addBeam(6, 12, 8, 8);
+                state.addBeam(10, 12, 8, 8);
+                state.addBeam(10, 12, 12, 8);
+                state.addBeam(14, 12, 12, 8);
+                state.addBeam(14, 12, 16, 8);
+                state.addBeam(18, 12, 16, 8);
+
+                state.addBeam(8, 8, 12, 8);
+                state.addBeam(12, 8, 16, 8);
+
+                state.addBeam(8, 8, 10, 4);
+                state.addBeam(12, 8, 10, 4);
+                state.addBeam(12, 8, 14, 4);
+                state.addBeam(16, 8, 14, 4);
+
+                state.addBeam(10, 4, 14, 4);
+
+                state.addBeam(10, 4, 12, 0);
+                state.addBeam(14, 4, 12, 0);
+
+                state.forceScale = 10;
+
+                state.debug = true;
+                state.solver = 'gradient';
+
+                makeWhiteboard('canvas23', state);
+            }
+            </script>
+            <br>
+
+            <p>It converges, but slower than the previous method.</p>
+
+            <h2 id="section-underdetermined-systems">Least squares: underdetermined systems</h2>
+
+            <p>We still haven't solved the problem with underdetermined systems. It would be cool if we could just minimize something by another gradient descent, and I've seen in <a href="https://www.johndcook.com/blog/2018/05/06/least-squares">John D. Cook's blog</a> that you can formulate an underdetermined least-squares problem as minimizing \( \|Ax-b\|^2 + \|x\|^2 \). It kind of makes sense at first glance: for a solution to \( Ax=b \) the \( \|Ax-b\|^2 \) term will be zero, and we'll find a minimum-length solution by minimizing the \( \|x\|^2 \) term. The gradient changes only slightly compared to the previous section: \( 2A^T (Ax-b)+2x \), and if we try to apply it to an underdetermined system, we get</p>
+
+            <center>
+            <div>
+            <canvas id="canvas24"></canvas>
+            <br>
+            <button type="button" onclick='resetForces("canvas24");'>Reset</button>
+            </div>
+            </center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.rightWall = false;
+                state.addBeam(0, 5, 5, 10);
+                state.debug = true;
+                state.solver = 'gradient';
+                state.wrongUnderdetermined = true;
+                makeWhiteboard('canvas24', state);
+            }
+            </script>
+            <br>
+
+            <p>As you can see, the error \( \|Ax-b\|^2 \) stays positive, i.e. the method converges to something that is <b>not</b> a solution to \( Ax=b \), even though the original problem is underdetermined and has infinitely many solutions!</p>
+
+            <p>When I <a href="https://x.com/lisyarus/status/1725997945856647505">asked about it on twitter</a>, people got confused, thinking I'm asking about some <a href="https://en.wikipedia.org/wiki/Ridge_regression">ML-related regularization</a>. A bit later we figured out that minimizing \( \|Ax-b\|^2+\|x\|^2 \) is <b>not</b> equivalent to solving \( Ax=b \), but to some different equation:</p>
+
+            <center><blockquote class="twitter-tweet" data-lang="en"><a href="https://twitter.com/isenbaev/status/1726018037600678064"></a></blockquote></center>
+
+            <p><i>That's what you get for relying on random blogs that don't cite sources, I guess.</i></p>
+
+            <p><i>Yes, I don't cite sources either. Oh well.</i></p>
+
+            <h2 id="section-normal-equations">Least squares: the normal equations</h2>
+
+            <p>So, I abandoned the idea of having a simple iterative solver for the underdetermined case, and instead decided to do thing <i>the right way</i>, which means solving the <i>normal equations</i> for our least-squares problem.</p>
+
+            <p>For the overdetermined case, minimizing \( \|Ax-b\|^2 \) explicitly leads to the formula </p>
+
+            \[ x = (A^T A)^{-1} A^T b \]
+
+            <p>For the underdetermined case, we need to reformulate the problem as minimizing \( \|x\|^2 \) under the constraint \( Ax=b \), which sounds different but leads to a very similar (but still different!) formula</p>
+
+            \[ x = A^T (A A^T)^{-1} b \]
+
+            <p>Both these methods require inverting a matrix or, alternatively, solving a square linear system. If our system \( Ax=b \) is square from the start, we just apply Gauss elimination to it.</p>
+
+            <p>This is not an iterative method, so we don't get the forces smoothly converging to a solution, but instead we get the solution instantly. Also, nor does Gauss elimination exploit the fact that our matrix \( A \) is very sparse, &ndash; most forces only participate in a few equations, &ndash; and neither does it care about \( AA^T \) or \( A^TA \) being symmetric positive-semidefinite. To exploit these, we could do something like sparse Cholesky decomposition of \( AA^T \) or \( A^TA \) and then use it to perform elimination to solve our system.</p>
+
+            <p>So, a few sparse matrix multiplications later, I got this method to work, and it seems to be pretty good. For the overdetermined system with no solution, it computes a solution as good as the gradient descent:</p>
+
+            <center><canvas id="canvas25"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+                state.addBeam(7, 10, 9, 5);
+                state.debug = true;
+                makeWhiteboard('canvas25', state);
+            }
+            </script>
+            <br>
+
+            <p>and for an underdetermined system, it tends to compute the solution which is the most symmetric and reasonable:</p>
+
+            <center><canvas id="canvas26"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.addBeam(0, 5, 5, 10);
+                state.addBeam(16, 5, 11, 10);
+                state.debug = true;
+                makeWhiteboard('canvas26', state);
+            }
+            </script>
+            <br>
+
+            <p>In fact, all of the systems in the <a href="#examples">examples</a> section were computed using this method, so I won't show too many examples here. Have a look at this majestic bridge, though:</p>
+
+            <center><canvas id="canvas27"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(24, 10);
+                state.topWall = false;
+                state.bottomWall = false;
+                state.debug = true;
+                state.addBeam(0, 3, 8, 3);
+                state.addBeam(8, 3, 16, 3);
+                state.addBeam(16, 3, 24, 3);
+                state.addBeam(0, 7, 4, 7);
+                state.addBeam(4, 7, 12, 7);
+                state.addBeam(12, 7, 20, 7);
+                state.addBeam(20, 7, 24, 7);
+                state.addBeam(0, 3, 4, 7);
+                state.addBeam(4, 7, 8, 3);
+                state.addBeam(8, 3, 12, 7);
+                state.addBeam(12, 7, 16, 3);
+                state.addBeam(16, 3, 20, 7);
+                state.addBeam(20, 7, 24, 3);
+                state.forceScale = 10;
+                makeWhiteboard('canvas27', state);
+            }
+            </script>
+            <br>
+
+            <p>By the way, if we remove a few beams from this bridge, we get a singular system &ndash; something we couldn't detect with our previous method, but the Gauss elimination can easily report that:</p>
+
+            <center><canvas id="canvas28"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(24, 10);
+                state.topWall = false;
+                state.bottomWall = false;
+                state.debug = true;
+                state.addBeam(0, 3, 8, 3);
+                state.addBeam(8, 3, 16, 3);
+                state.addBeam(16, 3, 24, 3);
+                state.addBeam(0, 7, 4, 7);
+                state.addBeam(4, 7, 12, 7);
+                state.addBeam(12, 7, 20, 7);
+                state.addBeam(20, 7, 24, 7);
+                state.addBeam(4, 7, 8, 3);
+                state.addBeam(8, 3, 12, 7);
+                state.addBeam(12, 7, 16, 3);
+                state.addBeam(16, 3, 20, 7);
+                state.forceScale = 10;
+                makeWhiteboard('canvas28', state);
+            }
+            </script>
+            <br>
+
+            <h2 id="section-stresses">Stresses</h2>
+
+            <p>If you remember the beginning of this post, I actually wanted to calculate the <i>stresses</i> on each beam, to figure out if it breaks or not. I will define <i>bending stress</i> and <i>contraction/stretching stress</i>.</p>
+
+            <p>Bending is how much do the forces acting on the beam, well, bend it. The stronger the forces in the normal direction, the higher the bending. Since we know that \( F_a\cdot n = F_b \cdot n \), we can define either of these values as the <i>bending stress</i> \( B \).</p>
+
+            <p>Now let's add \( F_a\cdot n \) and \( F_b\cdot n \). They are equal, thus the sum is equal to \( 2B \). However, we also have the force balance equation \( F_a+F_b+mg=0 \), leading to
+
+            \[ 2B = (F_a+F_b)\cdot n = -mg \cdot n \]
+
+            <p>Thus, the amount of bending is completely determined by the gravity force and the beam's geometry (the vector \( n \)), and doesn't depend on the forces we've been trying so hard to compute. Therefore, let's pretend we're not interested in bending that much :)</p>
+
+            <p>Now let's look at stretching/contraction stresses. These only depend on the tangential components of the forces, i.e. the components that go parallel to the beam (as opposed to the bending depending on the components that are orthogonal to the beam). If the end force \( F_b \) points towards the beam center and is opposite to the beam direction vector \( t \), while the start force \( F_a \) points again towards the beam center and is aligned with the beam direction vector \( t \), we get <i>contraction</i>: two forces acting on the beam from both sides are trying to squeeze it.</p>
+
+            <p>If, however, both \( F_a \) and \( F_b \) point outwards, we have <i>stretching</i>: the forces are trying to stretch the beam.</p>
+
+            <p>We can figure out which one is the case simply by computing \( (F_b - F_a) \cdot t \): if this number is positive, we have stretching, otherwise we get contraction.</p>
+
+            <p>Here I'm showing stretching/contraction using inward/outward white arrows:</p>
+
+            <center><canvas id="canvas29"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(24, 16);
+                state.topWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+
+                state.addBeam(4, 16, 6, 12);
+                state.addBeam(8, 16, 6, 12);
+                state.addBeam(8, 16, 10, 12);
+                state.addBeam(12, 16, 10, 12);
+                state.addBeam(12, 16, 14, 12);
+                state.addBeam(16, 16, 14, 12);
+                state.addBeam(16, 16, 18, 12);
+                state.addBeam(20, 16, 18, 12);
+
+                state.addBeam(6, 12, 10, 12);
+                state.addBeam(10, 12, 14, 12);
+                state.addBeam(14, 12, 18, 12);
+
+                state.addBeam(6, 12, 8, 8);
+                state.addBeam(10, 12, 8, 8);
+                state.addBeam(10, 12, 12, 8);
+                state.addBeam(14, 12, 12, 8);
+                state.addBeam(14, 12, 16, 8);
+                state.addBeam(18, 12, 16, 8);
+
+                state.addBeam(8, 8, 12, 8);
+                state.addBeam(12, 8, 16, 8);
+
+                state.addBeam(8, 8, 10, 4);
+                state.addBeam(12, 8, 10, 4);
+                state.addBeam(12, 8, 14, 4);
+                state.addBeam(16, 8, 14, 4);
+
+                state.addBeam(10, 4, 14, 4);
+
+                state.addBeam(10, 4, 12, 0);
+                state.addBeam(14, 4, 12, 0);
+
+                state.forceScale = 10;
+                state.display = 'stress';
+
+                makeWhiteboard('canvas29', state);
+            }
+            </script>
+            <br>
+
+            <h2 id="section-playground">Interactive playground</h2>
+
+            <p>Here's an interactive playground where you can try different beam configurations. Left click and drag to create beams (they automatically connect to each other via hinges if their endpoints coincide), right click to remove beams. You can select whether to show forces or stresses using the control panel below the thing, and also change the scale of the force vectors. Don't hesitate to show me some funny configurations (in twitter, mastodon, or simply be email), I'd love to see what you come up with!</p>
+
+            <center><canvas id="canvas30"></canvas></center>
+            <center>
+            <table>
+            <tr>
+            <td width="33%"><button type="button" onclick="playgroundState.beams = [];">Clear</button></td>
+            <td width="33%"><select onchange="playgroundState.display=this.value;">
+              <option value="forces">Show forces</option>
+              <option value="stress">Show stress</option>
+            </select></td>
+            <td width="33%">Force scale: <input type="range" min="1" max="100" value="80" oninput="playgroundState.forceScale=this.value/2;"/></td>
+            </tr>
+            </table>
+            </center>
+            <script>
+            const playgroundState = makeWhiteboardState(36, 24);
+            playgroundState.debug = true;
+            playgroundState.interactive = true;
+            makeWhiteboard('canvas30', playgroundState);
+            </script>
+            <br>
+
+            <h2 id="section-the-end">The end</h2>
+
+            <p>So, here's our model for computing the forces in a beam. I'm not quite satisfied with it, but it seems to work in most cases. Maybe a more physically appropriate way of doing this would involve minimizing something smarter than just the sum of squared errors.</p>
+
+            <p>I guess what most bridge-building and similar games do is actually simulate the physics (they have dynamic physics, after all!), and look at the constraint forces that the physics engine computed. It would be interesting to see how these would differ from my naive least-squares method :)</p>
+
+            <p>Anyway, I hope you liked the post. I'm planning to write another one, experimenting with squares or cubes this time. Stay tuned :)</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
