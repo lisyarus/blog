@@ -1,0 +1,931 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <title>Porting my C++ game engine to Android | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Porting my C++ game engine to Android</div></center><br/>
+            <center><span class="post-date">2023 Jul 19</span></center><br/>
+
+            <p>The annual <a href="https://itch.io/jam/gmtk-2023">GMTK Jam</a> has just finished, breaking <a href="https://itch.io">itch.io</a> servers again, as per tradition. I was pretty happy with how I approached the jam this time (rapid fail-early prototyping, reasonable scheduling, nice art style, that sort of thing), although my game <a href="https://itch.io/jam/gmtk-2023/rate/2161694">wasn't received</a> as warmly as I've hoped. <a href="https://lisyarus.itch.io/tower-offense">Here it is</a>, by the way; it is a kind of reverse tower defence thing.</p>
+
+            <center><img src="/blog/media/porting-for-android/tower-offense.png" class="image-embed"></center>
+            <center><i>A completely reasonable situation.</i></center>
+
+            <p>If you go to the game's page, you might notice a weird thing: it has an Android version! I've been thinking of building for Android for quite some time, and this game felt like a great candidate due to being quite minimalistic in design.</p>
+
+            <p>It only runs on certain architectures (arm64-v8a) and Android API versions (26+), but still. It doesn't sound like a big deal until you realize that I'm using my own C++ game engine. It took me about a week to support building for Android, and in this post I'm going to tell you how this is done.</p>
+
+            <p><i>If you're only interested in how to build Android apps without Gradle, Maven, or Android Studio, jump straight to the <a href="#stage-2">stage 2</a>.</i></p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h1 id="stage-0">Stage 0: Reevaluating my life choices</h1>
+
+            <h2 id="section-why">Why?</h2>
+
+            <p>Why am I even doing this? Here are a few legitemately good reasons I came up with:</p>
+
+            <ul>
+                <li>This is a valuable, albeit quite painful, <b>experience</b> for me as an engineer</li>
+                <li>If I ever want to actually <b>make mobile games</b>, I will be able to use my beloved engine</li>
+                <li>Is it a good step towards supporting <b>more platforms</b>, like web (using WASM and Emscripten)</li>
+            </ul>
+
+            <p>But honestly the most important reason is <b>just for fun</b>. The feeling of running your project on a device that it couldn't run on before is extremely satisfying.</p>
+
+            <h2 id="section-how">How?</h2>
+
+            <p>Now that we believe this whole endeavour is worth a try, how are we gonna do it? I'm using <a href="https://www.libsdl.org">SDL2</a> (a platform abstraction library, used for e.g. window & OpenGL context management, and audio output) for desktop builds, and I've heard you can use SDL2 to build for android directly, so I decided to look into how they do it.</p>
+
+            <p>Long story short, I didn't like it at all.</p>
+
+            <p>They rely on you using <code>SDL_main</code> (a function you need to define in order to work with SDL because they define <code>main</code> themselves but this <code>main</code> is in a library different from <code>libSDL</code> namely <code>libSDL_main</code> and they <i>"conveniently"</i> do <code>#define main SDL_main</code> so that it looks like you're just writing <code>main</code> but then you get linker errors about <code>main</code> not being there...), which I've successfully avoided doing all these years. They pretend that you still own the application loop (which you don't &ndash; Android owns it!) and create a separate thread with a compex inter-thread communication system to make it work. They don't have any documentation on how to use their thing, only a tiny single-file example.</p>
+
+            <p>So, if I'm not using SDL2, what do I use instead? At this point, a scary idea visited my deranged mind: I can actually do all this <i>myself</i>. I mean, I don't need all the stuff that SDL2 supports, and I already know a lot about using native (i.e. C++) OpenGL rendering inside an Android app (after all, that's what I do at work), so...how hard it can be?</p>
+
+            <p><i>Oh, sweet summer child.</i></p>
+
+            <p>My general idea went like this:</p>
+
+            <ul>
+                <li>Build my engine & game into a shared library that exposes some setup routines, event handlers and a render callback through <a href="https://en.wikipedia.org/wiki/Java_Native_Interface">JNI</a></li>
+                <li>Make an Android app that creates an OpenGL-renderable surface, loads said library and calls the appropriate functions</li>
+            </ul>
+
+            <p>Before I could do that, I needed some refactoring to be done.</p>
+
+            <h1 id="stage-1">Stage 1: Preparations</h1>
+
+            <h2 id="section-application-abstraction">Application abstraction</h2>
+
+            <p>My engine's core application code looked like this: we have a</p>
+
+            <ul>
+                <li>Base application class, which uses SDL2 to create a window, OpenGL context, setups logging, and manages a handful of unrelated stuff, and a</li>
+                <li>Project's application class which inherits the base application and does some project-specific things, including initialization of resources, event handling and rendering to the screen.</li>
+            </ul>
+
+            <p>Then I had a helper function which is meant to be the <code>main</code> of your executable, which basically just sets up some more initialization and calls the <code>application.run()</code> method. A typical project using my engine would look like this (class names are changed to be more readable):</p>
+
+            <pre><code class="language-cpp block">class my_application
+    : public psemek::base_application
+{
+public:
+    my_application()
+        : base_application("My Application!")
+    {}
+
+    void draw() override
+    {
+        drawSomethingCool();
+    }
+};
+
+int main()
+{
+    return psemek::main&lt;my_application&gt;();
+}</code></pre>
+
+            <p>There are three major problems with this approach:</p>
+
+            <ul>
+                <li>It depends on SDL2 at it's core</li>
+                <li>It owns the application loop through the <code>application.run</code> method</li>
+                <li>Inside it is a horrible monstrosity born from several years of neglected technical debt</li>
+            </ul>
+
+            <p>So, instead I made an <code>application</code> into an <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/app/include/psemek/app/application.hpp">interface</a>: it can <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/app/include/psemek/app/event_handler.hpp">handle events</a>, draw something on the screen, and tell if it's stopped. Each project supplies its own implementation of this interface, which is then used by the engine.</p>
+
+            <p>There's a catch, though: I want to supply the engine with certain data <i>before</i> the application is even constructed. For now it's just the window title and a multisampling factor, but I might add more stuff in the future <i>(like the WebGPU required features & limits)</i>; let's call these <i>application options</i>. I want to pass them to the engine, make it initialize all the stuff (like a window and OpenGL context), and then create an application.</p>
+
+            <p>I could use late initialization here (i.e. an <code>application.init</code> method), but I simply hate late initialization. C++ has constructors, use them to initialize objects, period. The concept that each object is valid and ready to use immediately after being created is incredibly useful and saves you from millions of useless <code>if (!valid())</code> checks.</p>
+
+            <p>So, I introduced the concept of an <i>application factory</i>: also an interface which the engine can use to query <i>application options</i>, do the initialization, and then use the factory again to actually create the application. Something like this:</p>
+
+            <pre><code class="language-cpp block">class application
+{
+public:
+    virtual void draw() = 0;
+    virtual void on_event(...) = 0;
+};
+
+struct options
+{
+    std::string title;
+    int multisampling;
+};
+
+class factory
+{
+public:
+    virtual options get_options() = 0;
+    virtual std::unique_ptr&lt;application&gt; create_application() = 0;
+};</code></pre>
+
+            <p>Now, there might be some data that the engine itself might want to return back to the application, like some callbacks to hide the mouse cursor or disable vsync. I've called it an <i>application context</i>, because I was running out of words. This is passed to the application factory, along with the <i>options</i> for convenience:</p>
+
+            <pre><code class="language-cpp block">struct context
+{
+    // some callbacks
+};
+
+class factory
+{
+public:
+    virtual options get_options() = 0;
+    virtual std::unique_ptr&lt;application&gt;
+        create_application(options const &, context const &) = 0;
+};</code></pre>
+
+            <p>Now, the project simply defines a function that creates the application factory (i.e. a factory factory, yeah):</p>
+
+            <pre><code class="language-cpp block">std::unique_ptr&lt;factory&gt; make_application_factory();</code></pre>
+
+            <p>which is in turn used by the engine.</p>
+
+            <h2 id="section-backend-library">Backend library</h2>
+
+            <p>Now the application doesn't know anything about SDL2, but <i>something</i> should know about it! This is where I introduced the concept of a <i>backend library</i>.</p>
+
+            <p>I usually don't like calling my engine an <i>engine</i>, because I always picture engines as those monolithic centralized things, while my engine is more like a set of loosely-coupled <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs">standalone libraries</a>. You can easily create a console executable that does some math, or generates sound, or <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/vecr">renders vector graphics on the CPU</a>, whatever. You never need to initialize or even deal with stuff you don't use.</p>
+
+            <p>Now there is a new library in the engine which is a bit special: it's called <code>sdl2</code>, and it is a <i>backend library</i>, meaning it isn't included in the engine by default, but linked with your application only if you explicitly say that you want an application (as opposed to regular executable) by using a special CMake function provided by the engine.</p>
+
+            <p>This <i>backend library</i> is the thing that calls your <code>make_application_factory()</code> and actually uses it, in any way it sees fit. In the case of SDL2, this is pretty straightforward:</p>
+
+            <pre><code class="language-cpp block">// Somewhere in the sdl2 library
+int main()
+{
+    auto factory = make_application_factory();
+    auto options = factory->options();
+    create_window_and_gl_context(options);
+    context ctx{...}; // this is app context, not OpenGL context
+    auto application = factory->create_application(options, ctx);
+
+    while (!application->stopped())
+    {
+        poll_events(application);
+        application->draw();
+        swap_buffers();
+    }
+}</code></pre>
+
+            <p>So, the main application loop is moved from the application itself to an external library, which allows for much more flexibility in how the application class is used, as we'll see later.</p>
+
+            <p>The backend library is also responsible for the <i>audio backend</i> and <i>loading resources</i>; we'll talk about that later as well.</p>
+
+            <h1 id="stage-2">Stage 2: Building an Android app</h1>
+
+            <h2 id="section-bare-bones">Bare-bones</h2>
+
+            <p>The end result of the process should be an Android application, i.e. an <a href="https://en.wikipedia.org/wiki/Apk_(file_format)">APK file</a> which I can download, install, confirm that I trust the unrecognized developer, and run it.</p>
+
+            <center><img src="/blog/media/porting-for-android/obi-wan.png" class="image-embed"></center>
+            <center><i>The unrecognized developer.</i></center>
+
+            <p>So, my first thought was to try and just build an empty Android app, without any OpenGL or JNI or whatever. In my C++ world with pink ponies and rainbow unicorns, the first thing you do when learning C++ is how to invoke the compiler (well, unless you're using Windows, that is). You learn that you can literally open a console, write <code>g++ my.cpp -o my</code> and there you are, you have a working C++ application. How much simpler can it be? Then you learn about build systems and stuff like that, but occasionally you have to go inspect what's happening on the compiler level, because build systems never work the way you want them to.</p>
+
+            <p>So I naively assumed that the same is true of making Android apps. There are things like Gradle and Maven, but surely I should be able to just run a couple of commands in the console and have a working .apk? You'd probably need more than just a single source file, but still.</p>
+
+            <p>Well, this turned out to be possible, but much harder than I expected. The problem is that no sane person does it this way. I've only found <a href="https://authmane512.medium.com/how-to-build-an-apk-from-command-line-without-ide-7260e1e22676">a single article</a> about this, which is hopelessly outdated because Google likes changing their APIs twice a week. Nevertheless, with a lot of extensive googling I managed to figure out how to to that.</p>
+
+            <h2 = id="section-sdk">SDK</h2>
+
+            <p>The first thing we need is an Android SDK. Most resources about it just tell you which Android Studio menu to open in order to select your SDK version. Apparently things like Gradle also download them on the fly from god-knows-where. However, if you go to <a href="https://developer.android.com/studio">developer.android.com/studio</a> and scroll far enough down, you'll find a <i>Command line tools only</i> section &ndash; this is exactly what we need.</p>
+
+            <p>Then, follow <a href="https://developer.android.com/tools/sdkmanager">these steps</a> to unpack the downloaded package. They advise doing some strange folder manipulations &ndash; <b>do them</b>, otherwise the thing just won't work.</p>
+
+            <p>Assuming you did the above, you'll have a <code>&lt;somewhere&gt;/cmdline-tools/latest/bin/sdkmanager</code> executable, which can list available packages via <code>sdkmanager --list</code> and install them. We need the <code>build-tools</code> and the <code>platforms</code> packages. <code>build-tools</code> is a set of command-line tools that assemble the Android app; <code>platforms</code> is a Java package with Android runtime bindings, something like that.</p>
+
+            <p>In my case, I installed <code>build-tools;34.0.0</code> and <code>platforms;android-34</code>. <b>34</b> is the <a href="https://apilevels.com">Android API version</a> we'll be targeting. <i>Don't worry, we will be able to run on older API versions as well.</i> It asks you to accept some licenses and defaults to <b>not</b> accepting them, so be careful not to accidentally skip this. You'd also want to pipe <code>yes</code> into this thing if this is happening inside some script.</p>
+
+            <p>We now have our SDK with a few directories that we'll use a lot. Let's define a few shortcuts (replace <code>&lt;somewhere&gt;</code> with your installation path):</p>
+
+            <pre><code class="language-bash block">BUILD_TOOLS=&lt;somewhere&gt;/build-tools/34.0.0
+PLATFORM=&lt;somewhere&gt;/platforms/android-34</code></pre>
+
+            <p><i>You can also use <code>sdkmanager</code> to install the Android NDK, though I used a different method for reasons I'll explain later.</i></p>
+
+            <p>Oh, and you'll need a Java compiler, so install OpenJDK or something like that if you don't have it already. <i>I forgot about it the first time I was building my Docker container for android packaging!</i></p>
+
+            <h2 id="section-assembling">Assembling</h2>
+
+            <p>Now, create a bare-bones Android project. We only need two files: <code>AndroidManifest.xml</code> in the project root containing some app metadata, and <code>MainActivity.java</code> somewhere in <code>src/your/application/name</code> (or whatever you'll call it) with the main activity class. Here's the java file:</p>
+
+            <pre><code class="language-java block">package your.application.name;
+
+import android.app.Activity;
+
+public class MainActivity extends Activity {
+    // do nothing, successfully
+}</code></pre>
+
+            <p>and the xml file:</p>
+
+            <pre><code class="language-xml block">&lt;?xml version='1.0'?>
+&lt;manifest xmlns:a='http://schemas.android.com/apk/res/android' 
+    package='your.application.name'
+    a:versionCode='0'
+    a:versionName='0'>
+    &lt;uses-sdk
+        a:minSdkVersion="26"
+        a:targetSdkVersion="34"/>
+    &lt;application
+        a:label='My Application'>
+        &lt;activity
+            a:name='your.application.name.MainActivity'
+            a:exported="true">
+            &lt;intent-filter>
+                &lt;category a:name='android.intent.category.LAUNCHER'/>
+                &lt;action a:name='android.intent.action.MAIN'/>
+            &lt;/intent-filter>
+        &lt;/activity>
+    &lt;/application>
+&lt;/manifest></code></pre>
+
+            <p><i><code>a:</code> seems to be a shorthand for <code>android:</code>, though the latter doesn't work for me despite being present in thousands of tutorials and stackoverflow answers. The <code>exported</code> attribute seems to be important for the main activity. Don't cite me on that, I'm as good a mobile developer as I'm an astronaut.</i></p>
+
+            <p>Now, we'll need to <i>sign</i> the resulting APK, so we need to generate a key first. This is how it is done:</p>
+
+            <pre><code class="language-bash block">keytool -genkeypair -validity 365 -keystore mykey.keystore \
+    -keyalg RSA -keysize 2048</code></pre>
+
+            <p>The <code>keytool</code> executable should come with the JDK installation. The <code>mykey.keystore</code> file now contains our key in an encrypted form.</p>
+
+            <p>Given these files, we can already build an android application! We just need a bunch of magic commands:</p>
+
+            <ul>
+                <li>Create a few directories that will be useful later:</li>
+                <pre><code class="language-bash block">mkdir bin</code></pre>
+
+                <li>Do something related to packaging resources and metadata:
+                <pre><code class="language-bash block">${BUILD_TOOLS}/aapt package -f -m -J ./src \
+    -M ./AndroidManifest.xml -I ${PLATFORM}/android.jar</code></pre>
+                (you can add <code>-S ./res</code> if you have some resource files)</li>
+
+                <li>Compile the Java code:</li>
+                <pre><code class="language-bash block">javac -d obj -classpath src -classpath ${PLATFORM}/android.jar \
+    src/your/application/name/*.java</code></pre>
+
+                <li>Convert Java bytecode into Android bytecode or smth like that:</li>
+                <pre><code class="language-bash block">${BUILD_TOOLS}/d8 --output . obj/your/application/name/*.class</code></pre>
+
+                <li>Make an actual APK file:</li>
+                <pre><code class="language-bash block">${BUILD_TOOLS}/aapt package -f -m -F ./bin/myapp.unaligned.apk \
+    -M ./AndroidManifest.xml -I ${PLATFORM}/android.jar</code></pre>
+
+                <li>Add the compiled code to the APK:</li>
+                <pre><code class="language-bash block">${BUILD_TOOLS}/aapt add bin/myapp.unaligned.apk classes.dex</code></pre>
+
+                <li>Align the APK, whatever this means:</li>
+                <pre><code class="language-bash block">${BUILD_TOOLS}/zipalign -f 4 ./bin/myapp.unaligned.apk ./bin/myapp.apk</code></pre>
+
+                <li>Finally, sign the APK:</li>
+                <pre><code class="language-bash block">${BUILD_TOOLS}/apksigner sign --ks mykey.keystore ./bin/myapp.apk</code></pre>
+            </ul>
+
+            <p>You will be asked a password; if you don't want to type it every time, add <code>--ks-pass pass:YOUR-PASSWORD-HERE</code> to the last command.</p>
+
+            <p>Horray! Send <code>bin/myapp.apk</code> to your phone somehow (via <code>adb install</code> or just send it to yourself via a messenger) and it should be an empty application which successfully runs and does nothing.</p>
+
+            <h2 id="section-gradle">Gradle</h2>
+
+            <p>The process above works, but it feels a bit...shaky? Diving in all those low-level details that could change at any moment. So I thought to give actual build systems a try.</p>
+
+            <p>Gradle is probably the most widespread build system for Android. Is it even a build system? I don't know and I don't care, so I'll keep calling it that. Anyway, I installed it and executed a command that supposedly should setup an empty project. Gradle proceeded to download hundreds (literally) of heavy packages, and I wasn't patient enough to wait for it to finish.</p>
+
+            <p>This huge downloading is a problem for me. You see, I want to wrap all this building process into a clean, isolated, reproducible environment (a Docker container), and if Gradle starts downloading petabytes of data on every build, that's gonna be a problem &ndash; these things won't cache inside the container, since it's being thrown away after the build finishes.</p>
+
+            <p>I'm told there are ways to pre-download this cache, but this doesn't sound like a reliable solution for me. Gradle seems to go to the internet to check for updates and download and upgrade god-knows-what on every run. How bad will it be after a week? A month? A year? Will it even work without an internet connection (all my other build scripts work flawlessly without it)? These are the questions I was too scared to learn the answer to.</p>
+
+            <p>There's also the problem of <i>iteration time</i>. This is the single most important thing in any development process, especially so when you have hard time constraints like on game jams. At the same time, Gradle is well-known for being notoriously slow. The above low-level process executes in under 2 seconds on my machine, &ndash; a time span Gradle needs to just realize that it was executed at all.</p>
+
+            <p>So, no Gradle for me.</p>
+
+            <h2 id="section-maven">Maven</h2>
+
+            <p>Someone also suggested using Maven, as it is supposedly more sane that Gradle. So, I installed it and executed a command to set up an empty project. It too began downloading a lot of stuff, but it finished much faster than Gradle! It crashed trying to download something it needs that doesn't exist anymore. Cool.</p>
+
+            <p>So, I stuck with the bare-bones approach to compiling an Android app.</p>
+
+            <h2 id="section-gl-surface-view">GLSurfaceView</h2>
+
+            <p>Before going further, let's make our Android app actually draw something on the screen using OpenGL, like clear the screen with some color.</p>
+
+            <p>Android has a special class for that called <a href="https://developer.android.com/reference/android/opengl/GLSurfaceView"><code>GLSurfaceView</code></a>. The docs already have an example of how to use it, but let me show it here as well:</p>
+
+            <pre><code class="language-java block">package your.application.name;
+
+import android.app.Activity;
+import android.opengl.GLSurfaceView;
+import android.opengl.GLSurfaceView.Renderer;
+import javax.microedition.khronos.opengles.GL10;
+
+public class MainActivity extends Activity {
+    class RendererImpl implements Renderer {
+        @Override
+        public void onSurfaceCreated(GL10 gl10, EGLConfig config) {
+        }
+
+        @Override
+        public void onSurfaceChanged(GL10 gl10, int width, int height) {
+            gl10.glViewport(0, 0, width, height);
+        }
+        
+        @Override
+        public void onDrawFrame(GL10 gl10) {
+            gl10.glClearColor(0.8, 0.8, 1.0, 1.0);
+            gl10.glClear(gl10.GL_COLOR_BUFFER_BIT);
+        }
+    }
+
+    class ViewImpl extends GLSurfaceView {
+        private final RendererImpl renderer;
+
+        public ViewImpl(Context context) {
+            super(context);
+            // Choose the OpenGL ES version
+            setEGLContextClientVersion(3);
+            // Choose the screen format
+            setEGLConfigChooser(8, 8, 8, 8, 24, 8);
+
+            renderer = new RendererImpl();
+            setRenderer(renderer);
+
+            // Render all the time, without explicitly
+            // asking for updates
+            setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
+        }
+    }
+
+    private ViewImpl view;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        view = new ViewImpl(this);
+        setContentView(view);
+    }
+}</code></pre>
+
+            <p>This should clear the app screen to a nice light-blue color. To enable OpenGL ES 3.2 in our application, we need to patch <code>AndroidManifest.xml</code>:</p>
+
+            <pre><code class="language-xml block">&lt;?xml version='1.0'?>
+&lt;manifest xmlns:a='http://schemas.android.com/apk/res/android' 
+    package='your.application.name'
+    a:versionCode='0'
+    a:versionName='0'>
+    &lt;uses-sdk
+        a:minSdkVersion="26"
+        a:targetSdkVersion="34"/>
+    &lt;uses-feature
+        a:glEsVersion="0x00030002"
+        a:required="true"/>
+    &lt;application
+        a:label='My Application'>
+        &lt;activity
+            a:name='your.application.name.MainActivity'
+            a:exported="true"
+            a:screenOrientation="landscape">
+            &lt;intent-filter>
+                &lt;category a:name='android.intent.category.LAUNCHER'/>
+                &lt;action a:name='android.intent.action.MAIN'/>
+            &lt;/intent-filter>
+        &lt;/activity>
+    &lt;/application>
+&lt;/manifest></code></pre>
+
+            <p>I've also added the <code>screenOrientation="landscape"</code> option, so that X and Y coordinates are swapped and we don't have to work with a vertical screen.</p>
+
+            <p>There is one more thing I wanted here: removing the system toolbars, since they're not usually used in games. I achieved this by adding these lines in <code>MainActivity.onCreate</code>:</p>
+
+            <pre><code class="language-java block">pActionBar actionBar = getActionBar();
+if (actionBar != null) {
+    actionBar.hide();
+}
+
+WindowInsetsController windowInsetsController = view.getWindowInsetsController();
+if (windowInsetsController != null) {
+    windowInsetsController.hide(Type.systemBars());
+    windowInsetsController.setSystemBarsBehavior(
+        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+}</code></pre>
+
+            <p><i>(You'll need a few more imports for this.)</i></p>
+
+            <p>Now comes the fun part.</p>
+
+            <h1 id="stage-3">Stage 3: Cross-compiling</h1>
+
+            <h2 id="section-ndk">NDK</h2>
+
+            <p>Cross-compiling means compiling code on one system (the <i>host</i>) that is going to run on a different system (the <i>target</i>). In C++, this means you nead a specially configured compiler capable of producing binaries for the <i>target</i> CPU architecture, you need various system libraries like the C and C++ standard library for the <i>target</i> platform, and you need some build system massaging to convince it to use the proper compilers and libraries. Thankfully, in the case of cross-compiling for Android, we have a standard solution: the <a href="https://developer.android.com/ndk">NDK</a> (Native Developement Kit).</p>
+
+            <p>We can install NDK using <code>sdkmanager</code> that we used before, like e.g. the latest LTS version <code>ndk;25.2.9519653</code>. However, it comes with a pretty old compiler (namely, clang 14), which lacks some C++20 features, like template deduction guides for <code>std::weak_ptr</code> and comparison operators for <code>std::strong_ordering</code>, to name a few. I was thinking for a while about how I could overcome this issue, like maybe patching the supplied C++ standard library, but it turned out there's a better solution.</p>
+
+            <p>NDK-r25 is the latest LTS (long-term support) version, but there's a newer one, namely NDK-r26-beta1. You can't install it through <code>sdkmanager</code>, but you can <a href="https://developer.android.com/ndk/downloads">download it manually</a>. This is the one I used: it comes with clang 17, which is much better in terms of C++20 support.</p>
+
+            <p>If you install the r25, it will go to a folder <code>ndk</code> next to your <code>cmdline-tools</code> folder; the full path to the NDK would be <code>&lt;somewhere&gt;/ndk/25.2.9519653</code>.</p>
+
+            <p>If you download the r26-beta1, it will be just a zip archive, which I unpacked and renamed the root folder from whatever it was to <code>26.0.10404224-beta1</code> (you can look up this version in the <code>source.properties</code> file in the extracted folder). Then, I moved it to the same <code>ndk</code> directory, with the path to the new NDK being <code>&lt;somewhere&gt;/ndk/26.0.10404224-beta1</code>.</p>
+
+            <p>In any case, let's define <code>NDK=&lt;somewhere&gt;/ndk/&lt;your-ndk-version&gt;</code> in what follows.</p>
+
+            <h2 id="section-cmake">CMake</h2>
+
+            <p>Whatever build system you use, you need to configure a lot of stuff to make it use this NDK. If you're using CMake, things get a bit easier. CMake uses special <a href="https://cmake.org/cmake/help/latest/variable/CMAKE_TOOLCHAIN_FILE.html">toolchain files</a> to define a bunch of variables about your build environment that are otherwise impossible to set via a normal <code>CMakeLists.txt</code> file. These toolchain files are especially useful for cross-compiling.</p>
+
+            <p>The Android NDK supplies its own toolchain file for CMake. It is located at <code>${NDK}/build/cmake/android.toolchain.cmake</code>. A CMake invocation that uses this toolchain file might look like this:</p>
+
+            <pre><code class="language-bash block">cmake -S source-dir -B build-dir \
+    -DCMAKE_TOOLCHAIN_FILE="${NDK}/build/cmake/android.toolchain.cmake"</code></pre>
+
+            <p>However, in case of Android NDK, we need to supply a bunch of other options for CMake:</p>
+
+            <ul>
+                <li><code>-DANDROID_PLATFORM=34</code> &ndash; the API version we are targetting</li>
+                <li><code>-DANDROID_STL=c++_shared</code> &ndash; whether to use a static or shared version of the C++ standard library</li>
+                <li><code>-DANDROID_CPP_FEATURES="rtti exceptions"</code> &ndash; what optional C++ features we are going to use (these are off by default)</li>
+                <li><code>-DANDROID_ABI=arm64-v8a</code> &ndash; the target CPU ABI.</li>
+            </ul>
+
+            <p>So, the full configure command would be something like this:</p>
+
+            <pre><code class="language-bash block">cmake -S source-dir -B build-dir \
+    -DCMAKE_TOOLCHAIN_FILE="${NDK}/build/cmake/android.toolchain.cmake" \
+    -DANDROID_USE_LEGACY_TOOLCHAIN_FILE=ON -DANDROID_PLATFORM=34 \
+    -DANDROID_STL=c++_shared -DANDROID_CPP_FEATURES="rtti exceptions" \
+    -DANDROID_ABI=arm64-v8a</code></pre>
+
+            <p>If you open the <code>android.toolchain.cmake</code> file, you'll notice that it immediately fallbacks to some <code>android-legacy.toolchain.cmake</code>, unless this behavior was explicitly disabled. My first thought was that I don't want some legacy stuff, I want the new, <i>good stuff</i>, so I went ahead and added <code>-DANDROID_USE_LEGACY_TOOLCHAIN_FILE=OFF</code> to CMake invocation. Then I spent a good part of my evening trying to figure out how it is possible that the C++ compiler fails to find it's own standard library headers. Long story short: <b>don't do that</b>, don't disable the legacy toolchain, it is the one that actually works.</p>
+
+            <h2 id="section-libpng">libPNG</h2>
+
+            <p>If you're using any third-party libraries that aren't header-only, you'll need to cross-compile them, too. I'm using libPNG for reading PNG images, so I started here. This one we can take directly from <a href="https://github.com/glennrp/libpng">github</a>, and it compiles easily with CMake. The whole process is as follows:</p>
+
+            <pre><code class="language-bash block"># Create a special directory for libPNG
+mkdir png && cd png
+
+# Shallow-clone the latest release branch to 'source' directory
+git clone https://github.com/glennrp/libpng.git -b libpng16 --depth 1 source
+
+# Configure the build
+mkdir build
+cmake -S source -B build -DCMAKE_INSTALL_PREFIX=install/arm64-v8a \
+    -DCMAKE_TOOLCHAIN_FILE="${NDK}/build/cmake/android.toolchain.cmake" \
+    -DANDROID_PLATFORM=34 -DANDROID_STL=c++_shared -DCMAKE_BUILD_TYPE=Release \
+    -DANDROID_CPP_FEATURES="rtti exceptions" -DANDROID_ABI=arm64-v8a
+
+# Build and install the binaries
+cmake --build build -t install -j</code></pre>
+
+            <p>Now, <code>png/install/arm64-v8a/lib</code> contains <code>libpng.so</code> built for our Android system. Yay.</p>
+
+            <p>libPNG in turn needs the <code>libz</code> compression library, but this one is bundled with the NDK and is already present on any Android device, so we don't need to worry about it.</p>
+
+            <h2 id="section-boost">Boost</h2>
+
+            <p>I'm also using <a href="https://www.boost.org">Boost</a> in my engine. Many people think that Boost is the worst C++ library ever designed, but I'm completely fine with it. Most parts of Boost that I use are header-only, meaning they don't require a separate compilation step. However, I'm also using Boost.Random, &ndash; which isn't header-only, &ndash; for a single purpose: it provides a platform-specific source of random numbers, good for initializing your RNG for map generation, enemy AI, etc. So I needed to build specifically Boost.Random with Android NDK.</p>
+
+            <p>Boost doesn't use CMake. In fact, Boost uses its own special build system called Boost.Build, which is a bit tricky to configure. Here's how it goes.</p>
+
+            <p>First, we download the version of Boost we need, like the <a href="https://boostorg.jfrog.io/artifactory/main/release/1.82.0/source">latest 1.82.0</a> version. Note that we need the <i>source code</i>, not just a development package some systems provide (like <code>libboost-all-dev</code> on Ubuntu). Unpack it somewhere, it will become a folder <code>boost_1_82_0</code>. I renamed and moved it to <code>&lt;somewhere&gt;/boost/source</code>, for consistency with libPNG.</p>
+
+            <p>Then, we need to <i>bootstrap</i> the compilation by doing this in the <code>source</code> directory:</p>
+
+            <pre><code class="language-bash block">./bootstrap.sh --with-libraries=random --prefix=../install/arm64-v8a</code></pre>
+
+            <p>I'm specifying an architecture-specific installation directory, just like for libPNG, and I'm also telling that I only need the Random library.</p>
+
+            <p>Now we need to supply an equivalent of a CMake toolchain file for Boost. This is done using a special config file. We'll call it <code>user-config.jam</code>, put it somewhere, like in the <code>&lt;somewhere&gt;/boost</code> directory, and write this in it:</p>
+
+            <pre><code class="language-bash block">using clang : android : ${NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=aarch64-none-linux-android34 --sysroot=${NDK}/toolchains/llvm/prebuilt/linux-x86_64/sysroot ;</code></pre>
+
+            <p><i>Of course, <code>${NDK}</code> should be the NDK location we defined earlier.</i></p>
+
+            <p>The <code>using clang : android</code> defines a <i>toolset</i> called <code>clang-android</code>, and it tells Boost that it is a variant of a Clang compiler, so that it configures properly. The next long line is the command to invoke the compiler; I reverse-engineered it from the CMake toolchain files NDK provides.</p>
+
+            <p>Now we can build boost, doing this from the <code>source</code> directory again:</p>
+
+            <pre><code class="language-bash block">./b2 toolset=clang-android target-os=android architecture=arm variant=release \
+    link=shared threading=single --user-config=../user-config.jam \
+    --build-dir=../build install</code></pre>
+
+            <p>We set a bunch of options here; the most important is <code>--user-config=../user-config.jam</code> pointing to the config file we created before, and the <code>toolset=clang-android</code> telling it to use the compiler from the config file. It is important to call it <code>clang-something</code> (i.e. write <code>using clang : something : ...</code> in the <code>user-config.jam</code>) and not just <code>clang</code> (i.e. <code>using clang : : ...</code>), because otherwise it might interfere with your system-installed clang and not use the NDK compiler. <code>clang-android</code> worked great for me.</p>
+
+            <p>Now we should have our boost binaries in <code>&lt;somewhere&gt;/boost/install/arm64-v8a/lib</code>, and the Boost include files in <code>&lt;somewhere&gt;/boost/install/arm64-v8a/include</code>.</p>
+
+            <h2 id="section-architectures">Architectures</h2>
+
+            <p>For now, we were building everything only for the <code>arm64-v8a</code> ABI. However, there are others, namely <code>armeabi-v7a</code>, <code>x86</code> and <code>x86_64</code>. An Android APK contains Java bytecode and native binaries; Java bytecode is ABI-independent, but the native code must be built for every architecture separately. We'll see later that the same APK can contain native binaries for different ABI's.</p>
+
+            <p>I've only built things for <code>arm64-v8a</code> because this is by far the most common ABI (and the one my phone has), but it is possible to extend the process to build for other architectures as well. That's why I'm putting everything in ABI-dependent folders like <code>install/arm64-v8a</code>.</p>
+
+            <h2 id="section-game-host">The Game: host</h2>
+
+            <p>It is occasionally useful to have some tools in your project that are used during the build process. Maybe you have some file converters, or content generators, or asset preprocessors, that sort of thing. Their source is included in the project, and we need to build them to be able to use them, but we don't need to build them for the <i>target</i> system: they will be invoked <i>during</i> the build, so they are run on the <i>host</i> system.</p>
+
+            <p>I use custom CMake variables <code>PSEMEK_PACKAGE_HOST</code> and <code>PSEMEK_PACKAGE_TARGET</code> to differentiate between <i>host</i> and <i>target</i> builds. First, I set <code>PSEMEK_PACKAGE_HOST=ON</code> and invoke the build using whatever compiler the <i>host</i> system has, completely ignoring the Android NDK. The tools so built are installed in a special <code>tools</code> directory. Then, I set <code>PSEMEK_PACKAGE_TARGET=ON</code> and build the game itself. The CMake scripts for the project know what needs to be built during which phase.</p>
+
+            <pre><code class="language-bash block">mkdir build-host tools
+cmake -S source -B build-host -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=tools -DPSEMEK_PACKAGE_HOST=ON
+cmake --build build-host -t install -j</code></pre>
+
+            <p>Here, <code>source</code> is the directory with the actual game's source code. The tools get installed to the <code>tools</code> directory, which I'll refer to as <code>${TOOLS}</code> from now on.</p>
+
+            <p>Notice that these tools don't need to be built for each <i>target</i> ABI, since they are invoked on the <i>host</i> system.</p>
+
+            <p>I use the same trick when cross-compiling my projects to Windows using the MinGW compiler. I don't use it when packaging for Linux, since in this case the <i>host</i> and <i>target</i> systems coincide, so I build everything once with both <code>PSEMEK_PACKAGE_HOST=ON</code> and <code>PSEMEK_PACKAGE_TARGET=ON</code>.</p>
+
+            <h2 id="section-game-target">The Game: target</h2>
+
+            <p>Now I need to cross-compile my game engine and the game source for the <i>target</i> system, i.e. Android. There's nothing particularly special about it compared to what we've seen before. One extra thing we need is to tell where to find our libPNG and Boost libraries, and also the <i>host</i> tools. The Android NDK toolchain file effectively sets the system root to some folder inside the NDK so that nothing from the <i>host</i> system is accidentally used there. I used <code>CMAKE_FIND_ROOT_PATH</code> to overcome this:</p>
+
+            <pre><code class="language-bash block">mkdir -p build-target/arm64-v8a
+cmake -S source -B build-target/arm64-v8a/build \
+    -DCMAKE_BUILD_TYPE=Release -DANDROID_PLATFORM=34 -DANDROID_STL=c++_shared \
+    -DANDROID_CPP_FEATURES="rtti exceptions" -DANDROID_ABI=arm64-v8a \
+    -DCMAKE_TOOLCHAIN_FILE="${NDK}/build/cmake/android.toolchain.cmake" \
+    -DCMAKE_FIND_ROOT_PATH="${BOOST_ROOT}/arm64-v8a;${PNG_ROOT}/arm64-v8a;${TOOLS}" \
+    -DCMAKE_INSTALL_PREFIX="build-target/arm64-v8a/install" \
+    -DPSEMEK_PACKAGE_TARGET=ON
+cmake --build build-target/arm64-v8a/build -t install -j</code></pre>
+
+            <p>Here, <code>BOOST_ROOT</code> is <code>&lt;somewhere&gt;/boost/install/arm64-v8a</code> and <code>PNG_ROOT</code> is <code>&lt;somewhere&gt;/png/install/arm64-v8a</code>.</p>
+
+            <p>Now <code>build-target/arm64-v8a/install</code> should contain my project built for Android. Except it will fail at link stage, since I'm making an executable from it, and it doesn't use the SDL2 backend library, so it lacks a <code>main</code> function. What we need is to turn it into a shared library.</p>
+
+            <h2 id="section-game-shared-library">The Game: shared library</h2>
+
+            <p>In CMake, making shared libraries is as simple as <code>add_library(library_name SHARED ...)</code>. I've added some CMake code that either compiles the project as an executable or a shared library, depending on the backend used (SDL2 or Android).</p>
+
+            <p>One thing to note here is that the interplay between static and shared libraries is a quirky one, and I myself don't understand many parts of it. As I've said earlier, my engine is really a bunch of libraries that are typically build as static libraries. The downside was that the JNI symbols (which we'll talk about in a minute) defined in the android-backend library weren't exported in the final project's shared library. I fixed that by adding special linker options when linking the backend library:</p>
+
+            <pre><code class="block">target_link_libraries(${target} PUBLIC
+    "-Wl,--whole-archive $&lt;TARGET_FILE:${PSEMEK_BACKEND_LIBRARY}&gt; -Wl,--no-whole-archive"
+    ${PSEMEK_BACKEND_LIBRARY})</code></pre>
+
+            <p>Another solution would be to build all the engine libraries as shared libraries, but that would mean a whole lot of shared libraries to load at app startup (which isn't a fast process) and a lot of missed optimization opportunities in between these libraries.</p>
+
+            <p>Yet another option would be to build them as <i>object libraries</i> using <code>add_library(library_name OBJECT ...)</code> which are treated more like a bunch of compiled code than a separate library. I didn't try this, though.</p>
+
+            <p>Now we have a shared library with our game, but the Java code doesn't know about it yet.</p>
+
+            <h1 id="stage-4">Stage 4: JNI</h1>
+
+            <h2 id="section-defining-methods">Defining methods</h2>
+
+            <p>JNI (Java Native Interface) is the thing that allows one to use native code (e.g. written in C or C++) to be called from Java code. It works like this:</p>
+
+            <ul>
+                <li>You declare a certain Java method as being <code>native</code> and leave it without implementation</li>
+                <li>You implement this method in C++, matching the exact function name and signature that JNI expects</li>
+                <li>You put this method into a shared library bundled with your APK</li>
+                <li>You load the library at runtime in Java code</li>
+            </ul>
+
+            <p>After that, this method can be used from Java.</p>
+
+            <p>Let's see an example. The three basic things I need from my JNI layer is to be able to create a native application, tell it the screen size, and request a frame to be drawn. We could do something like that in Java:</p>
+
+            <pre><code class="language-java block">package your.application.name;
+
+import android.app.Activity;
+
+public class MainActivity extends Activity {
+    private static native void createApp();
+    private static native void resize(int width, int height);
+    private static native void drawFrame();
+}</code></pre>
+
+            <p>Now, in our C++ code we define the following functions:</p>
+
+            <pre><code class="language-cpp block">#include &lt;jni.h&gt;
+
+extern "C" void Java_your_application_name_MainActivity_createApp(JNIEnv * env, jclass clazz) {
+    // Create the native app instance and store it somewhere
+}
+
+extern "C" void Java_your_application_name_MainActivity_resize(JNIEnv * env, jclass clazz, int width, int height) {
+    // Call app.resize(width, height)
+}
+
+extern "C" void Java_your_application_name_MainActivity_drawFrame(JNIEnv * env, jclass clazz) {
+    // Call app.drawFrame()
+}</code></pre>
+
+            <p>The <code>&lt;jni.h&gt;</code> file is supplied by the NDK.</p>
+
+            <p>The <code>extern "C"</code> here is crucial: it disables C++ name mangling and exports the function with exactly the name it has. This name is composed of several parts, all joined with underscores: <code>Java</code>, the package name, the class name, the method name. If the Java runtime fails to find the native method, it will crash and you'll see the name it was searching for in the logs.</p>
+
+            <p>The signature of this method is either <code>(JNIEnv*, jclass, args...)</code> for a static method, or <code>(JNIEnv*, jobject, args...)</code> for a non-static method. One should be extremely careful with these function signatures. C++ name mangling turns function names into glibberish like <code>_ZN6psemek4util4spanIKcEC2EPS2_S4_</code> when compiling them to binaries; this glibberish, however, contains all the information about the function's namespace, enclosing class (if any), and argument types. This is what enables function overloading in C++, and this is what guards you from calling a function <code>void foo(int)</code> with an argument of type <code>std::string</code> from a different file.</p>
+
+            <p>C, however, doesn't do this. Function names are exported as they are, and nobody cares about parameter types. If you declare <code>..._resize</code> as <code>resize(int width, int height)</code>, the JNI will still call it with parameters <code>(JNIEnv*, jclass, int, int)</code>, so your <code>width</code> and <code>height</code> will be truncated pointer values, and the actual integer parameters will be missed. In this case, you'll just get absurd values for width and height, but in a more complicated scenario, when these parameters are some other Java objects, you'll get random crashes without any explanations. <i>I'm writing all this because I've spent a whole evening figuring out why my app was freezing in some asset loading method.</i></p>
+
+            <h2 id="section-using-methods">Using methods</h2>
+
+            <p>We can call these JNI methods from the <code>RendererImpl</code> class we created earlier:</p>
+
+            <pre><code class="language-java block">class RendererImpl implements Renderer {
+    @Override
+    public void onSurfaceCreated(GL10 gl10, EGLConfig config) {
+        MainActivity.this.createApp();
+    }
+
+    @Override
+    public void onSurfaceChanged(GL10 gl10, int width, int height) {
+        MainActivity.this.resize(width, height);
+    }
+    
+    @Override
+    public void onDrawFrame(GL10 gl10) {
+        MainActivity.this.drawFrame();
+    }
+}</code></pre>
+
+            <p>Note that the <code>Renderer</code> lives in a separete <i>render thread</i>, and all it's methods are called from that thread, not the main (<i>ui</i>) thread, which is where <code>onCreate</code> is called. Keep that in mind when calling your native methods.</p>
+
+            <p>These will crash, though, because we didn't load the shared library that implements them.</p>
+
+            <h2 id="section-loading-library">Loading the library</h2>
+
+            <p>Android APKs have a specific folder for native libraries: <code>lib/&lt;abi&gt;</code>. For <code>arm64-v8a</code>, we need to put all our shared libraries into <code>lib/arm64-v8a</code> and add this folder to the APK.</p>
+
+            <p>So, move all the shared libraries to <code>&lt;somewhere&gt;/lib/arm64-v8a/</code> (in my case these are <code>libpng16.so</code>, <code>libboost_random.so</code>, and the game's shared library). We also need the C++ standard library, which for some reason isn't present on the device; we can find it in <code>${NDK}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so</code> &ndash; copy it to <code>lib/arm64-v8a</code> as well.</p>
+
+            <p>Now, in the APK building process, somewhere after <code>aapt package</code> and before <code>zipalign</code>, add something like this:</p>
+
+            <pre><code class="language-bash block">${BUILD_TOOLS}/aapt add ./bin/myapp.unaligned.apk lib/arm64-v8a/*</code></pre>
+
+            <p>This will add the shared libraries to the APK. Now we need to load them in Java, which is fairly straightforward:</p>
+
+            <pre><code class="language-java block">import java.lang.System;
+
+    ...
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        System.loadLibrary("MY_GAME_SHARED_LIBRARY_NAME");
+
+        view = new ViewImpl(this);
+        setContentView(view);
+    }</code></pre>
+
+            <p>The argument to <code>loadLibrary</code> is the shared library name <b>without</b> the <code>lib</code> prefix and <code>.so</code> suffix. My game is called Tower Offense, it comes in a library <code>libtower-offense.so</code>, so I do <code>System.loadLibrary("tower-offense");</code>.</p>
+
+            <p>We don't need to explicitly load other libraries, since they'll get loaded by the runtime automatically as dependencies of our main library. <i>I had to load <code>boost_random</code> explicitly, though, probably due to some weirdness in it's <code>SONAME</code>. Not sure if it's still needed, though.</i></p>
+
+            <h2 id="section-exceptions">Exceptions</h2>
+
+            <p>If you're using C++ exceptions like I do, note that we cannot let them propagate through the JNI boundary, i.e. no C++ exception can leave your native code, otherwise the Android runtime will crash. This means that we have to catch them and do something with them. We could log the error and return some error code from the native methods, but there's an arguably better solution: transform them into Java exceptions, which <i>can</i> propagate through JNI.</p>
+
+            <pre><code class="language-cpp block">extern "C" void Java_your_application_name_MainActivity_createApp(JNIEnv * env, jclass clazz) try
+{
+    // Try to create the app here
+    ...
+}
+catch (std::exception const & e)
+{
+    env->ThrowNew(env->FindClass("java/lang/Exception"), e.what());
+}
+catch (...)
+{
+    env->ThrowNew(env->FindClass("java/lang/Exception"), "Unknown exception");
+}</code></pre>
+
+            <p>By now we should have an Android APK that contains a native library with a bunch of methods that are called from the Java code. That's already a win, but there's still a long way to go, because some parts of the native code still don't work.</p>
+
+            <h1 id="stage-5">Stage 5: Fixing the broken</h1>
+
+            <h2 id="section-logging">Logging</h2>
+
+            <p>If your logging simply writes to <code>stdout</code> (e.g. via <code>std::cout</code>) or <code>stderr</code>, I have bad knews: on Android, these <a href="https://stackoverflow.com/a/8870268/2315602">go to nowhere</a> (namely, to <code>/dev/null</code>). We can fix that by supplying our own <code>std::streambuf</code> implementation into <code>std::cout</code>; you can find <a href="https://stackoverflow.com/a/8870278/2315602">an example of how to do this</a> in the same stackoverflow post.</p>
+
+            <p>However, for anything as big as a game engine it's better to use a dedicated logging library, which should support specifying different <i>sinks</i> &ndash; things that receive all logging messages and put them somewhere, be it <code>std::cout</code>, a logging file, or the Android logs. I'm using my own logging library, and this is the whole implementation of this sink:</p>
+
+            <pre><code class="language-cpp block">struct sink_impl
+    : log::sink
+{
+    void put_message(log::message const & msg) override
+    {
+        __android_log_write(log_priority(msg.level), "psemek", msg.message.data());
+    }
+
+    void flush() override
+    {}
+};</code></pre>
+
+            <p>So, I convert my library's log priority type to Android enum, specify the tag (<code>"psemek"</code>, the name of my engine), and specify the log message (just a <code>const char *</code>). Now our logs can be seen on the device using e.g. <code>adb logcat</code>, which should help a lot during further debugging.</p>
+
+            <h2 id="section-opengl">OpenGL</h2>
+
+            <p>We're using OpenGL ES 3.2 in our application, and to actually call the OpenGL ES API we can use a special class <code>android.opengl.GLES32</code>. However, my engine is all C++, so I'd need to pass this object to the native code and somehow forward my engine's OpenGL calls to this <code>GLES32</code> class. This sounds like a painful thing to do, and also the Native -> JNI -> Native roundtrip seems quite wasteful.</p>
+
+            <p>Another option is to use OpenGL like we normally do in native code: <a href="https://www.khronos.org/opengl/wiki/OpenGL_Loading_Library">load OpenGL functions</a> manually at runtime. There are a handful of libraries that do that, <a href="https://glew.sourceforge.net">GLEW</a> probably being the most well-known one. <i>I don't know if it supports OpenGL ES, though. It probably does.</i></p>
+
+            <p>Of course, I've made <a href="https://github.com/lisyarus/opengl-loader-generator">my own loading library</a>, or rather a <i>loading library generator</i>. It is highly configurable, and generates a header & a source file for a specific OpenGL API version and a set of desired OpenGL extensions, and they do all the loading for you. It already supported OpenGL ES out of the box, but it didn't support Android, which turned out to be a matter of just <a href="https://github.com/lisyarus/opengl-loader-generator/commit/7c2b901b0798388e75629af2ec1741c2c4d9c54d">a couple lines of code</a>. Essentially I'm using EGL to load OpenGL functions on Android, which is a widespread OpenGL platform support library present on most modern-day systems.</p>
+
+            <p>My generator creates a header with all OpenGL functions for a particular API version, like OpenGL 3.3 or OpenGL ES 3.2. This means that if my engine uses something from OpenGL that isn't present in OpenGL ES 3.2, it simply won't compile (which is a good thing &ndash; runtime errors are harder to debug). It turned out that, indeed, OpenGL ES lacks a few things, most importantly 1D textures, multisample textures, and certain pixel formats like packed <code>GL_RGB10</code> or 16-bit <code>GL_R16</code>.</p>
+
+            <p>The proper solution for this kind of problems is to move everything platform-specific to separate files, and only add them to the project on appropriate platforms. This doen't work well when these platform-specific things are e.g. class methods, which was my case as well. So, I used the simple solution of defining <code>PSEMEK_GLES</code> in my generated OpenGL ES header, and surround the problematic code with <code>#ifndef PSEMEK_GLES</code>.</p>
+
+            <p>One other problem I stumbled upon when porting to OpenGL ES is initializing depth textures. When you do <code>glTexImage2D</code> for a depth texture, you supply e.g. <code>internalFormat = GL_DEPTH_COMPONENT24</code>, and you are required to set <code>format = GL_DEPTH_COMPONENT</code>, but the <code>type</code> argument is, as far as I can see, completely ignored. However, in OpenGL ES you are <i>required</i> to pass <code>type = GL_UNSIGNED_INT</code> in this case. I was using <code>type = GL_UNSIGNED_BYTE</code> in this scenario for many years and never found any problem on desktop OpenGL.</p>
+
+            <p>Anyway, we load the OpenGL functions somewhere inside <code>Renderer.onSurfaceCreated</code>, e.g. in our <code>void createApp()</code> native method, and we should be good to go.</p>
+
+            <h2 id="section-shaders">Shaders</h2>
+
+            <p>Now the OpenGL functions are here, but the shaders won't compile, for two reasons.</p>
+
+            <p>The first reason is GLSL version. GLSL (the shading languge used in OpenGL) requires all shaders to start with a line that goes like <code>#version 330 core</code>. Here, <code>330</code> is the GLSL version, and <code>core</code> is the OpenGL <a href="https://www.khronos.org/opengl/wiki/OpenGL_Context#Context_types">profile</a>. When using OpenGL ES, we need something like <code>#version 320 es</code> instead. So, we need some generic mechanism for prepending this or that line for any shader code depending on the platform.</p>
+
+            <p>The second reason is <a href="https://www.khronos.org/opengl/wiki/Type_Qualifier_(GLSL)#Precision_qualifiers">precision qualifiers</a> &ndash; something you might've never heard of if you only work with desktop OpenGL. In GLSL, you can specify that a certain variable has high, medium, or low precision, something like this: <code>highp float x = smth();</code>. You can also state that <i>all</i> variables of a particular type in this shader should have a certain precision by default, like this: <code>precision highp float;</code>.</p>
+
+            <p>The funny thing is that these qualifiers <i>do nothing</i> on desktop OpenGL, they only have meaning in OpenGL ES. What's worse, OpenGL ES <i>doesn't have</i> default precision qualifiers <a href="https://stackoverflow.com/a/6336285/2315602">in certain cases</a>, so if you declare a <code>float</code> variable in a fragment shader, you will get an error saying that it doesn't know which precision to use! We need to specify the default precision for this shader.</p>
+
+            <p>Specifying default precision in all shaders is quite tiresome, so instead I decided to prepend something like this in all my shaders on OpenGL ES:</p>
+
+            <pre><code class="language-glsl block">#version 320 es
+
+precision highp int;
+precision highp float;
+precision highp sampler2D;
+precision highp usampler2D;</code></pre>
+
+            <p>which also solves the version string problem. Similarly, on OpenGL 3.3 I prepend this insted:</p>
+
+            <pre><code class="language-cpp block">#version 330 core</code></pre>
+
+            <p>Of course, all this means we need a centralized mechanism for creating our shaders, but engines usually have such a mechanism anyway.</p>
+
+            <h2 id="section-assets">Assets</h2>
+
+            <p>Now our shaders compile, but the assets won't load. On desktop platforms, I simply put all the extra files required by the project in the ZIP archive together with the executable, and find them in a path relative to the executable location. We can't do that on Android, because the APK directory structure is pretty rigid, and because the APK never gets explicitly unpacked anyway (it is probably unpacked at runtime on demand, or smth like that).</p>
+
+            <p>Android has several mechanisms for packaging extra resource files with the APK. The obvious choice is the <code>res</code> directory in the APK. It has a very rigid structure, e.g. <code>res/drawables</code> should be various images you use, <code>res/values</code> should contain XML files with some strings or settings, etc. There's a <code>res/raw</code> directory which seems to be perfect for us, because it cares not what type of data we put there, but it also seems to have some strict rules about file naming, and I never figured out how to access it from native code anyway. The APK compilation process generates a special file called <code>R.java</code> which allows you to acces the resources, so I could forward each resource to the native code somehow, but again this sounds painful and wasteful.</p>
+
+            <p>There's another directory called <code>assets</code> which is perfect for us: you can put literally anything there, and there's an already existing native API for accessing that! Let me show you how it works.</p>
+
+            <p>In Java, we need to grab a special thing called <code>AssetManager</code> and pass it to our native code:</p>
+
+            <pre><code class="language-java block">// Somewhere in MainActivity class
+
+private static native void setAssetManager(AssetManager assetManager);
+
+@Override
+protected void onCreate(Bundle savedInstanceState) {
+    ...
+
+    setAssetManager(this.getAssets());
+}</code></pre>
+
+            <p>Now, on the native side, we do</p>
+
+            <pre><code class="language-cpp block">#include &lt;android/asset_manager_jni.h&gt;
+
+// Note the double AA in class name
+static jobject assetManagerRef;
+static AAssetManager * assetManager;
+
+extern "C" Java_your_application_name_MainActivity_setAssetManager
+    (JNIEnv * env, jclass clazz, jobject manager)
+{
+    assetManagerRef = env->NewLocalRef(manager);
+    assetManager = AAssetManager_fromJava(env, manager);
+}</code></pre>
+
+            <p>We create a new reference to the <code>AssetManager</code> so that it doesn't get collected by GC, and then we convert the Java object into a native object using <code>AAssetManager_fromJava</code>. The <code>asset_manager_jni.h</code> file comes with the Android NDK.</p>
+
+            <p>Now to actually load some asset, we have a plethora of options. See the <a href="https://developer.android.com/ndk/reference/group/asset">documentation</a> to learn about all them. <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/android/source/resource.cpp">What I'm doing</a> is opening it with <code>AAssetManager_open</code> in <code>STREAMING</code> mode, and then wrap it into an implementation of <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/io/include/psemek/io/stream.hpp">my library's <code>istream</code> class</a> which uses <code>AAsset_read</code> to read the asset.</p>
+
+            <p>We also better add some shutdown routine that releases the <code>assetManagerRef</code>, though I didn't do it just yet.</p>
+
+            <h2 id="section-audio">Audio</h2>
+
+            <p>Audio was probably the most complicated part of this whole stage. I'm using <a href="https://lisyarus.github.io/blog/programming/2022/10/15/audio-mixing.html">my own audio library</a>, which is mostly platform-independent. The only platform-specific part is the final audio sink &ndash; the thing that takes the audio played by the engine and puts it somewhere.</p>
+
+            <p>On desktop <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/sdl2/source/audio_engine.cppI'm using SDL">I'm using SDL</a> to output audio, which requires you to supply an <i>audio callback</i> &ndash; a function which is called from the audio thread repeatedly to grab new audio samples. Android doesn't have such a thing, or at least I didn't find one, so I had to look into how SDL itself does audio on Adnroid.</p>
+
+            <p>They use the <code>android.media.AudioTrack</code> class. My first attempt was to create it in <i>offload</i> mode, and supply a <code>StreamEventCallback</code> which responds to the <code>onDataRequest</code> event to request more audio samples from my engine and <a href="https://developer.android.com/reference/android/media/AudioTrack#write(float[],%20int,%20int,%20int)">write</a> them to the <code>AudioTrack</code>. The <code>StreamEventCallback</code> needs a special <code>Executor</code> to work, for which I used a <code>ThreadPoolExecutor</code> which also needs a <code>BlockingQueue</code> so I passed an <code>ArrayBlockingQueue</code> to it, geez. This worked, but the audio latency was too high, something on the order of half a second or so. If that seems good enough for you, trust me, it is not. My SDL audio backend has a latency of about 10 ms, which is good indeed.</p>
+
+            <p>I tried forcing the <code>AudioTrack</code> to use a smaller buffer size, but there's a minimal size of about 10000 samples (at least on my device) and it never allows you to use a smaller buffer. For comparison, my SDL audio backend uses a buffer of 512 samples (leading to theoretical latency of \( 512/44100 \approx 0.011 \) seconds at 44.1 kHz sampling frequency).</p>
+
+            <p>So, instead I created a dedicated <code>Thread</code> which repeatedly requests audio samples from the native code and writes them to the <code>AudioTrack</code> in a <i>blocking</i> mode, so that it doesn't run too much forward in time compared to <code>AudioTrack</code> internal buffers. Here's the implementation of this thread:</p>
+
+            <pre><code class="language-java block">private static native int audioGetSamples(float buffer[], int sampleOffset, int sampleCount);
+
+private class AudioThreadImpl extends Thread {
+
+    private float buffer[];
+
+    public AudioThreadImpl(int bufferSizeInFrames) {
+        super("audio");
+
+        buffer = new float[bufferSizeInFrames * 2];
+    }
+
+    @Override
+    public void run() {
+        while (true) {
+            int samples = PsemekApplication.audioGetSamples(buffer, 0, buffer.length);
+            PsemekApplication.this.audioTrack.write(buffer, 0, samples, AudioTrack.WRITE_BLOCKING);
+            try {
+                Thread.sleep(1);
+            }
+            catch (InterruptedException e) {}
+        }
+    }
+}</code></pre>
+
+            <p><code>audioGetSamples</code> is implemented on the C++ side, it grabs audio samples from the audio engine output. Here's the code for initializing the <code>AudioTrack</code>:</p>
+
+            <pre><code class="language-java block">AudioAttributes audioAttributes = new AudioAttributes.Builder()
+    .setUsage(AudioAttributes.USAGE_GAME)
+    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+    .build();
+
+AudioFormat audioFormat = new AudioFormat.Builder()
+    .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
+    .setSampleRate(audioFrequencyNative())
+    .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+    .build();
+
+int bufferSize = AudioTrack.getMinBufferSize(audioFrequencyNative(),
+    AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_FLOAT);
+
+audioTrack = new AudioTrack.Builder()
+    .setAudioAttributes(audioAttributes)
+    .setAudioFormat(audioFormat)
+    .setBufferSizeInBytes(bufferSize)
+    .setTransferMode(AudioTrack.MODE_STREAM)
+    .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+    .build();
+
+audioThread = new AudioThreadImpl(audioTrack.getBufferCapacityInFrames());
+audioThread.start();
+
+audioTrack.play();</code></pre>
+
+            <p>Note that I'm using floating-point stereo audio samples. If using <code>int16</code> or <code>int32</code> samples, the code needs a bit of tweaking.</p>
+
+            <p>I don't see how exactly this approach is so much different from the <code>StreamEventCallback</code>, but it works and produces audio with quite low latency, so there's that.</p>
+
+            <h2 id="section-touch-events">Touch events</h2>
+
+            <p>This is easy, but I'll mention it anyway. To support touch events, I implement the <code>GLSurfaceView.onTouchEvent</code> and added a corresponding native callback:</p>
+
+            <pre><code class="language-java block">private static native void onTouchEvent(int x, int y);
+
+class ViewImpl extends GLSurfaceView {
+
+    ...
+
+    @Override
+    public boolean onTouchEvent(MotionEvent e) {
+        if (e.getAction() == MotionEvent.ACTION_DOWN) {
+            MainActivity.onTouchEvent((int)e.getX(), (int)e.getY());
+        }
+        return true;
+    }
+}</code></pre>
+
+            <p>This is the most basic approach; touch events are a bit more complicated and involve moving touches and multi-point touches, so we might need more involved native callbacks, but that's a start.</p>
+
+            <h1 id="stage-voila">Voila!</h1>
+
+            <p>After all this hard work, here's what I got:</p>
+
+            <center><video controls class="video-embed"><source src="/blog/media/porting-for-android/voila.mp4" type="video/mp4"></video></center>
+
+            <p>Of course, making the game actually feel good on mobile devices is a completely different story, but I feel like the hardest part is over.</p>
+
+            <p>I've wrapped the whole android packaging process in a docker container. Here's the <a href="https://bitbucket.org/lisyarus/psemek/src/master/package/android/Dockerfile">Dockerfile</a> that creates the container, and here's the <a href="https://bitbucket.org/lisyarus/psemek/src/master/package/android/package.sh">packaging script</a> that runs inside that container. And here's my <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/android">android backend library</a>. All these things contain a lot of stuff specific to my engine, but the general outline coincides with the content of this article.</p>
+
+            <p>This is the longest article I've written so far, and the process I've described took me a long week of trial and error. If you find some errors or inconsistencies in it, be sure to <a href="/blog/contacts.html">ping me</a>, I'll be happy to fix them. Nothing hurts more than tutorials that don't work :)</p>
+
+            <p>And, as always, thanks for reading.</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>

@@ -111,6 +111,14 @@ body {
 .page-title {
 	font-size: 24px;
 	font-family: monospace;
+	font-weight: 700;
+}
+
+h1 {
+	font-size: 24px;
+	font-family: monospace;
+	text-align: center;
+	margin-top: 48px;
 }
 
 .monospace {

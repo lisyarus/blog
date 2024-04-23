@@ -34,12 +34,56 @@ document.getElementById("blog-footer").innerHTML = footerHTML;
 if (document.getElementById("end-section"))
     document.getElementById("end-section").innerHTML = endSectionHTML;
 
+function elementIndex(element) {
+    return Array.from(element.parentNode.childNodes).indexOf(element);
+}
+
 if (document.getElementById("contents")) {
     let contents = document.getElementById("contents");
-    let sections = document.getElementsByTagName("h2");
-    for (let section of sections) {
-        if (section.id) {
-            contents.innerHTML += '<li><a href="#' + section.id + '">' + section.innerHTML + '</a></li>'
+    let sections = Array.from(document.getElementsByTagName("h2"));
+    let stages = Array.from(document.getElementsByTagName("h1"));
+
+    if (stages.length == 0) {
+        for (let section of sections) {
+            if (section.id) {
+                contents.innerHTML += '<li><a href="#' + section.id + '">' + section.innerHTML + '</a></li>'
+            }
         }
+    }
+    else
+    {
+        var items = [];
+
+        for (let section of sections) {
+            if (section.id)
+                items.push([elementIndex(section), section, 'section']);
+        }
+
+        for (let stage of stages) {
+            if (stage.id)
+                items.push([elementIndex(stage), stage, 'stage']);
+        }
+
+        items.sort(function (a, b) { return a[0] - b[0] })
+
+        var firstStage = true;
+
+        var contentsHTML = "";
+
+        for (let item of items) {
+            if (item[2] == 'stage') {
+                if (!firstStage) {
+                    contentsHTML += '</ul>'
+                }
+                firstStage = false;
+            }
+            contentsHTML += '<li><a href="#' + item[1].id + '">' + item[1].innerHTML + '</a></li>'
+            if (item[2] == 'stage') {
+                contentsHTML += '<ul>'
+            }
+        }
+        contentsHTML += '</ul>'
+
+        contents.innerHTML += contentsHTML;
     }
 }
