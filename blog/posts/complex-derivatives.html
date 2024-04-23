@@ -1,0 +1,292 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <title>Complex numbers, Wirtinger derivatives and 2D inverse kinematics | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Complex numbers, Wirtinger derivatives and 2D inverse kinematics</div></center><br/>
+            <center><span class="post-date">2023 Aug 3</span></center><br/>
+
+            <p>Recently, I've been thinking about <a href="https://en.wikipedia.org/wiki/Inverse_kinematics">inverse kinematics</a> for a certain project which I might be doing somewhere in the future. Around the same time, <a href="https://twitter.com/JustSlavic">a friend of mine</a> asked me something about complex derivatives. In the end I decided to write this post to clear my own thoughts and to hopefully explain something useful :)</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-ordinary-derivatives">Ordinary derivatives</h2>
+
+            <p>Let's start with simple derivatives of single-valued real functions of a single real variable \( \mathbb{R} \rightarrow \mathbb{R} \). The derivative is something something rate of change bla-bla-bla limit</p>
+
+            \[ f'(x) = \lim\limits_{\delta\rightarrow 0} \frac{f(x+\delta) - f(x)}{\delta} \]
+
+            <p>I never liked this definition. Or, rather, this way of writing down the definition. What I like is, essentially, the Taylor series up to first degree with the <a href="https://en.wikipedia.org/wiki/Taylor%27s_theorem#Taylor's_theorem_in_one_real_variable">remainder in Peano form</a>, which is equivalent to the usual definition:</p>
+
+            \[ f(x+\delta) = f(x) + f'(x) \cdot \delta + o(\delta) \]
+
+            <p>That is, if the function can be locally expressed as a constant \( f(x) \) plus some number \( f'(x) \) times the offset \( \delta \) up to terms of higher order \( o(\delta) \), then this number \( f'(x) \) <i>is</i> the derivative. Notice that \( f'(x) \) can depend on \( x \), but *not* on \( \delta \). This is important.</p>
+
+            <h2 id="section-functions-of-several-variables">Functions of several variables</h2>
+
+            <p>(Not) incidentally, the definition almost doesn't change if we talk about the gradient of a function of several variables:</p>
+
+            \[ f(x+\delta) = f(x) + \nabla f \cdot \delta + o(\delta) \]
+
+            <p>Here, \( x \) and \( \delta \) are vectors, \( \nabla f \) is also a vector, and \( \cdot \) is now the dot product. If a function admits such an expansion, \( \nabla f \) is the derivative (<i>or, rather, the gradient &ndash; the true derivative is more like the transpose \( (\nabla f)^T \) &ndash; these things matter when you move from Euclidean spaces to Minkowski space or to general manifolds</i>). Again, \( \nabla f \) depends on \( x \) but <i>not</i> on \( \delta \), which forces the extra correction \( \nabla f \cdot \delta \) to be a <i>linear</i> function of \( \delta \).</p>
+
+            <p>Notice how the definition using the limit of a fraction would be problematic here: we'd have to divide a number by a vector, and I have no idea how to do that! <i>This is possible in Clifford/geometric algebra, but it's not the type of division we need here.</i></p>
+
+            <h2 id="section-algebraic-derivatives">Algebraic derivatives</h2>
+
+            <p>By the way, there are ways to define derivatives purely algebraically. The core of this definition is the Leibniz rule:</p>
+
+            \[ D(f\cdot g) = D(f) \cdot g + f \cdot D(g) \]
+
+            <p>where \( D \) is the differentiation operator. Such things are called <a href="https://en.wikipedia.org/wiki/Derivation_(differential_algebra)"><i>derivations</i></a> in algebra. If we restrict our attention to, say, polynomials of one variable, we can derive the formula</p>
+
+            \[ D(x^2) = D(x\cdot x) = D(x)\cdot x + x\cdot D(x) = 2xD(x) \]
+
+            <p>and in general</p>
+
+            \[ D(x^{n+1}) = D(x \cdot x^n) = D(x) \cdot x^n + x \cdot D(x^n) \]
+
+            <p>which by induction leads to</p>
+
+            \[ D(x^n) = nx^{n-1}D(x) \]
+
+            <p>and since derivatives are always linear, we get</p>
+
+            \[ D(p(x)) = D\left(\sum a_k x^k\right) = \left(\sum k a_k x^{k-1}\right) \cdot D(x) = p'(x) \cdot D(x) \]
+
+            <p>So, any <i>derivation</i> on the algebra of polynomials is completely determined by the value \( D(x) \) and equals the usual derivative followed by multiplication by whatever polynomial \( D(x) \) is equal to:</p>
+
+            \[ D = D(x) \cdot \frac{d}{dx} \]
+
+            <p>In particular, setting \( D(x) = 1 \) and the Leibniz rule is enough to define the usual derivative without any limits. In general, derivations in some algebra of functions correspond to first-order differential operators on these functions. Only works for stuff that is nice algebraically (e.g. polynomials), though :)</p>
+
+            <h2 id="section-leibniz-rule">Leibniz rule</h2>
+
+            <p>Let me make another digression. The Leibniz rule is true for any sensible definition of a (first-order) derivative, but it is also true for any reasonable definition of a product! This equation is true</p>
+
+            \[ \frac{d}{dt}(A\cdot B) = \frac{dA}{dt}\cdot B + A\cdot \frac{dB}{dt} \]
+
+            <p>regardless of whether \( A, B \) are numbers (number-valued functions, that is), vectors, quaternions, or matrices, and whether this dot \( \cdot \) means number multiplication, vector dot product, quaternion multiplciation, or matrix multiplication. Stating this a bit more formally and generally, the Leibniz rule applies to any <i>bilinear operator</i> \( \phi \):</p>
+
+            \[ \frac{d}{dt}\phi(A, B) = \phi\left(\frac{dA}{dt}, B\right) + \phi\left(A, \frac{dB}{dt}\right) \]
+
+            <p>Here, <i>bilinear</i> means \( \phi(xA+yB, C) = x\phi(A,C) + y\phi(B,C) \) (and a similar equation for the second argument) for any numbers \( x, y \) and any <i>objects</i> \( A, B, C \) that \( \phi \) is defined for.</p>
+
+            <h2 id="section-several-functions">Several functions of several variables</h2>
+
+            <p>Back to the core of this post. Say we have a function \( f: \mathbb{R}^n \rightarrow \mathbb{R}^m \). What is it's derivative? As usual, write the function as the value plus some linear correction:</p>
+
+            \[ f(p+\delta) = f(p) + J \cdot \delta + o(\delta) \]
+
+            <p>As we've noticed before, the correction term \( J\cdot\delta \) is always a <i>linear</i> function of \( \delta \). The most general way to express a linear function of this form is by a matrix \( J \) &ndash; the <a href="https://en.wikipedia.org/wiki/Jacobian_matrix_and_determinant"><i>Jacobian</i></a> of \( f \), sometimes also written as \( Df \) or \( \frac{Df}{Dp} \). It is a matrix of all partial derivatives of components of \( f \) with respect to components of \( p \), but that's quite a mouthful to say. What it really says is the following: whenever I make a small step \( \delta \), the value of a function changes by \( J\cdot \delta \) (plus a higher-order correction). That's it. And, as usual, \( J \) itself depends on \( p \) but not on \( \delta \).</p>
+
+            <h2 id="section-complex-functions">Complex functions</h2>
+
+            <p>Complex numbers \( \mathbb C \) are basically pairs of real numbers \( \mathbb R^2 \) with funny multiplication which somehow turns them into one of the most important mathematical things ever. Say, we have a function \( f:\mathbb C \rightarrow \mathbb C \). What is it's derivative?</p>
+
+            \[ f(z+\delta) = f(z) + f'(z)\cdot \delta + o(\delta) \]
+
+            <p>Now, here's the catch: for \( f \) to be complex-differentiable, \( f'(z) \) is required to be a complex number, and \( \cdot \) to be complex multiplication. This is different from \( f \) being differentiable as a function \( \mathbb R^2\rightarrow \mathbb R^2 \), where \( f'(z) \) was an arbitrary matrix (the <i>Jacobian</i>) and \( \cdot \) was matrix-vector multiplication.</p>
+
+            <p>I'll state this again, because this is important to realize: for a function \( f : \mathbb C \rightarrow \mathbb C \) being real-differentiable and being complex-differentiable are two <i>different</i> things, with <i>different</i> (albeit similar) definitions. The latter implies the former, but not the other way round.</p>
+
+            <p>To bring these two definitions closer together, let's first get rid of two types of multiplication here. Multiplication of a complex number \( x+yi \) by a complex number \( a+bi \) produces \( (ax-by) + (ay+bx)i \), and if we view \( \mathbb C \) as a 2-dimensional real vector space (with basis \( \{1,i\} \)), we can express this operation as a certain matrix acting on a vector \( \begin{pmatrix}x\\ y\end{pmatrix} \):</p>
+
+            \[ M_{a+bi} = \begin{pmatrix} a & -b \\ b & a \end{pmatrix} \]
+
+            <p>If it looks like a rotation matrix to you, that's because it almost is. If we decompose the complex number into the magnitude and phase \( a+bi = r\cdot e^{i\theta} \), the matrix becomes</p>
+
+            \[ M_{a+bi} = r \cdot \begin{pmatrix} \cos \theta & -\sin\theta \\ \sin\theta & \cos\theta \end{pmatrix} \]
+
+            <p>so it's a rotation by angle \( \theta \) combined with uniform scaling by a factor \( r \). That's what complex multiplication always does &ndash; it rotates and scales, but <i>never</i> tilts or shears or scales non-uniformly (on one axis and not the other).</p>
+
+            <p>So, we can transform the definition involving complex multiplication into using only matrix multiplication:</p>
+
+            \[ f(z+\delta) = f(z) + M_{f'(z)}\cdot \delta + o(\delta) \]
+
+            <p>Here, \( M_{f'(z)} \) is the matrix of multiplication by the complex number \( f'(z) \), and \( \cdot \) is now a usual matrix-vector multiplication. Compared to the definition for a function \( \mathbb R^2\rightarrow \mathbb R^2 \), we see the crucial difference: for a function to be complex-differentiable, it's Jacobian matrix must be of a very special form: it must be \( M_c \) for some complex number \( c \) (which, as usual, can depend on \( z \)).</p>
+
+            <p>Let's look at a few examples. Take \( f(z) = z^2 \). In components (the real & imaginary parts) it looks like</p>
+
+            \[ f(x,y) = \begin{pmatrix} u(x, y) \\ v(x,y) \end{pmatrix} = \begin{pmatrix} x^2-y^2 \\ 2xy \end{pmatrix} \]
+
+            <p>The Jacobian (matrix of partial derivatives) then looks like this:</p>
+
+            \[ J = \begin{pmatrix} \frac{\partial u}{\partial  x} & \frac{\partial u}{\partial y} \\ \frac{\partial v}{\partial x} & \frac{\partial v}{\partial y} \end{pmatrix}  = \begin{pmatrix} 2x & -2y \\ 2y & 2x \end{pmatrix} = M_{2x+2yi} = M_{2z} \]
+
+            <p>So, this matrix is equal to the matrix of multiplication by \( 2z \), meaning the complex derivative of \( z^2 \) is \( 2z \), as it should be!</p>
+
+            <p>For another example, take \( f(z) = \bar z \) (the complex conjugate). In components:</p>
+
+            \[ f(x,y) = \begin{pmatrix} x \\ -y \end{pmatrix} \]
+
+            <p>And the Jacobian:</p>
+
+            \[ J = \begin{pmatrix} 1 & 0 \\ 0 & -1 \end{pmatrix} \]
+
+            <p>which isn't equal to \( M_c \) for any choice of a complex number \( c \). Thus, this function isn't complex-differentiable!</p>
+
+            <h2 id="section-complex-differentiability">Complex differentiability</h2>
+
+            <p>Let's recap. For a function \( f:\mathbb R^2\rightarrow \mathbb R^2 \) to be (<i>real</i>-)differentiable, it must admit an expansion</p>
+
+            \[ f(z+\delta) = f(z) + J \cdot \delta + o(\delta) \]
+
+            <p>for <i>some</i> matrix \( J \) (that can depend on \( z \)). For a function \( f:\mathbb C\rightarrow \mathbb C \) to be <i>complex</i>-differentiable, it must admit an expansion</p>
+
+            \[ f(z+\delta) = f(z) + J \cdot \delta + o(\delta) \]
+
+            <p>where \( J \) isn't an arbitrary matrix anymore, but \( J=M_c \) for some complex number \( c \). So, some complex functions are real-differentiable but aren't complex-differentiable because their Jacobian \( J \) isn't of this specific form.</p>
+
+            <p>This is exactly why complex-differentiable functions are so special. Their Jacobian is a matrix of multiplication by a complex number, meaning it can rotate and scale uniformly, but it cannot tilt or etc. This is exactly why these functions are <a href="https://en.wikipedia.org/wiki/Conformal_map">conformal mappings</a>, meaning they preserve angles locally despite doing pretty random stuff globally (becase rotations & uniform scalings preserve angles). This is exactly why complex analysis is so cool. <i>Well, also because most interesting functions are multi-valued and require thinking about manifolds aka Riemann surfaces.</i></p>
+
+            <p>By the way, let's try to express the condition \( J=M_c \) without mentioning \( M_c \), just as some equations on \( J \).</p>
+
+            \[ J = \begin{pmatrix} \frac{\partial u}{\partial  x} & \frac{\partial u}{\partial y} \\ \frac{\partial v}{\partial x} & \frac{\partial v}{\partial y} \end{pmatrix}  = \begin{pmatrix} a & -b \\ b & a \end{pmatrix} \Rightarrow \]
+
+            \[ \Longrightarrow \frac{\partial u}{\partial x} = \frac{\partial v}{\partial y} , \frac{\partial u}{\partial y} = - \frac{\partial v}{\partial x} \]
+
+            <p>These are the <a href="https://en.wikipedia.org/wiki/Cauchy%E2%80%93Riemann_equations">Cauchy-Riemann equations</a> for a function to be complex-differentiable. They look cryptic at first glance, but all they say is the same idea that the Jacobian is secretly a multiplication by a complex number.</p>
+
+            <p>So, we miss some functions which are real-differentiable but not complex-differentiable. How much do we miss, exactly? Well, the space of \( 2\times 2 \) real matrices is 4-dimensional, while the space of complex numbers is 2-dimensional, and so is the space of matrices of the form \( M_c \). We miss half the dimensions!</p>
+
+            <h2 id="section-wirtinger-derivatives">Wirtinger derivatives</h2>
+
+            <p>Now, obviously there's no way we can express the function \( \bar z \) in the form \( M_c \cdot z \), but we <i>can</i> express it as \( M_c \cdot \bar z \) by taking \( c=1 \), in which case \( M_c \) is the identity matrix. So, let's expand our definition of complex derivatives a bit:</p>
+
+            \[ f(z+\delta) = f(z) + M_{c_1} \cdot \delta + M_{c_2} \cdot \bar \delta + o(\delta) \]
+
+            <p>In some sense, we allow two different derivatives: one with respect to \( z \), another with respect to \( \bar z \). Complex conjugation can also be expressed as multiplication by a matrix \( I =  \begin{pmatrix} 1 & 0 \\ 0 & -1 \end{pmatrix} \), so we can rewrite the formula as</p>
+
+            \[ f(z+\delta) = f(z) + (M_{c_1} + M_{c_2}I) \cdot \delta + o(\delta) \]
+
+            <p>Thus, a complex function is differentiable <i>with this new definition</i> if it's Jacobian is of a special form \( M_{c_1} + M_{c_2}I \). How special is it? In fact, not special at all.</p>
+
+            <p>Say, \( c_1 = x_1 + y_1 i \) and \( c_2 = x_2 + y_2i \). Then, by a direct calculation</p>
+
+            \[ M_{c_1} + M_{c_2}I = \begin{pmatrix} x_1 + x_2 & -y_1+y_2 \\ y_1+y_2 & x_1-x_2 \end{pmatrix} \]
+
+            <p>So, if the Jacobian is \( J = \begin{pmatrix} s & t \\ g & h \end{pmatrix} \), we can set them equal \( J=M_{c_1} + M_{c_2}I \) and solve for \( c_1 \) and \( c_2 \):</p>
+
+            \[ \begin{matrix} x_1 =  \frac{s+h}{2} & x_2 =  \frac{s-h}{2} \\\\  y_1 =  \frac{g-t}{2} &  y_2 =  \frac{g+t}{2} \end{matrix} \]
+
+            <p>In other words, for <i>any</i> \( 2\times 2 \) real matrix \( J \) we can find complex numbers \( c_1, c_2 \) such that \( J=M_{c_1} + M_{c_2}I \). <a href="https://www.youtube.com/watch?v=Ixi0sUpLVRc">In other words</a>, if a complex function is differentiable when viewed as a real-valued function, then it is differentiable <i>with our new definition</i>.</p>
+
+            <p>These two complex numbers \( c_1, c_2 \) are called <a href="https://en.wikipedia.org/wiki/Wirtinger_derivatives">Wirtinger derivatives</a> (<i>after Wirtinger, who wasn't the first to describe them, in accordance with the Arnold principle, who wasn't the first to...yeah</i>). They are usually denoted as \( \frac{\partial f}{\partial z} \) and \( \frac{\partial f}{\partial \bar z} \), respectively. They are useful in that they expand the usual notion of complex differentiability to include all functions that are smooth in the usual sense. They let us differentiate functions like \( \bar z \) or \( \|z\|^2=z\bar z \). As one would expect,</p>
+
+            \[ \begin{matrix} \frac{\partial \bar z}{\partial z} = 0 & \frac{\partial z\bar z}{\partial z} = \bar z \\ \frac{\partial \bar z}{\partial \bar z} = 1 & \frac{\partial z\bar z}{\partial \bar z} = z \end{matrix} \]
+
+            <p>They can also be expressed using explicit formulas. If we combine the formulas for \( x_1, y_1 \) above with the structure of the Jacobian, we get</p>
+
+            \[ c_1 = x_1 + y_1 i = \frac{s+h}{2} + \frac{g-t}{2}i = \frac{1}{2}\left(\frac{du}{dx}+\frac{dv}{dy}\right) + \frac{1}{2}\left(\frac{dv}{dx}-\frac{du}{dy}\right)i = \]
+
+            \[ = \frac{1}{2}\left( \frac{\partial (u+vi)}{\partial x} + \frac{\partial (v-ui)}{\partial y} \right) = \frac{1}{2}\left( \frac{\partial (u+vi)}{\partial x} -i \frac{\partial (u+vi)}{\partial y} \right) \]
+
+            \[ = \frac{1}{2}\left( \frac{\partial f}{\partial x} - i\frac{\partial f}{\partial y} \right) \]
+
+            <p>Thus,</p>
+
+            \[ \frac{\partial}{\partial z} = \frac{1}{2}\left( \frac{\partial}{\partial x} - i\frac{\partial}{\partial y} \right) \]
+
+            <p>A similar equation for the other derivative can be found using the same method:</p>
+
+            \[ \frac{\partial}{\partial\bar z} = \frac{1}{2}\left( \frac{\partial}{\partial x} + i\frac{\partial}{\partial y} \right) \]
+
+            <p>These expressions hardly explain what's going on, though. What is really going on is the same formula we've been writing during this entire post:</p>
+
+            \[ f(z+\delta) = f(z) + \frac{\partial f}{\partial z}\delta + \frac{\partial f}{\partial \bar z}\bar\delta + o(\delta) \]
+
+            <p>The function has two derivatives: one \( \frac{\partial f}{\partial z} \) describes the change in the function depending on the offset \( \delta \), the other \( \frac{\partial f}{\partial \bar z} \) describes the change in the function depending on the complex conjugate of the offset \( \bar\delta \).</p>
+
+            <p>It works more or less how you'd expect. Here are a few examples:</p>
+
+            \[ \frac{\partial (az+b\bar z)}{\partial z} = a \]
+            \[ \frac{\partial (az+b\bar z)}{\partial \bar z} = b \]
+            \[ \frac{\partial z^2}{\partial z} = 2z \]
+            \[ \frac{\partial z^2}{\partial \bar z} = 0 \]
+            \[ \frac{\partial \bar z^2}{\partial \bar z} = 2\bar z \]
+            \[ \frac{\partial \exp(-|z|^2)}{\partial z} = \exp(-|z|^2)\cdot\bar z \]
+
+            <p>As if \( z \) and \( \bar z \) were simply different unrelated variables. Really cool.</p>
+
+            <h2 id="section-gradient">Gradient of real-valued complex function</h2>
+
+            <p>Let's look at a special case where \( f(z) \) is a real-valued function of a complex variable. We can think of it as a complex-valued function which happens to only have real outputs, i.e. the imaginary part is zero. Can we compute the usual gradient \( \nabla f = \begin{pmatrix}\frac{\partial f}{\partial x} & \frac{\partial f}{\partial y}\end{pmatrix} \) using the machinery of Wirtinger derivatives? Yes, we can! Recall that</p>
+
+            \[ \frac{\partial}{\partial z} = \frac{1}{2}\left( \frac{\partial}{\partial x} - i\frac{\partial}{\partial y} \right) \]
+
+            \[ \frac{\partial}{\partial\bar z} = \frac{1}{2}\left( \frac{\partial}{\partial x} + i\frac{\partial}{\partial y} \right) \]
+
+            <p>Therefore</p>
+
+            \[ \frac{\partial f}{\partial x} = \frac{\partial f}{\partial z} + \frac{\partial f}{\partial \bar z} \]
+
+            \[ \frac{\partial f}{\partial y} = i\left(\frac{\partial f}{\partial z} - \frac{\partial f}{\partial \bar z} \right) \]
+
+            <p>These are complex-valued expressions, but we're guaranteed that they'll be real-valued if \( f \) is real-valued.</p>
+
+            <p>Now, it is reasonable to treat this gradient not as a 2D vector, but as a complex number again. Let's compute:</p>
+
+            \[ \nabla f = \frac{\partial f}{\partial x} + i\frac{\partial f}{\partial y} = \frac{\partial f}{\partial z} + \frac{\partial f}{\partial \bar z} + i^2\left(\frac{\partial f}{\partial z} - \frac{\partial f}{\partial \bar z} \right) =   \frac{\partial f}{\partial z} +  \frac{\partial f}{\partial \bar z} -  \frac{\partial f}{\partial z} +  \frac{\partial f}{\partial \bar z} = 2  \frac{\partial f}{\partial \bar z}\]
+
+            <p>So, to compute the gradient of a real-valued function of a complex variable and express it as a complex number again, we simply compute twice it's Wirtinger derivative with respect to \( \bar z \):</p>
+
+            \[ \nabla f = 2 \frac{\partial f}{\partial \bar z} \]
+
+            <p>This is freaking cool, if you ask me.</p>
+
+            <h2 id="section-inverse-kinematics">Inverse kinematics</h2>
+
+            <p>In the beginning of the post I mentioned inverse kinematics; let me explain how it is relevant here.</p>
+
+            <p>In inverse kinematics, we're trying to move e.g. a robot arm to a specific point, but we can only change the arm angles. This is usually formulated as a minimization problem: minimize the distance between the robot arm and the target point, as a function of arm angles.</p>
+
+            <p>Let's look at a very simple 2D case where the arm has just one segment of length 1 and is located at the origin \( (0,0) \). We model it as a complex number \( z \) having magnitude 1. Our target point is another complex number \( a \). We want to minimize \( \|z-a\|^2 \) with the constraint \( \|z\|=1 \). This usually involves computing the gradient of the target function. It is easy to do in this case:</p>
+
+            \[ \nabla \|z-a\|^2 = 2(z-a) \]
+
+            <p>However, it is a bit harder in cases where we have several arm segments and the resulting arm position is computed through several rotations, i.e. complex multiplications. Let's try computing the gradient using the trick from the previous section:</p>
+
+            \[ \nabla \|z-a\|^2 = 2 \frac{\partial}{\partial \bar z} \|z-a\|^2 = 2 \frac{\partial}{\partial \bar z} (z-a)(\bar z - \bar a) = 2(z - a) \]
+
+            <p>It works! Let's try a more involved example: the arm has two segments, both of length 1, the first one \( z_1 \) starts at the origin, and the second one \( z_2 \) originates from the end of the first one and inherits it's rotation. The final position of the arm's end is thus \( z_1 + z_1z_2 = z_1(1+z_2) \), and we seek to minimize \( \|z_1(1+z_2)-a\|^2 \). Computing the gradient directly would mean we need to expand this formula in coordinates, but we can instead use the Wirtinger derivative trick again:</p>
+
+            \[ \nabla_{z_1} \|z_1(1+z_2)-a\|^2 = 2 \frac{\partial}{\partial \bar z_1} (z_1(1+z_2)-a)\overline{(z_1(1+z_2)-a)} = 2(z_1(1+z_2)-a)(1+\bar z_2) = \]
+
+            \[ = 2z_1\|1+z_2\|^2-2a(1+\bar z_2) \]
+
+            \[ \nabla_{z_2} \|z_1(1+z_2)-a\|^2 = 2 \frac{\partial}{\partial \bar z_2} (z_1(1+z_2)-a)\overline{(z_1(1+z_2)-a)} = 2(z_1(1+z_2)-a)\bar z_1 = \]
+            \[ = 2(1+z_2 - a\bar z_1) \]
+
+            <p><i>I'm using the fact that \( \|z_1\|=\|z_2\|=1 \) here.</i></p>
+
+            <p>Honestly, I'm not exactly sure how useful this is compared to working with real numbers directly, but at least the differentiation step seems to be hugely simplified, and we can translate these formulas back to real number after we've done differentiating.</p>
+
+            <p>We can even try to explain these results intuitively: for the gradient with respect to \( z_2 \) we got \( 2(1+z_2-a\bar z_1) \) which means apply the inverse rotation \( \bar z_1 \) to the point \( a \), which effectively makes the first arm segment lie along the positive X axis, and the arm end is now at \( 1+z_2 \) and the direction vector from the target point is \( 1+z_2-a\bar z_1 \), so the gradient is twice that.</p>
+
+            <h2 id="section-quaternions">Quaternions?</h2>
+
+            <p>Of course, 3D inverse kinematics is much cooler than 2D, but there we'll need quaternions to describe rotations, and I'm afraid we'll need quaternionic derivatives which come with a ton of new problems related to their non-commutativity. Thankfully I've <a href="/blog/posts/quaternion-derivatives.html">written a post</a> about this as well :)</p>
+
+            <p>And, as always, thanks for reading.</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
