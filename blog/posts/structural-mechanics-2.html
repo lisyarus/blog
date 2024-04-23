@@ -1,0 +1,277 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <title>Computing forces in a system of beams, properly | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+        <script src="/blog/scripts/structural-mechanics-2.js"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Computing forces in a system of beams, properly</div></center><br/>
+            <center><span class="post-date">2023 Oct 29</span></center><br/>
+
+            <p>The great thing about posting stuff online is that somebody will inevitably come to tell you where you're wrong :)</p>
+
+            <p>In <a href="/blog/posts/structural-mechanics.html">my previous post</a> I explored how one can compute the forces and stresses in a system of interconnected beams. There were a few things that I got a bit wrong there, so this post is an attempt to fix those things and to implement a better force computation algorithm.</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-terminology">Terminology</h2>
+
+            <p>First, some terminology errata:</p>
+
+            <ol>
+                <li>What I called <i>hinges</i> are, in fact, <a href="https://skyciv.com/docs/tutorials/beam-tutorials/types-of-supports-in-structural-analysis"><i>fixed supports</i></a>.</li>
+            </ol>
+
+            <p>Mmm... Yep, that's it.</p>
+
+            <h2 id="section-moments">Moments</h2>
+
+            <p>Solid objects don't just move, they also <i>rotate</i>. Thankfully, I didn't forget about it in the last post, and I included the torque conservation for each beam to my system of equations to solve.</p>
+
+            <p>What I <i>did</i> forget about, though, is the fact that connections between objects can <i>produce torque without applying a force</i>. Imagine pushing a screwdriver perpendicularily into a wooden plank and starting to rotate it around the screwdriver axis: there is no <i>force</i> here, we're not pushing the plank in any direction. Instead, we're directly applying rotation to it.</p>
+
+            <p>Here's another demonstration that hints towards this. Consider a non-vertical beam glued to the ground somehow:</p>
+
+            <center><canvas id="canvas1"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.rightWall = false;
+                state.leftWall = false;
+                state.forceScale = 80.0;
+                state.addBeam(8, 10, 10, 5);
+                makeWhiteboard('canvas1', state);
+            }
+            </script>
+            <br>
+
+            <p>Clearly, the ground acts on it by a force that cancels gravity. This force also creates a <a href="https://en.wikipedia.org/wiki/Torque"><i>moment</i></a>, forcing the beam to rotate (clockwise, in this case). But the beam is glued with super glue, it cannot rotate! Yet there is no other force acting on this beam.</p>
+
+            <p>What is acting on this beam is a <i>moment</i> at the gluing point, which cancels the moment created by the force. So, the ground acts on the beam both by a force (represented here as a straight arrow) and by a moment (represented as a circular arrow).</p>
+
+            <h2 id="section-updated-model">Updated model</h2>
+
+            <p>Adding these moments to <a href="/blog/posts/structural-mechanics.html#section-the-model">our model</a> is quite simple:</p>
+
+            <ol>
+                <li>In addition to a force vector \( F \) acting on each end of a beam, we have an extra moment \( M \) (a scalar in 2D, a vector in 3D) on each end as well</li>
+                <li>The torque balance equation for each beam should include its moments at both ends:
+                    \[ F_a \times (-r) + F_b \times r + M_a + M_b = 0 \]
+                </li>
+                <li>For each connection, we need an extra equation for torque balance at this connection: the sum of all moments of all beams connected to this point must be zero:
+                    \[ M_{a1} + M_{a2} + M_{b3} = 0 \]
+                </li>
+            </ol>
+
+            <p>Here, \( M_{a1} \) is the \( M_a \) moment of the first beam conected to this point (if it is connected with the \( a \) end and not the \( b \) end), and so on.</p>
+
+            <h2 id="section-determinacy">Determinacy</h2>
+
+            <p>We've added two more scalar unknowns per each beam, and only one new equation for each beam connection. How exactly the system has changed depends on the exact topology, but it seems that typically we've nudged the system towards the <i>underdetermined</i> regime.</p>
+
+            <p>This is, however, exactly what I'd expect. It turns out that most complex systems are like this, &ndash; they have more unknowns than equations, &ndash; and they are usually called <a href="https://en.wikipedia.org/wiki/Statically_indeterminate"><i>statically indeterminate</i></a> systems in engineering.</p>
+
+            <p>Properly solving such systems requires either adding simplifying assumptions (a common one being that beams are, in fact, simply trusses), or adding more equations derived from the properties of the beam materials.</p>
+
+            <p>Though, improperly solving this system can still be done using least squares!</p>
+
+            <h2 id="section-graph-theory">A bit of graph theory</h2>
+
+            <p>Based on my experiments, it seems that the only case when the system is exactly solvable is when the beams form a <a href="https://en.wikipedia.org/wiki/Tree_(graph_theory)">tree</a> (i.e. no loops) and this tree is connected to the ground or walls at exactly one point. In all other cases, the system is statically indeterminate. And if the system is just flying in the air, it is overdetermined or sometimes singular, which makes sense: there's no way this system is actually at rest.</p>
+
+            <p>We can use a little bit of graph theory to prove what I said in the previous paragraph. Our beams naturally form a graph, with beams themselves being the edges, and beam endpoints being the vertices. Let's assume that this graph is connected, &ndash; otherwise there are several independent beam structures that can be analyzed separately.</p>
+
+            <ul>
+                <li>For each edge of this graph (i.e. for each beam), we have 6 scalar unknowns and 3 scalar equations.</li>
+                <li>For each vertex of this graph, we have just 3 scalar equations.</li>
+            </ul>
+
+            <p>There are a few special cases here:</p>
+
+            <ul>
+                <li>A free-floating end of a beam doesn't feel any forces or moments; however, to simplify counting, let's say it still has both a force and a moment at this free end, and also the corresponding equations that simply tell that the force and moment are both zero.</li>
+                <li>A vertex that touches the ground/walls doesn't have corresponding equations; alternatively, is has 3 extra unknowns (the force and moment applied to the ground/walls). In any case, the equations-unknowns balance is the same.</li>
+            </ul>
+
+            <p>Now, given \( E \) edges (beams) and \( V \) vertices (beam ends), of which \( G \) vertices are touching the ground/walls, the total numbers are</p>
+
+            <ul>
+                <li>Unknowns: \( 6E \)</li>
+                <li>Equations: \( 3E+3V-3G \)</li>
+            </ul>
+
+            <p>Finally, it is a basic fact from graph theory that a connected graph is a <a href="https://en.wikipedia.org/wiki/Tree_(graph_theory)">tree</a> if and only if \( E=V-1 \), otherwise \( E\geq V \) and the graph is not a tree (contains cycles).</p>
+
+            <p>So, if our beam structure forms a tree, we substitute \( V=E+1 \) to get</p>
+
+            <ul>
+                <li>Unknowns: \( 6E \)</li>
+                <li>Equations: \( 3E+3(E+1)-3G = 6E+3-3G \)</li>
+            </ul>
+
+            <p>And the difference (unknowns - equations) is \( 3(G-1) \). In this case</p>
+
+            <ul>
+                <li>If \( G=0 \), i.e. the structure is floating in the air, the difference is \( -3 \), so there are 3 more equations than unknowns, and the system is overdetermined</li>
+                <li>If \( G=1 \), i.e. the structure connects to ground/walls at exactly one point, the difference is \( 0 \) and the system is square</li>
+                <li>If \( G>1 \), the difference is positive and the system is underdetermined</li>
+            </ul>
+
+            <p>If the graph is <i>not</i> a tree, we have \( V\leq E \), so the number of equations is \( 3E+3V-3G \leq 6E-3G \), and the difference (unknowns - equations) is \( \geq 3G \), meaning it is always either square (which happens e.g. if the system is a single beam loop floating in the air), or, more typically, underdetermined again.</p>
+
+            <center><canvas id="canvas1.5"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.bottomWall = false;
+                state.leftWall = false;
+                state.rightWall = false;
+                state.addBeam(5, 5, 12, 7);
+                state.addBeam(5, 5, 8, 9);
+                state.addBeam(12, 7, 8, 9);
+                state.debug = true;
+                makeWhiteboard('canvas1.5', state);
+            }
+            </script>
+            <br>
+
+            <h2 id="section-stresses">Stresses</h2>
+
+            <p>The addition of rotating moments complicates our bending stress calculation. In the previous post we've derived that the bending only depends on the beam's orientation, which is no longer the case, and we need to account for these new moments. If a beam is rotated clockwise at the left end, and counterclockwise at the right end, it is clearly being bent downwards.</p>
+
+            <center><canvas id="canvas1.7"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.bottomWall = false;
+                state.leftWall = false;
+                state.rightWall = false;
+                state.addBeam(2, 5, 14, 5);
+                state.solver = 'none';
+                state.beams[0].startMoment = 2;
+                state.beams[0].endMoment = -2;
+                makeWhiteboard('canvas1.7', state);
+            }
+            </script>
+            <br>
+
+            <p>As to how exactly do we compute this bending now, I'll probably postpone this until the next post in this series, which is going to be about a system of connected solid cubes :)</p>
+
+            <p><i>(I'm too lazy to figure it out right now.)</i></p>
+
+            <h2 id="section-examples">Examples</h2>
+
+            <p>Here are a few interesting systems that have large enough support moments:</p>
+
+            <center><canvas id="canvas2"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(16, 10);
+                state.topWall = false;
+                state.addBeam(0, 5, 8, 5);
+                state.addBeam(8, 5, 16, 5);
+                makeWhiteboard('canvas2', state);
+            }
+            </script>
+            <br>
+
+            <center><canvas id="canvas3"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(24, 10);
+                state.topWall = false;
+                state.addBeam(0, 5, 8, 5);
+                state.addBeam(8, 5, 16, 5);
+                state.addBeam(16, 5, 24, 5);
+                makeWhiteboard('canvas3', state);
+            }
+            </script>
+            <br>
+
+            <center><canvas id="canvas3.5"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(24, 10);
+                state.topWall = false;
+                state.addBeam(0, 7, 8, 3);
+                state.addBeam(8, 3, 16, 3);
+                state.addBeam(16, 3, 24, 7);
+                makeWhiteboard('canvas3.5', state);
+            }
+            </script>
+            <br>
+
+            <center><canvas id="canvas4"></canvas></center>
+            <script>
+            {
+                const state = makeWhiteboardState(24, 10);
+                state.bottomWall = false;
+                state.leftWall = false;
+                state.rightWall = false;
+                state.forceScale = 30;
+                state.addBeam(3, 5, 9, 5);
+                state.addBeam(9, 5, 15, 5);
+                state.addBeam(15, 5, 21, 5);
+                state.addBeam(3, 5, 0, 0);
+                state.addBeam(21, 5, 24, 0);
+                state.addBeam(9, 5, 12, 8);
+                state.addBeam(15, 5, 12, 8);
+                makeWhiteboard('canvas4', state);
+            }
+            </script>
+            <br>
+
+            <h2 id="section-playground">Interactive playground</h2>
+
+            <p>Here's an updated interactive playground. It shows forces acting on beams as straight arrows, and moments as curved arrows. The moment arrows show which way this moment wants to turn the beam. Thus, there are 4 arrows in total for each beam: one force and one moment at each end. Note that forces or moments that are too small are not shown here.</p>
+
+            <p>Left click and drag to create beams (they automatically connect to each other via <s>hinges</s> fixed supports if their endpoints coincide), right click to remove beams. You can select whether to show forces or stresses using the control panel below the thing, toggle showing the gravity force, and also change the scale of the force vectors.</p>
+
+            <center><canvas id="canvas30"></canvas></center>
+            <center>
+            <table>
+            <tr>
+            <td width="25%"><button type="button" onclick="playgroundState.beams = [];">Clear</button></td>
+            <td width="25%"><input type="checkbox" id="playgroundShowGravity" onclick='playgroundState.showGravity = this.checked;'><label for="playgroundShowGravity">Show gravity</label></td>
+            <td width="25%"><select onchange="playgroundState.display=this.value;">
+              <option value="forces">Show forces</option>
+              <option value="stress">Show stress</option>
+            </select></td>
+            <td width="25%">Force scale: <input type="range" min="1" max="100" value="80" oninput="playgroundState.forceScale=this.value/2;"/></td>
+            </tr>
+            </table>
+            </center>
+            <script>
+            const playgroundState = makeWhiteboardState(36, 24);
+            playgroundState.debug = true;
+            playgroundState.interactive = true;
+            makeWhiteboard('canvas30', playgroundState);
+            </script>
+            <br>
+
+            <p>I hope this new model is better than my previous one :)</p>
+
+            <p>And, as always, thanks for reading!</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
