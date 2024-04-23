@@ -26,7 +26,9 @@ let footerHTML = `
 
 let endSectionHTML = `
 <hr class="header-separator">
-<center><b>TODO: END SECTION</b></center>
+<p>Hey, if you like my articles, consider supporting my other work!</p>
+<p>For example, watch my <a href="https://youtube.com/@lisyarus">YouTube devlogs</a>, like this one:</p>
+<center><iframe src="https://www.youtube.com/embed/2DguAOHpZ8c" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen class="youtube-embed"></iframe></center>
 `;
 
 document.getElementById("blog-header").innerHTML = headerHTML;
