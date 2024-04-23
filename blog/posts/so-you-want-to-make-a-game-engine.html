@@ -1,0 +1,334 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <title>So, you want to make a game engine | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">So, you want to make a game engine</div></center><br/>
+            <center><span class="post-date">2023 Sep 15</span></center><br/>
+
+            <p>Unity's <a href="https://blog.unity.com/news/plan-pricing-and-packaging-updates">recent controversy</a> sparked a heated debate on game engines. Some said that everyone should immediately switch to a new engine, while others replied that switching engines can take months if not years. Some said that the best way is to roll your own game engine, to what others noted that this isn't a simple task. And, you know, everyone is right here: there's no single answer, everything depends on a specific case. But maybe writing your own engine isn't as hard as it sounds? Why would one do that anyway? What does it even mean to <i>make a game engine</i>?</p>
+
+            <p>I've never actually worked with any game engine except <a href="https://bitbucket.org/lisyarus/psemek/src/master">my own pet engine</a>, which I've been slowly expanding for 3 years by now (it's about 100k <a href="https://en.wikipedia.org/wiki/Source_lines_of_code">LOC</a> already) and successfully used it for <a href="https://lisyarus.itch.io">over a dozen jam games</a> and one <a href="https://store.steampowered.com/app/2403100/Costa_Verde_Transport_Department">releaased commercial game</a>. However, I've seen people use other engines; I've seen people complain about other engines; I've seen people talk about their own engines; I've studied the source code of other (open-source) engines. So, I believe I have a few things to say on the matter, though, admittedly, my experience might be somewhat biased or unconventional.</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h1 id="part-1">Part 1: The difficult questions</h1>
+
+            <h2 id="section-why-make-game-engine">Why <b>make</b> your own game engine?</h2>
+
+            <p>Let's start with the elephant in the room. This has been discussed over and over, but it doesn't hurt to discuss it one more time. Here are a few reasons why you would ever make a game engine of your own:</p>
+
+            <ul>
+                <li>You'd <b>release yourself</b> from the burden of questionable corporate decisions, which, as recent events show, is a big deal</li>
+                <li>A custom game engine is <b>free</b> (neglecting the development cost, of course, &ndash; nothing is really free)</li>
+                <li>You can <b>optimize</b> the engine to your own needs (or the needs of a specific project), in terms of performance, iteration time (everyone loves waiting for shaders to recompile or lightmaps to bake), engine architecture (you'd probably use a ECS instead of a conventional scene graph for a game with millions of flying objects), and many other things</li>
+                <li>You have <b>full control</b> over how everything works internally and what technology is used</li>
+                <li>You can use your favourite <b>programming language</b> (though there probably are some game engines for every language on the planet)</li>
+                <li>You can have <b>much smaller</b> distribution sizes (my engine takes less than 2Mb, of which almost all space is taken by <code>SDL2.dll</code>)</li>
+                <li>You can <b>open-source</b> your engine and see it being used by others (but beware that maintaining FOSS projects is basically a hell)</li>
+                <li>You can even <b>sell</b> your engine, if it is of suitable quality (but beware that marketing your work is basically a hell)</li>
+                <li>You <b>won't be frustrated</b> due to some stupid developers not implementing the feature you need</li>
+                <li>Random people on the internet will think you're <b>cool as heck</b> because you're making your own engine</li>
+                <li>It is <b>a lot of fun</b>, I promise</li>
+                <li>You will <b>learn a freaking lot</b> of stuff on the way, which will make you better understand other engines and, as a consequence, will help you make games in the future even if you throw your own engine to the dustbin</li>
+            </ul>
+
+            <p>For me personally, the last two points are the most important. First of all, learning is fun, and if you don't think so, you better begin: if you want to make games, you'll <i>have to</i> learn a lot anyway, so better start enjoying the process!</p>
+
+            <p>Secondly, I just love coding. I love implementing algorithms, I love designing libraries & systems, I love digging the low-level stuff. Removing this would make game developement miserable for me.</p>
+
+            <p>I'd also want to elaborate on the "won't be frustrated" point, as this was somewhat of an eye-opening discovery for me. I've seen people complain about the engines all the time: this stuff is broken, this stuff breaks this other stuff, this new stuff doesn't support this old stuff, and this stuff was requested a decade ago and still isn't implemented. Of course, there are always reasons for why things are the way they are; if you've ever worked in a big enough corporation, you probably can relate. However, it is always easier to blame others than to blame yourself. <i>Those</i> stupid developers didn't fix this thing! Why didn't <i>you</i> fix it, if you needed it? Well, it's not <i>your</i> engine, right? &ndash; it's <i>theirs</i>. But it is <i>your</i> frustration.</p>
+
+            <p>But now it is, now you're making your own engine. Suddenly, there is no frustration: you know exactly why the engine lacks a certain feature that you now need. <i>You</i> didn't implement it, simple as that. Why didn't you? Well, obviously you were busy with other things! You're making a whole game engine alone or in a small team, it is understandable that the engine lacks support some stuff. It is expected, even. You'll implement the feature when it's really needed. Of course you will. Just, probably, not right now. There are other things.</p>
+
+            <p>My point is, it is harder to blame yourself for your own work than it is to blame others for their work.</p>
+
+            <h2 id="section-why-not-make-game-engine">Why <b>not</b> make your own game engine?</h2>
+
+            <p>Anyway, surely there are some downsides to this whole endeavour:</p>
+
+            <ul>
+                <li>It is <b>hard</b> and <b>time-consuming</b>. I mean, of course it depends on your use-case, but don't expect to write an Unreal clone in just a year after taking a 3-month C++ course</li>
+                <li>You will <b>never outcompete</b> those huge, industrial engines (like same old Unreal). Unless of course you're a big & rich enough studio, at which point this article probably isn't for you anyway</li>
+                <li>Your engine will <b>lack features</b>. It will take many years of hard work to achieve a fraction of the feature set and usability of big engines</li>
+                <li>You might find yourself too deep into engine development <b>instead of making an actual game</b>, which can easily lead to a <b>burnout</b></li>
+                <li>Random people on the internet will think you're <a href="https://www.gamespot.com/articles/unity-ceo-says-youre-a-fing-idiot-if-you-dont-think-about-monetization-during-creative-process-apologizes/1100-6505516"></b>an idiot</b></a> because you're making your own engine</li>
+            </ul>
+
+            <p>Note that the cost of making your own engine can be spread out across multiple projects if you plan things right.</p>
+
+            <p>So, should you make a game engine? You tell me! If you want to make a game as quickly as possible, just pick an existing engine and be happy. If you want to grow as a game developer, secure your future projects, and you have all the time in the world, then make a game engine! In any other case, you'll have to decide for yourself instead of relying on an stranger from the internet :)</p>
+
+            <h2 id="section-what-is-a-game-engine">What <b>is</b> a game engine?</h2>
+
+            <p>Good question! Is <a href="https://www.libsdl.org">SDL2</a> a game engine? I'd say it isn't, it's really a <i>platform abstraction library</i>. Is OpenGL a game engine? Of course not, it is a <i>low-level graphics API</i>. Is <a href="https://github.com/nothings/stb/blob/master/stb_image.h">stb_image</a> a game engine? Certainly not, it is an <i>image loading library</i>.</p>
+
+            <p>Now imagine a tiny project combining SDL2, OpenGL and stb_image to let you draw moving sprites on the screen: is this a game engine? It sure does sound like one!</p>
+
+            <p>So <i>what is</i> a game engine, what differentiates it from other libraries or APIs? Is it the combination of graphics, animation and user input? Well, one dear friend of mine was quite successful in making text-based games that run in terminal, which obviously lack any graphics or animation, yet they are perfectly valid games. So, anything with a user input is a game engine? For instance, is a calculator a game? Ugh, well, probably not, unless you're bored to death.</p>
+
+            <p>I propose the following definition: a <b>game engine</b> is <i>any set of tools, libraries, and other stuff</i> that <i>is designed to help you make games</i>. If you feel like this definition is incomprehensibly vague almost to the point of being completely useless, that's because it is. It is, but <i>that's the whole point</i>.</p>
+
+            <p>Look, if you're making a retro-style 2D pixel-art platformer, do you really need complex material graphs, continuous level of detail for geometry, global illumination, advanced UI, full-fledged 3D physics integrated with inverse kinematics, multiplayer support, etc, etc, etc...? You don't. The only things you'd need are handling user input, showing images on the screen, and probably some audio. That's about 2 to 30 days of work, depending on your experience and stubbornness. In any case that will be only 1% of your work; the other 99% are <i>making the actual goddamn game</i>.</p>
+
+            <p><i>See what the brilliant <a href="https://mastodon.gamedev.place/@eniko@peoplemaking.games">@Eniko</a> has to <a href="https://cohost.org/eniko/post/2852222-what-does-make-your">say on the matter</a>, by the way.</i></p>
+
+            <p>But what if you want to make the next AAA hit with top notch graphics, physics, and whatnot? Well, then you need all those numerous complex features. The other thing you need is <i>at least 5 spare years of your life</i> to work full-time on your engine to implement all that stuff.</p>
+
+            <p>My points here are:</p>
+
+            <ul>
+                <li>Game engines can (and, in most cases, should) <b>be small</b>. Small game engines are still game engines.</li>
+                <li>Game engines can <b>vary a lot</b> ranging from a single very specialized 100 LOC file to a 100 Gb industrial beast. No engine suits all needs, every game has its own set of unique features and constraints.</li>
+            </ul>
+
+            <h2 id="section-what-is-expected">What is <b>expected</b> from a game engine?</h2>
+
+            <p>Okay, my definition of a game engine exists mostly to convince you that engines can be small. Let's be realistic, though: there are things that are <i>expected</i> from most <i>big enough</i> game engines, unless they are extremely minimalistic or specialized by design (which is a <i>completely normal thing</i>!). To name a few:</p>
+
+            <ul>
+                <li>Being able to <b>program</b> the logic of your game (duh)</li>
+                <li>Creating a <b>window</b> to display stuff</li>
+                <li>Running a <b>game loop</b> that processes various events</li>
+                <li>Handling <b>user input</b>, like the mouse, keyboard, joystick or touchbar</li>
+                <li>Displaying <b>graphics</b> of some sort, be it 2D sprite-based or something 3D</li>
+                <li>Producing <b>audio</b> like background music and sound effects</li>
+                <li>Managing <b>assets</b> like images, models, audio, prefabs, or full game levels</li>
+                <li>Simulating <b>physics</b>, be it 2D or 3D, position-based or impulse-based or force-based, hard or soft</li>
+                <li>Supporting <b>scripting</b> for rapid prototyping or easy modding</li>
+                <li>Supporting <b>networking</b> for multiplayer, automatically downloading game updates or patches, or enabling downloadable user-generated content</li>
+                <li>Implementing <b>AI</b> for your game's enemies or NPC's</li>
+                <li>Implementing <b>UI</b> for your game's glorious interfaces</li>
+                <li>Imposing an <b>architecture</b> that connects all these parts in a uniform way</li>
+                <li>Providing <b>tools</b> that help you use the engine</li>
+                <li>Taking care of <b>distribution</b> of games made with this engine, ideally on several platforms, ideally by a single button click</li>
+            </ul>
+
+            <p>Note that your particular engine may only include a tiny subset of these features and still be called a game engine. Not every game needs everything.</p>
+
+            <p>Now let's discuss these features, one by one.</p>
+
+            <h1 id="part-2">Part 2: Game engine features</h1>
+
+            <h2 id="section-programming">Programming</h2>
+
+            <p>Strictly speaking, conventional programming isn't <i>required</i> for game logic. <a href="https://en.wikipedia.org/wiki/Visual_programming_language">Visual scripting</a> has been around for decades, and enables one to implement complex logic without writing any code at all.</p>
+
+            <center><img src="/blog/media/so-you-want-to-make-a-game-engine/visual_scripting.png" class="image-embed"></center>
+            <center><i>Visual scripting in Unreal</i></center>
+
+            <p><i>Some people confronted me with strong opinions that visual scripting is also a type of programming. And, well, surely it is! Also <a href="https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life#Undecidability">drawing black and white squares</a>, as well as doing <a href="https://en.wikipedia.org/wiki/G%C3%B6del_numbering">simple arithmetics on large numbers</a> are also types of programming. That's really not the point here.</i></p>
+
+            <p>However, supporting visual scripting in your engine requires writing specialized tools, which noticeably complicates the engine development. And, in my opinion, code is still the most general and versatile way to implement any type of logic.</p>
+
+            <p>You might also get away with supporting scripting in some language other than what the engine is written in (e.g. a C++ engine with Lua scripting and no direct C++ interface), but if you're already writing an engine, it's probably easier to simply provide a native API (i.e. in the language the engine itself is written with).</p>
+
+            <p>However, <i>writing an engine</i> still requires programming, no shortcuts here. So, which language is the best for writing engines? Honestly, it doesn't matter much, just pick any language you like. I'm using C++ because I've been using it for a decade and a half, it is a language I know the best, the language I love and feel comfortable with. If you are C++-allergic, pick Rust, or C#, or Python, or Haskell, or Java, or whatever. Seriously, it doesn't matter.</p>
+
+            <p>At some point you might need performance-critical code, and most languages have their ways of achieving that. Languages that are closer to the metal (like C++ or Rust) are typically more transparent regarding performance, but, again, you can do it in any language.</p>
+
+            <p>In my (probably not very popular) opinion, the best way to present an engine is as a <i>programming library</i>: something you include in your game project as a dependency, and use it as you wish. This will probably mean you need some <i>build system</i> support; though, depending on the size and complexity of your engine, you might get away with just some <a href="https://makefiletutorial.com">makefiles</a>.</p>
+
+            <p>Let's say you've made a stub (empty) engine in a form of a C++ library, providing the engine's API in header files, and having some code that implements that API. You package it as a CMake project, or maybe supply a few makefiles, or maybe just supply the whole source code, expecting the engine's user to just add all the source files in the game project. What's next?</p>
+
+            <h2 id="section-window">Window</h2>
+
+            <p>Most games need a <i>window</i> to run in. Even web games aren't an exception: the window may be the whole web page, or a certain canvas element the game is running in, etc. Probably the only exception are terminal-based games which use the terminal for all input and output (e.g. <code>std::cin/cout</code> in C++).</p>
+
+            <p>Creating a window is usually done via platform-specific means, like for example using the <a href="https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-createwindowexa"><code>CreateWindowEx</code></a> function from <a href="https://learn.microsoft.com/en-us/windows/win32/learnwin32/creating-a-window">WinAPI</a>. These plaftorm-specific interfaces are typically quite ugly and non-beginner-friendly, and you'll have to re-write the window creation code separately for each platform you're planning to support. Though, in most cases you also need a few extra things from the window, like a graphics API context, which is also created using ugly platform-specific interfaces.</p>
+
+            <p>Thankfully, there are libraries that do all this for you. In C++, you can use <a href="https://www.libsdl.org">SDL2</a>, <a href="https://www.glfw.org">glfw</a>, <a href="https://www.sfml-dev.org">sfml</a>, or one of the many thousands of similar libraries. Just add them to your project, call the corresponding <code>createWindow()</code> function and you're done. Any other language has similar libraries or even built-in tools for doing that.</p>
+
+            <p>How exactly you expose a window in your engine's API is completely up to you and your programming taste. Maybe you'd have an <code>engine::init()</code> function that creates a window and stores it in a global variable. Maybe you'd have an explicit <code>engine::createWindow()</code> function that returns some object representing the window and allows further operations on it. Maybe you'd have a base <code>engine::window</code> class that the engine's user has to subclass. The possibilities are numerous, and, for most part, they don't matter much.</p>
+
+            <p>What do we do after creating a window?</p>
+
+            <h2 id="section-game-loop">Game loop</h2>
+
+            <p>That's what almost all games and game engines have in common, though the loop itself might be hidden quite deep inside the engine. On a higher level, a game's code looks like this:</p>
+
+            <pre><code class="language-cpp block">int main()
+{
+    createWindow();
+    setupStuff();
+    while (gameIsRunning)
+    {
+        processInput();
+        simulateStuff();
+        drawFrame();
+    }
+}</code></pre>
+
+            <p>This <code>while (gameIsRunning)</code> loop is the <i>core game loop</i>. It is what makes your game run, what adds the time dimension to your game. Without it, the <code>main</code> function would simply return and the game would close.</p>
+
+            <p>Again, there are many possibilities in exposing the loop in the engine's API. It may be completely explicit, i.e. the engine's user writes <code>while (engine::isRunning())</code> somewhere in their <code>main</code> function. It may be hidden inside the engine, e.g. in some <code>engine::run()</code> function, which in turn calls some functions that the user provides. Maybe the user subclasses an <code>engine::application</code> class and has to override some <code>application.update()</code> method that gets called from the <code>application.run()</code> method.</p>
+
+            <p>Whaterver you choose, you need a game loop.</p>
+
+            <h2 id="section-user-input">User input</h2>
+
+            <p>One of the things we typically do on each iteration of the game loop is process the player's input. Again, this can be done using ugly platform-specific API, but most window-creating libraries also provide a platform-independent way of processing user input. It is typically implemented as a <code>getNextEvent()</code> function (sometimes called <code>pollEvents()</code> or smth like that).</p>
+
+            <p>How does the engine react to events? Many possibilities here, again. Maybe it just exposes the underlying <code>getNextEvent()</code> function. Maybe it processes the events itself, calling the user's callbacks on the way, like <code>application.onMouseMove(x,y)</code>. Maybe it has special code for certain events, like updating the OpenGL viewport when the window is resized, pausing the game when the window is out of focus, or quitting the game when the window is closed. So many possibilities!</p>
+
+            <p>The more special events the engine handles by itself, the easier it is to use the engine, but in some cases the engine's user might want to override this behavior (like not quitting when requested, which is a deadly sin by the way), so you might want to support overriding the default behavior in your engine.</p>
+
+            <h2 id="section-graphics">Graphics</h2>
+
+            <p>Now we have a window and can react to user's mouse and keyboard, but we can't show our reaction. Time to do some <i>graphics</i>.</p>
+
+            <p>Most window-creation libraries like SDL2 have some built-in 2D graphics support: you can draw on the window by simply filling in the pixels with your favourite colors.</p>
+
+            <p>Directly setting pixel colors is quite a minimalistic API which won't be enough in most cases. What <i>will</i> be enough, then? There is no single answer here.</p>
+
+            <p>Maybe your engine is specialized on 2D sprite-based games. In this case, you probably need to expose a <code>drawSprite(image,x,y)</code> function. It might also support some effects, like scaling or rotating the sprite, or applying color modification (blending with some fixed color, desaturation, etc). Internally it might be implemented manually, by computing the resulting pixels and putting them on the screen. It might be implemented using some other graphics library like e.g. <a href="https://www.cairographics.org">cairo</a>. It might be implemented on top of a low-level API like OpenGL. It's up to you and your engine's constraints.</p>
+
+            <p>Maybe your engine is specialized on simple 3D graphics, in which case it probably needs a much more elaborate interface like rendering 3D meshes with arbitrary <a href="https://learnopengl.com/Getting-started/Transformations">affine transformations</a>, changing lighting settings, or supporting <a href="https://learnopengl.com/Guest-Articles/2020/Skeletal-Animation">animated meshes</a>. This will most probably be implemented on top of a low-level graphics API like OpenGL, Vulkan, Direct3D or WebGPU.</p>
+
+            <p>Or maybe your engine isn't specialized at all, and provides some generic helpers that can be used for any type of graphics. That's what my engine does: it exposes a nice wrapper on top of OpenGL 3.3 (and now also on top of WebGPU!), but it doesn't contain a <i>rendering engine</i> in it's usual form. Instead, I tend to reimplement the graphics engine for each project separately, which gives me the freedom to experiment with graphics as much as I want. It does include a very simple 2D rendering engine, though, initially intended for debug use but now I'm often making jam games with it :)</p>
+
+            <p>In any case, you'd probably also want to <a href="https://learnopengl.com/In-Practice/Text-Rendering">render some text</a> on the screen, for UI and debug information. This can be done using any rendering backend, but you'll probably want a <i>font loading library</i> like <a href="https://freetype.org/">FreeType</a>  or even a professional <i>text shaping library</i> like <a href="https://harfbuzz.github.io">harfbuzz</a>. (<i>Also watch <a href="https://www.youtube.com/watch?v=SO83KQuuZvg">this video</a> by the brillian Sebastian Lague and convince yourself to never write your own font loading library</i>). Or maybe you'll just use a fixed ASCII-only bitmap font :) Though, in this case localization can be harder (imagine supporting Chinese in your font!).</p>
+
+            <h2 id="section-audio">Audio</h2>
+
+            <p>Outputting audio is done using &ndash; you guessed it &ndash; ugly platform-specific API's. Alternatively you can take some library that hides that for you, like OpenAL or SDL2_Audio. I'm using the latter, by the way.</p>
+
+            <p>These libraries typically expect you to setup an <i>audio callback</i> &ndash; a function that will be called many times per second, typically from a separate <i>audio thread</i>, and is expected to provide <i>audio samples</i> in some format. The rest is up to you: maybe you only need to play a single background music stream, and that's it. More realistically though, you'll probably want several separate streams: one for music, one for effects, one for voice, etc. Then you'll also want to control their volume separately, or maybe apply other, more sophisticated effets. Oh, and you'll absolutely want a <i>compressor</i> on top of the final output, which prevents clicks and noise when many sounds are playing simultaneously. All this is done via an <i>audio mixing library</i>.</p>
+
+            <p>My engine has it's own audio mixing library, and I've written a <a href="/blog/posts/audio-mixing.html">giant blog post</a> about its design and implementation. In short, it operates on highly abstract audio <i>streams</i> and allows you to combine them however you want to make new streams, and expects you to plug a single output stream as the final played audio. One person even integrated it in their own game engine :)</p>
+
+            <p>You can do this all yourself, or you could find a library that does audio mixing for you. I'm sure there are hundreds of them, but I didn't conduct a thorough search.</p>
+
+            <h2 id="section-assets">Assets</h2>
+
+            <p>Assets are all your game's sprites, textures, audio files, 3D models, levels, AI scripts, etc. Again, there are many ways to handle them.</p>
+
+            <p>You could turn them into binary data compiled into your game executable. The advantage is that you don't have to think about <i>loading</i> assets &ndash; they are right here, accessible in code as a raw byte array immediately. The downside is that you can't change assets without recompiling the game, which might be an issue <i>(I typically maintain good compile times, which is why I used this method for quite a long time)</i>. Another downside is that this approach makes modding almost impossible.</p>
+
+            <p>You could store assets simply as files, in some <code>assets</code> folder next to your game's executable. An <i>asset manager</i> in your code then simply loads this files, and maybe does some caching or preprocessing. This approach is probably the best for modding, and the easiest one during development.</p>
+
+            <p>You could store assets in an archive, be it some widespread format like ZIP or some ad-hoc format tailored to your engine's needs (<i>the latter seems to be the method of choice for most big engines</i>).</p>
+
+            <p>In any case, you'll probably want to use some format-specific libraries to turn the raw asset bytes into usable data, like e.g. <a href="https://github.com/nothings/stb/blob/master/stb_image.h">stb_image</a> for loading images or <a href="https://rapidjson.org/">RapidJSON</a> for loading some JSON entity descriptions.</p>
+
+            <p>You could also support hot-realoading assets, though this quickly becomes a much more complicated thing.</p>
+
+            <h2 id="section-physics">Physics</h2>
+
+            <p>Now, most games actually don't need any physics. They need animation, logic, and other stuff that might resemble physics, but not actual physics. Civilization 6 doesn't have physics, for instance. Nor do most city-building games.</p>
+
+            <p>If you're making something like a platformer, or a top-down 2D RPG, all your physics will boil down to character movement, and maybe some very basic collisions. These are relatively easy to write, and more importantly this way they are much easier to tweak to your specific needs than some big generic physics engine.</p>
+
+            <p>If you have too many collisions, you can optimize them with spatial hashing or quadtrees. And if you're scared of quadtrees, you shouldn't be: I've written a <a href="/blog/posts/building-a-quadtree.html">blog post</a> about how to implement them in a few dozen lines of code.</p>
+
+            <p>Anyway, if you are absolutely sure you need real physics, take some library like <a href="https://box2d.org">Box2D</a> or <a href="https://github.com/bulletphysics/bullet3">Bullet</a>. By the way, <a href="https://mastodon.gamedev.place/@erin_catto">Erin Catto</a>, the creator of Box2D, has tons of materials online on how to implement physics engines (specifically, impulse-based constraint resolution).</p>
+
+            <h2 id="section-scripting">Scripting</h2>
+
+            <p>First, what is scripting? Let's define it as support for programming parts of the game in a programming language other than the one the engine is written in.</p>
+
+            <p>Again, not all games or game engines need scripting. After all, you're already programming, say, in C++, why use a whole new language for some parts of the game? Here are a few possible reasons:</p>
+
+            <ul>
+                <li>Developers are typically more productive in some scripting language than in a low-level one like C++ (<i><a href="https://x.com/majicDave">David Frampton</a>, the creator of <a href="https://store.steampowered.com/app/1060230/Sapiens">Sapiens</a>, said in his <a href="https://www.youtube.com/watch?v=j5i6iWr-3xU">devlogs</a> that supporting Lua scripting made him orders of magnitude more productive</i>)</li>
+                <li>It is easier to run code in some protected environment if they are written in a scripting language</li>
+                <li>It is easier to support hot-reloading code in an interpreted or JIT-compiled scripting language than in a low-level compiled language (though it is still very much possible)</li>
+                <li>It is easier for modders to write stuff in a scripting language</li>
+            </ul>
+
+            <p><a href="https://www.lua.org">Lua</a> is a pretty popular choice for scripting: it is a very simple yet powerful language. Godot engine has it's own language <a href="https://gdscript.com">GDScript</a>. You could probably use Python or even JavaScript as your scripting language.</p>
+
+            <p>Still, bear in mind that not every game needs this.</p>
+
+            <h2 id="section-networking">Networking</h2>
+
+            <p>As usual, everything depends on your particular needs. Maybe you don't intend to make multiplayer games, or any games whatsoever that use the network.</p>
+
+            <p>Or maybe you do! In this case, your programming language's standard library probably already has some asynchronous socket abstractions; or, if you're using C++, I recommend <a href="https://www.boost.org/doc/libs/1_83_0/doc/html/boost_asio.html">Boost.Asio</a> <i>(if you're allergic to Boost, take the <a href="https://think-async.com/Asio/AsioStandalone.html">standalone Asio version</a>)</i>.</p>
+
+            <p>That's still not quite <i>networking support</i>, though. And, to be honest, I have no idea what constitutes such support, as I've never written multiplayer games apart from a couple of silly prototypes that I tested with my friends. Maybe have a look at what your favourite big game engine does in terms of networking, or maybe look at some open-source stuff like <a href="https://github.com/ValveSoftware/GameNetworkingSockets">Valve's GameNetworkingSockets</a>.</p>
+
+            <h2 id="section-ai">AI</h2>
+
+            <p>You wouldn't believe me, but not every game needs AI. And those that do often really need just a few scripts. In fact, in general AI is just code, so, if your engine supports writing code, it has AI support! Yay!</p>
+
+            <p>Though you might want something more here, like support for a specific <i>AI programming pattern</i>, like behavior trees, or goal-driven AI, or something else. By the way, watch <a href="https://x.com/Bobby_Anguelov">Bobby Anguelov</a>'s <a href="https://www.youtube.com/watch?v=G5A0-_4dFLg">talk</a> about game AI approaches.</p>
+
+            <p>I've written a <a href="/blog/posts/behavior-trees.html">blog post</a> about the design of my own behavior trees library, if you're interested. I think the library itself is good, but the whole behavior trees approach has its drawbacks.</p>
+
+            <h2 id="section-ui">UI</h2>
+
+            <p>I'd argue that almost every game needs UI. However, UI is really just some objects that react to user's input and draw something on the screen, so they don't seem to be that different from the rest of the engine. Why have a dedicated UI library?</p>
+
+            <p>Well, UI is usually structured differently to typical game entities, and behaves differently. It exists in the window coordinate system, not the world coordinates that all your game objects are in. It has some typical expected behavior, like a button should react to being hovered by the mouse or being clicked on, a slider is expected to behave accordingly, etc. Still, abstracting all this in a reusable way is a very complicated task. Reimplementing UI from scratch in every project may turn out to be simpler for you than adding UI support in the engine.</p>
+
+            <p>You wouldn't believe that, but I've written a <a href="/blog/posts/how-not-to-ui.html">blog post</a> about my own UI library. This is mostly a rant about how bad it is, though; I'm currently designing a new one, and I'm hoping to get it working somewhere in 2024.</p>
+
+            <h2 id="section-architecture">Architecture</h2>
+
+            <p>Okay, we've been speaking a lot about some isolated <i>libraries</i>, but now we need to tie them all together. Or, do we?</p>
+
+            <p>My own engine doesn't have any specific arhitecture other than being just a set of libraries. You create a project, you take the libraries you need, and they do what they do. They are designed to be as isolated and independent as possible (within reason, of course). This is nice and quite easy to use.</p>
+
+            <p>However, many engines impose a more monolithic architecture, like having a base <code>Object</code> class that all game systems should subclass, some global object manager, and whatnot. This is great for big engines that provide detailed introspection and modification tools, but I doubt it is useful for small engines.</p>
+
+            <h2 id="section-tools">Tools</h2>
+
+            <p>Speaking of tools, &ndash; you guessed it, &ndash; not every engine needs them. The only tool I used in my engine was a python script that parsed Blender files and generated a binary file with a 3D mesh in some ad-hoc format. I don't use it anymore, since I've switched to <a href="https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html">glTF</a> models and I'm genuinely happy with this decision.</p>
+
+            <p>Most big industrial engines provide special tools, though, typically a big editor which feels like IDE + Blender, and allow you to preview the result of your work very quickly. However, designing and implementing such editors is probably as hard as making a game engine itself; I would definitely <b>not</b> recommend doing this for your small in-house game engine.</p>
+
+            <p>However, making smaller, more specialized tools is definitely a great idea. Maybe you have a special level format for performance reasons and you want to make a tool that converts Blender files to your format and allows to preview them and see changes immediately. Maybe you need some funny texture converter. Maybe you need to validate some of the assets every now and then. Investing time in tools is definitely a good idea, just don't try to make another Unity.</p>
+
+            <h2 id="section-distribution">Distribution</h2>
+
+            <p>You've made a game engine, you made a simple game in it, and you've sent it to your friend to try. What do you mean, they can't launch it? You did send the executable file and not the source code, did you?</p>
+
+            <p>We live in a sad world where programs just don't launch on random computers. They need a lot of other stuf to run. If you're using a language that compiles to native code (files that the operating system can launch without any extra help), you still need to supply the required <i>dynamic libraries</i>. In my case, these are <code>SDL2.dll</code>, <code>libpng.dll</code>, and a few more.</p>
+
+            <p>If you're using a language that is compiled into bytecode, like Java, you need the thing that runs that bytecode, like JVM. Chances are, the user already has a version of JVM installed on their machine; however, you can't guarantee that. If you're using an interpreted language, like Python, you'll have to ship your game with a Python interpreter. You get the point.</p>
+
+            <p><i>By the way, even native binaries actually need a special launcher to work. In Linux it is called something like <code>/lib64/ld-linux-x86-64.so.2</code>, and it does some initialization and loads the required dynamic libraries.</i></p>
+
+            <p>Supporting multiple platforms adds more pain, since different platforms have different executable file formats, dynamic library formats, etc. You'll have to compile several different versions of your game, one for each platform. By the way, check out <a href="/blog/posts/porting-for-android.html">my other post</a> about how I ported my C++ engine to Android.</p>
+
+            <p>Automating all this is probably the most important thing a game engine can do. I use special Ubuntu docker containers for producing Windows and Linux builds (and the mingw64 compiler to cross-compile to Windows) together with some Bash scripts and CMake wizardry to make all this work. It's a pain to prepare these, but in the end I can consistently package reproducible builds of my projects in a matter of a single command.</p>
+
+            <h1 id="part-3">Part 3: How do I start?</h1>
+
+            <p>We've discussed a lot of random stuff that a game engine might or might not have, and at this point the idea of writing a game engine sure does seem quite intimidating. But remember what we've discussed in the beginning of the post: not every game or game engine needs everything. A tiny library that creates a window, provides minimal 2D graphics, and some build scripts that create a distributable ZIP archive of the game is already a very decent engine!</p>
+
+            <p>So, how do you start making an engine? My advice is to focus <b>not</b> on making an engine, but on <b><i>making games</i></b> instead.</p>
+
+            <p>Attend a <a href="https://itch.io/jams">game jam</a>, make a game from scratch, with no engines. Celebrate your achievement. Take a break.</p>
+
+            <p>Attend <a href="https://ldjam.com">another game jam</a>, and make a new game from scratch, without reusing anything you made for the previous game. After a few iterations like this you'll find yourself thinking: gosh it would be nice <i>not</i> to write this bunch of code again an again, I wish I already had it somewhere! <b><i>That's the birth of your engine</i></b>.</p>
+
+            <p>Look carefully at your code. Think which parts can be isolated and separated to be reused later. Think about how exactly you'd want to use these parts. Extract them into a new project, &ndash; this is your engine now. Every time you find yourself writing the same code again and again, put it into the engine, possibly taking care of generalizing this code to make it more reusable, like removing hard-coded settings or unnecessary dependencies and fixing bugs and corner cases.</p>
+
+            <p>Repeat this over and over again, and after some time you'll have a good engine tailored to <i>your specific needs</i>, an engine you <i>know</i>, an engine you're <i>efficient</i> with, an engine which you can <i>enhance</i> at any time.</p>
+
+            <p>As I've said before, it takes time, it forces you to learn a lot, but the result is more than worth it.</p>
+
+            <p>Or, maybe not. After all, it's up to you anyway :)</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
