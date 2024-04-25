@@ -1,0 +1,486 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <meta property="og:type" content="article" />
+        <meta property="og:title" content="TITLE">
+        <meta property="og:site_name" content="lisyarus blog">
+        <meta property="og:image" content="/blog/media/URL/cover.png" />
+        <meta property="og:image:height" content="240" />
+        <meta property="og:image:width" content="520" />
+        <title>Demystifying multiple importance sampling | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Demystifying multiple importance sampling</div></center><br/>
+            <center><span class="post-date">2024 Apr 25</span></center><br/>
+
+            <p><i>First post of the year. Hooray! This year had a truly terrible start for me.</i></p>
+
+            <p>If you're into rendering, you probably know that most modern photorealistic rendering is based on <i>path tracing</i>, which in turn is based on <i>Monte-Carlo integration</i>. You also probably know that it introduces a lot of noise in the generated image, and a lot of research is done to <i>reduce</i> this noise, and one of the simple yet importance ways to do that is <i>multiple importance sampling</i>.</p>
+
+            <p>However, if you naively implement multiple importance sampling, you get a wrong (typically darker/brighter) image! And if we look into <a href="https://graphics.stanford.edu/papers/veach_thesis/thesis.pdf">Veach'97 PhD thesis</a> that introduced this technique to graphics, we see that it describes something that isn't related to path tracing at all! What's going on?</p>
+
+            <p>In the last few months I was teaching a raytracing course at <a href="https://math-cs.spbu.ru/en/">Saint Petersburg State University</a>, and I had no option other than to figure out all that in detail. Let's dive in :)</p>
+
+            <p><i>By the way, the post is quite math-heavy, but you can probably safely skip most derivations and proofs if you feel like doing so.</i></p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-monte-carlo-integration">Monte-Carlo integration</h2>
+
+            <p>First, let's set up the context. What is Monte-Carlo integration?</p>
+
+            <p>In essence, it is a way to numerically compute integrals \( I = \int\limits_\Omega f(x) dx \) using a seemingly stupid idea:</p>
+
+            <ul>
+                <li>Generate \( N \) random samples \( X_i \) inside \( \Omega \) according to some probability distribution \( p(x) \)</li>
+                <li>Estimate the integral as \[ I \approx I_{MC} = \frac{1}{N}\sum \frac{f(X_i)}{p(X_i)} \]</li>
+            </ul>
+
+            <p>Here, \( \Omega \) is any reasonable integration domain. It can be an interval \( \Omega = [a, b] \), a sphere \( \Omega = \mathbb S^2 \), a hemisphere, a 3D volume enclosed by some weird shape, or even the space of all finite piecewise-linear paths in some scene (this is how bidirectional path tracing is formalized).</p>
+
+            <p>Likewise, \( f \) is any reasonable integrable function. It doesn't even have to be continuous!</p>
+
+            <p><i>I'm intentionally saying "reasonable" instead of some formal mathematical property, because honestly I simply don't know the exact requirements for this to work. It does work in all interesting cases, though :)</i></p>
+
+            <p>Intuitively, the \( \frac{1}{p(X_i)} \) part corrects the probability of choosing \( X_i \): it this probability is <i>low</i>, we should take this value with <i>higher</i> weight, because we won't be returning to this \( X \) for quite a long time.</p>
+
+            <h2 id="section-why-monte-carlo">Why Monte-Carlo?</h2>
+
+            <p>Now, why would you use this method? Surely there are other methods, better suited for this task?</p>
+
+            <p>And indeed there are! For, say, the integral of some 1D function defined on an interval \( [a, b] \), something like the <a href="https://en.wikipedia.org/wiki/Trapezoidal_rule">trapezoidal rule</a> or <a href="https://en.wikipedia.org/wiki/Gaussian_quadrature">gaussian quadrature</a> will probably give you much better results than Monte-Carlo.</p>
+
+            <p>However, sometimes you need to integrate some <i>really bad</i> function. Maybe it's discontinuous, and wiggles with high frequencies, and whatnot. Then Monte-Carlo is probably at least <i>not worse</i> than any other method. It is much more malleable, though, and there are numerous tweaks you can do to make it work reasonably even for the worst functions.</p>
+
+            <p>Though, sometimes you need to integrate some <i>high-dimensional</i> function. Say, a function of 10 real variables, defined in some region \( \Omega \subset \mathbb R^{10} \). Discretization methods really suck here! If you discretize each of the 10 axes into just 5 segments (which is stupidly low, by the way!), then in total you get \( 5^{10} = 9765625 \) points to evaluate your function at. That's almost 10 \( million \).</p>
+
+            <p>And if you realize that 5 isn't enough, there's no simple way to do something like evaluate the function at 10 million <i>more</i> points. Where would you put those points? If you use 10 points on each axis instead of 5, you get \( 10^{10} = 10\,000\,000\,000 \), i.e. 10 <i>billion</i> points instead. So, there's no convenient way to control the precision vs computation time tradeoff. Monte-Carlo, however, doesn't care about dimensions, as long as you know how to generate random points inside your domain.</p>
+
+            <p>So, Monte-Carlo integration</p>
+
+            <ul>
+                <li>Is highly adaptive for complicated functions, and</li>
+                <li>Changes the complexity from \( N^D \) to a much more manageable \( N\cdot D \) (though, of course, the meaning of \(N\) is completely different in this two formulas)</li>
+            </ul>
+
+            <p>Thus, it is well-suited for complicated, high-dimensional integrals.</p>
+
+            <p>Guess what &ndash; the core of path tracing is exactly a complicated, high-dimensional integral :)</p>
+
+            <h2 id="section-monte-carlo-path-tracing">Monte-Carlo in path tracing</h2>
+
+            <p>In photorealistic graphics, we need to compute the amount of light \( I_{out} \) <i>exiting</i> a particular point \( p \) of some surface in a particular direction \( \omega_{out} \)</p>
+
+            \[ I_{out}(p,\omega_{out}) = I_{e}(p,\omega_{out}) + \int\limits_{\mathbb S^2} I_{in}(p,\omega_{in})\cdot r(p,\omega_{in},\omega_{out})\cdot (\omega_{in}\cdot n) \cdot d\omega_{in} \]
+
+            <p>which is combined from the amount of light <i>emitted</i> \( I_e \) by this point inteself, and the amount of light <i>incoming</i> \( I_{in} \) from all possible directions \( \omega_{in} \) and reflected towards our direction. The function \( r \) is called <i>BRDF (bidirectional reflectance distribution functions</i>) and controls the amount of this reflection, and essentially defines the reflective properties of our surface. This is the beloved <a href="https://en.wikipedia.org/wiki/Rendering_equation"><i>rendering equation</i></a>, by the way :)</p>
+
+            <p>The incoming light \( I_{in} \) is the outgoing light \( I_{out} \) for some other point in the scene, so it is also computed via this equation, which also has the incoming light from all directions, which is also the outgoing light of other points, which are also computed... You get the idea. Thus, we get an integral of an integral of an integral of... We usually stop the recursion at some point, of course.</p>
+
+            <p>So, we have some complicated function (involving various materials via \( I_e \) and \( f \), and the information of which \( I_{out} \) corresponds to which \( I_{in} \)) which is also high-dimensional (due to nested integrals). A perfect fit for Monte-Carlo!</p>
+
+            <p>With Monte-Carlo, we generate random directions \( \omega_{in} \), thus effectively following the potential path that a light could have taken (but backwards). Hence the name <i>path tracing</i>.</p>
+
+            <h2 id="section-some-proofs">Some proofs</h2>
+
+            <p>Let's do some math (oh no) to better understand what's going on. Say we're integrating a function \( I = \int\limits_\Omega f(x)dx \) and we estimate the value of this integral using the Monte-Carlo estimator</p>
+
+            \[ I \approx I_{MC} = \frac{1}{N}\sum \frac{f(X_i)}{p(X_i)} \]
+
+            <p>Here's the theorem: if</p>
+
+            <ol>
+                <li>\( p(x) \) is a continuous probability distribution, and</li>
+                <li>\( p(x) > 0 \) whenever \( f(x) > 0 \)</li>
+            </ol>
+
+            <p>then the estimation \( I_{MC} \) above</p>
+
+            <ol>
+                <li>Is equal to \( I \) <i>on average</i>, and</li>
+                <li>Converges to \( I \) when we increase the number of samples \( N \)</li>
+            </ol>
+
+            <p>The proof that it works is rather unilluminating. To see that <i>on average</i> we get the desired value of the integral \( I \), we simply compute the expected value of the estimator \( I_{MC} \):</p>
+            
+            \[ \mathbb E [I_{MC}] = \mathbb E \left[\frac{1}{N}\sum\frac{f(X_i)}{p(X_i)}\right] = \frac{1}{N} \mathbb E \left[ \sum\frac{f(X_{\color{blue}1})}{p(X_{\color{blue}1})} \right] = \\
+            = \frac{1}{N} \cdot N \cdot \mathbb E \left[ \frac{f(X_1)}{p(X_1)} \right] = \mathbb E \left[ \frac{f(X_1)}{p(X_1)} \right] \]
+
+            <p>Here, we used the fact that all \( X_i \) are <a href="https://en.wikipedia.org/wiki/Independent_and_identically_distributed_random_variables">independent and identically distributed (iid)</a>, so the exectation values of \( \frac{f(X_i)}{p(X_i)} \) are all the same.</p>
+
+            <p>Now compute this expectation value by definition:</p>
+
+            \[ \mathbb E [I_{MC}] = \mathbb E \left[ \frac{f(X_1)}{p(X_1)} \right] = \int\limits_\Omega \frac{f(x)}{p(x)}p(x)dx = \int\limits_\Omega f(x) dx = I \]
+
+            <p>So, the \( p(x) \) inside the integral simply cancels out, leaving us with just the desired integral.</p>
+
+            <p>To see that it <i>converges</i> to \( I \) as the number of samples \( N \) grows, we compute the variance:</p>
+
+            \[ \mathbb{Var}\left[ I_{MC} \right] = \mathbb{Var}\left[ \frac{1}{N}\sum\frac{f(X_i)}{p(X_i)} \right] = \frac{1}{N^2} \mathbb{Var}\left[ \sum\frac{f(X_1)}{p(X_1)} \right] = \\
+            = \frac{1}{N^2} \cdot N \cdot \mathbb{Var}\left[ \frac{f(X_1)}{p(X_1)} \right] = \frac{1}{N} \mathbb{Var}\left[ \frac{f(X_1)}{p(X_1)} \right] \]
+
+            <p>where we once again used that all \( X_i \) are identically distributed.</p>
+
+            <p>Now, the <a href="https://en.wikipedia.org/wiki/Standard_deviation">standard deviation</a> is just the square root of the variance, thus</p>
+
+            \[ \sigma = \frac{1}{\sqrt N} \sqrt{\mathbb{Var}\left[ \frac{f(X_1)}{p(X_1)} \right]} \]
+
+            <p>Whatever this monstrousity equals to, this large square root on the right depends only on the function \( f \) and our chosen distribution \( p \), so it is constant within a particular Monte-Carlo invocation, while the overall deviation tends to zero due to the factor of \( \frac{1}{\sqrt N} \).</p>
+
+            <p>Now, this \( \frac{1}{\sqrt N} \) is rather slow. To reduce the noise (i.e. the deviation) by a factor of 2, we need to use <i>4 times more</i> samples. That's rather computationally expensive. What we can do instead is use a probability distribution \( p \) which better fits our particular function \( f \).</p>
+
+            <p>But first, let's look at some pictures.</p>
+
+            <h2 id="section-testbed">A testbed</h2>
+
+            <p>Before we start improving the basic Monte-Carlo method, let's see how exactly it performs in a few simple test cases.</p>
+
+            <p>First, we will compute the integral \( \int\limits_0^\pi \sin x dx = 2 \). Here's the convergence plot from 1 to 1024 samples uniformly distributed on \( [0, \pi] \) (orange line is the true value):</p>
+
+            <center><img src="/blog/media/multiple-importance-sampling/sine-1.png" class="image-embed"></center>
+
+            <p>We can see that it indeed converges to the value of \( I = 2 \), but it fluctuates a lot (<i>because it is random</i>).</p>
+
+            <p>Our next test bed will be a nice diffuse <a href="https://en.wikipedia.org/wiki/Cornell_box">Cornell Box</a>, rendered at 64 samples per pixel (spp) by sampling the incoming light direction \( \omega_{in} \) uniformly on the hemisphere:</p>
+
+            <center><img src="/blog/media/multiple-importance-sampling/box-uniform-64.png" class="image-embed"></center>
+
+            <p>Out final test will actually be a pair of scenes: one (one the left) with a diffuse plane and a small light source, another (on the right) with a metallic plane and a large light source, both rendered with 64 spp and uniform sampling as well:</p>
+
+            <center><img src="/blog/media/multiple-importance-sampling/plane-uniform-64.png" class="image-embed"></center>
+
+            <p><i>There's so much noise in all these!</i></p>
+
+            <h2 id="section-importance-sampling">Importance sampling</h2>
+
+            <p>So, we've seen that the result of Monte-Carlo integration is <i>noisy</i>. One obvious way to reduce the noise is to increase the number of samples, but maybe there's a better way?</p>
+
+            <p>Remember that we didn't actually need uniform distribution of samples &ndash; we can use <i>any</i> distribution, as long as it satisfies some mild <a href="section-some-proofs">assumptions above</a>.</p>
+
+            <p>Let's look at the variance again:</p>
+
+            \[ \mathbb{Var}[I_{MC}] = \frac{1}{N} \mathbb{Var}\left[ \frac{f(X_1)}{p(X_1)} \right] \]
+
+            <p>Variance of some value is minimized when this value is <i>constant</i>. In our case, if \( p(x) = C \cdot f(x) \), then \( \frac{f(X)}{p(X} \) would be a constant random variable, having <i>zero</i> variance!</p>
+
+            <p>What is the value of C? Well, since \( p(x) \) is a probability distribution, its integral should be equal to 1:</p>
+            
+            \[ 1 = \int\limits_\Omega p(x) dx = \int\limits_\Omega C\cdot f(x) dx = C \cdot I \]
+
+            <p>So, if we take \( p(x) = \frac{1}{I}f(x) \), we will get a <i>perfect</i> Monte-Carlo method: it has <i>zero variance</i>, i.e. it immediately gives us the true value of the integral!</p>
+
+            <p>But why does this happen? Look at a one-sample Monte-Carlo estimate:</p>
+
+            \[ I_{MC} = \frac{f(X_1)}{p(X_1)} = \frac{f(X_1)}{\frac{1}{I}f(X_1)} = I \]
+
+            <p>In order to actually <i>use</i> this distribution, we need to <i>know</i> the value \( I \) beforehand. But this is the very value we tried to compute! Oops.</p>
+
+            <p>So, the perfect probability distribution is actually <i>useless</i> for us, because we cannot compute its PDF \( p(x) \) without knowing the desired integral \( I \) in the first place. However, it gives us an important hint: to reduce variance, we need to make \( p(x) \) look <i>similar</i> to \( f(x) \), so that the fraction \( \frac{f(x)}{p(x)} \) doesn't fluctuate too much and has low variance.</p>
+
+            <p>This idea is called <i>importance sampling</i>: trying to sample more <i>important</i> areas more frequently.</p>
+
+            <p>Let's apply this idea to our first test case \( \int\limits_0^\pi \sin x dx \). Instead of using uniformly distributed samples on \( [0,\pi] \), let's take a distribution that looks like a parabola centered at \( \frac{pi}{2} \):</p>
+
+            <center><img src="/blog/media/multiple-importance-sampling/parabola.png" class="image-embed"></center>
+            <center><i>Red is the sine function, blue is the probability we'll use</i></center>
+
+            <p>This probability turns out to be equal to</p>
+
+            \[ p(x) = \frac{3}{2\pi} \left[ 1 - \left(\frac{2x}{\pi} - 1\right)^2 \right] \]
+
+            <p>and we can use <a href="https://en.wikipedia.org/wiki/Inverse_transform_sampling">CDF inversion</a> to sample it. Quite curiously, the <a href="https://en.wikipedia.org/wiki/Cumulative_distribution_function">CDF</a> turns out to be simply the smoothstep function:</p>
+
+            \[ P(X < x) = 3\left(\frac{x}{\pi}\right)^2 - 2\left(\frac{x}{\pi}\right)^3 = \text{smoothstep}\left(\frac{x}{\pi}\right) \]
+
+            <p>You can find the inverse function on the <a href="https://iquilezles.org/articles/ismoothstep/">Inigo Quilez</a> site. Here's what we get using this sampling method, compared to uniform sampling:</p>
+
+            <center><img src="/blog/media/multiple-importance-sampling/sine-2.png" class="image-embed"></center>
+
+            <p>It clearly converges much faster! Let's look at our other examples.</p>
+
+            <p>In general, it is pretty hard to figure out a good sampling distribution for use in path tracing, because the integrated function is pretty complicated:</p>
+
+            \[ I_{in}(p,\omega_{in})\cdot r(p,\omega_{in},\omega_{out})\cdot (\omega_{in}\cdot n) \]
+
+            <p>One simple choice that works for diffuse materials (such that \( r=\text{const} \) is to ignore the \( I_{in} \) part and use a distribution proportional to the dot product \( (\omega_{in}\cdot n) \). This distribution is called <a href="https://ameye.dev/notes/sampling-the-hemisphere/"><i>cosine-weighted hemisphere distribution</i></a>, because the PDF is proportional to the cosine of the angle between the direction and the surface normal \( n \).</p>
+
+            <p>Using this distribution instead of a uniform one, we get a nice (though far from complete) noise reduction:</p>
+
+            <center>
+                <div class="image-compare-container" style="width: 512px; height: 512px">
+                    <div class="image-compare image-compare-left">
+                        <img src="/blog/media/multiple-importance-sampling/box-uniform-64.png">
+                    </div>
+                    <div class="image-compare image-compare-right">
+                        <img src="/blog/media/multiple-importance-sampling/box-cosine-64.png">
+                    </div>
+                </div>
+            </center>
+            <center><i>Drag the separator to better appreciate the difference</i></center>
+
+            <p>However, it doesn't help much with our last test scene &ndash; neither with the diffuse plane:</p>
+
+            <center>
+                <div class="image-compare-container" style="width: 512px; height: 512px">
+                    <div class="image-compare image-compare-left">
+                        <img src="/blog/media/multiple-importance-sampling/diffuse-uniform-64.png">
+                    </div>
+                    <div class="image-compare image-compare-right">
+                        <img src="/blog/media/multiple-importance-sampling/diffuse-cosine-64.png">
+                    </div>
+                </div>
+            </center>
+
+            <p>nor with the metallic surface:</p>
+
+            <center>
+                <div class="image-compare-container" style="width: 512px; height: 512px">
+                    <div class="image-compare image-compare-left">
+                        <img src="/blog/media/multiple-importance-sampling/metallic-uniform-64.png">
+                    </div>
+                    <div class="image-compare image-compare-right">
+                        <img src="/blog/media/multiple-importance-sampling/metallic-cosine-64.png">
+                    </div>
+                </div>
+            </center>
+
+            <p>Why so? The answer is quite simple: in these cases, both the uniform distribution and the cosine-weighted one poorly approximate the integrated function:</p>
+
+            <ul>
+                <li>For the diffuse surface, they are good approximations of the BRDF term \( r \), but they poorly approximate the incoming light \( I_{in} \) since the light comes only from a handful of directions pointing to the small sphere</li>
+                <li>For the metallic surface, they are OK approximations of the incoming light \( I_{in} \) (which now comes from a lot of directions, because the light source is quite big), but they are poor approximations of the BRDF term \( r \), which for nice polished metals wants to reflect light only in a certain direction, and not in a random one</li>
+            </ul>
+
+            <p>One thing we can do for the metallic plane is to figure out a distribution that sends more rays towards the direction of perfect reflection. This distribution is called <a href="https://jcgt.org/published/0007/04/01/">VNDF</a>, and here's how it looks compared to the uniform distribution:</p>
+
+            <center>
+                <div class="image-compare-container" style="width: 512px; height: 512px">
+                    <div class="image-compare image-compare-left">
+                        <img src="/blog/media/multiple-importance-sampling/metallic-uniform-64.png">
+                    </div>
+                    <div class="image-compare image-compare-right">
+                        <img src="/blog/media/multiple-importance-sampling/metallic-vndf-64.png">
+                    </div>
+                </div>
+            </center>
+
+            <p>We get a very noticeable improvement!</p>
+
+            <p>There's something more we can do: send random directions <i>directly to the light source</i>! This is called direct light sampling, or light importance sampling, or just light sampling, something like that. It does wonders for our plane-with-a-sphere scenes:</p>
+
+            <center><img src="/blog/media/multiple-importance-sampling/plane-light-64.png" class="image-embed"></center>
+
+            <p>though it is still far from perfect for the metallic surface, since for a large light source there are many directions that are irrelevant for the BRDF (i.e. because the surface wants to reflect in a specific direction, and not in a bunch of directions around it).</p>
+
+            <p>However, it's a bit of a miracle that this approach even works: the only reason for that is that we have an exceptionally simple scene, where \( I_{in} \) is zero in all directions that don't hit a light source directly. In the Cornell box scene, we have a lot of diffuse light spreading around the scene, and using just direction light sampling produces a <i>wrong</i> image:</p>
+
+            <center><img src="/blog/media/multiple-importance-sampling/box-light-64.png" class="image-embed"></center>
+
+            <p>The reason is that the requirement \( f(x) > 0 \Rightarrow p(x) > 0 \) is not fulfilled for this distribution: there are a lot of directions with non-zero values of our integrated function (namely, the diffuse reflections of light by the objects in the scene), but the distribution only samples a certain subset of directions (those leading directly to a light source).</p>
+
+            <p>So, we have a bunch of <i>sampling strategies</i> (i.e. a bunch of distributions), and each of them works in some cases and doesn't work in other cases. It almost sounds like we should <i>combine</i> them somehow!</p>
+
+            <h2 id="section-multiple-importance-sampling">Multiple importance sampling</h2>
+
+            <p><i>We're finally there!</i></p>
+
+            <p>How can we combine several distributions at once? One obvious way would be to, say, each time we generate a sample, select one of the distributions at random and just use it in our calculations.</p>
+
+            <p>For example, if we have two distributions \( p_1(x) \) and \( p_2(x) \), we flip a fair coin, and with probability 1/2 our estimator is either</p>
+
+            \[ \frac{f(X)}{p_1(X)} \]
+
+            <p>or</p>
+
+            \[ \frac{f(X)}{p_2(X)} \]
+
+            <p>Using cosine-weighted distribution for \( p_1 \), and direct light sampling for \( p_2 \), we get the following (again, at 64 spp):</p>
+
+            <center>
+                <div class="image-compare-container" style="width: 512px; height: 512px">
+                    <div class="image-compare image-compare-left">
+                        <img src="/blog/media/multiple-importance-sampling/box-cosine-64.png">
+                    </div>
+                    <div class="image-compare image-compare-right">
+                        <img src="/blog/media/multiple-importance-sampling/box-mis-wrong-64.png">
+                    </div>
+                </div>
+            </center>
+
+            <p>It's hard to say if the noise is reduced or not, simply because the image on the right is <i>wrong</i>! It is darker than it should be.</p>
+
+            <p>It's easy to see why this happened: in essence, by selecting one of the two distributions at random, our final image is a mix of two images, each produced exclusively by one of distributions. But we know that using <i>only</i> direct light sampling is wrong! So what we got here is a 50-50 mix of a correct and an incorrect image, which is again an incorrect image (even if it is 50% more correct).</p>
+
+            <p>We're clearly doing something wrong. Let's return to the basics: for the Monte-Carlo method, if we generate a sample using a distribution \( p(x) \), we need to compute the estimator as</p>
+
+            \[ \frac{f(X)}{p(X)} \]
+
+            <p>What is the probability of generating a sample using the above method? Well, with a 50% change we could generate it using \( p_1 \), and likewise with \( p_2 \), so the real probability of the sample is</p>
+
+            \[ p(X) = \frac{1}{2}p_1(X) + \frac{1}{2}p_2(X) \]
+
+            <p>and <i>this is what we should be dividing by</i> in our Monte-Carlo estimator! So in this case our estimator (for a single sample) is</p>
+
+            \[ \frac{f(X)}{\frac{1}{2}p_1(X) + \frac{1}{2}p_2(X)} \]
+
+            <p>This approach is called <i>multiple importance sampling (MIS)</i>. If we use this for the Cornell box scene and compare to cosine-weighted distribution only, we get (at 64 spp):</p>
+
+            <center>
+                <div class="image-compare-container" style="width: 512px; height: 512px">
+                    <div class="image-compare image-compare-left">
+                        <img src="/blog/media/multiple-importance-sampling/box-cosine-64.png">
+                    </div>
+                    <div class="image-compare image-compare-right">
+                        <img src="/blog/media/multiple-importance-sampling/box-mis-64.png">
+                    </div>
+                </div>
+            </center>
+
+            <p>We can see that the noise is <i>severely</i> reduced! It is still quite noisy, but hey, that's just 64 samples :)</p>
+
+            <p>We can apply this to our plane-with-a-light scenes. This time, we'll use 3 different distributions:</p>
+
+            <ul>
+                <li>Cosine-weighted distribution, which is good for the diffuse part</li>
+                <li>VNDF distribution, which is good for the specular part</li>
+                <li>Direct light sampling, which is always good, but wrong if used without anything else</li>
+            </ul>
+
+            <p>What we get (on the right) is slightly worse than using direct light sampling in these scenes:</p>
+
+            <center>
+                <div class="image-compare-container" style="width: 512px; height: 512px">
+                    <div class="image-compare image-compare-left">
+                        <img src="/blog/media/multiple-importance-sampling/diffuse-light-64.png">
+                    </div>
+                    <div class="image-compare image-compare-right">
+                        <img src="/blog/media/multiple-importance-sampling/diffuse-mis-64.png">
+                    </div>
+                </div>
+            </center>
+
+            <center>
+                <div class="image-compare-container" style="width: 512px; height: 512px">
+                    <div class="image-compare image-compare-left">
+                        <img src="/blog/media/multiple-importance-sampling/metallic-light-64.png">
+                    </div>
+                    <div class="image-compare image-compare-right">
+                        <img src="/blog/media/multiple-importance-sampling/metallic-mis-64.png">
+                    </div>
+                </div>
+            </center>
+
+            <p>again, because these scenes are intenionally very simple and lack any diffuse light. However, if we take a more complicated scene with both diffuse and metallic surfaces, MIS (on the right) is noticeably better than using, say, just VNDF (on the left), this time with 256 samples:</p>
+
+            <center>
+                <div class="image-compare-container" style="width: 512px; height: 512px">
+                    <div class="image-compare image-compare-left">
+                        <img src="/blog/media/multiple-importance-sampling/box2-vndf-256.png">
+                    </div>
+                    <div class="image-compare image-compare-right">
+                        <img src="/blog/media/multiple-importance-sampling/box2-mis-256.png">
+                    </div>
+                </div>
+            </center>
+
+            <p>or compared to just a cosine-weighted distribution, which is completely useless for reflective surfaces:</p>
+
+            <center><img src="/blog/media/multiple-importance-sampling/box2-cosine-256.png" class="image-embed"></center>
+
+            <p>In general, if you have a bunch of sampling strategies \( \{p_1\dots p_M\} \), and for each sample you use on of them with some probability \( w_i \) (of course, \( \sum w_i = 1 \)), your final probability of choosing a sample is</p>
+
+            \[ p(X) = \sum w_i p_i(X) \]
+
+            <p>and your (one-sample) Monte-Carlo estimator is</p>
+
+            \[ \frac{f(X)}{\sum w_i p_i(X)} \]
+
+            <p>Notice how, even though we generated a sample using <i>just one</i> distribution, we still need to compute the probability of generating this sample by <i>all</i> distributions, in order for this method to work correctly.</p>
+
+            <p>The only requirement for MIS to work is that, as always in Monte-Carlo integration, we need \( f(x) > 0 \Rightarrow p(x) > 0 \). Our \( p(x) \) is a mix of \( p_i(x) \), and it is greater than zero as long as <i>at least one</i> of our distributions has nonzero pdf at every point:</p>
+
+            \[ f(x) > 0 \,\Rightarrow \,\exists i : p_i(x) > 0 \]
+
+            <p>This is why a mix of direct light sampling and, say, cosine-weighted sampling works: even though one of the distributions fails to produce some important samples, we're good as long as <i>at least one</i> distribution can produce this sample.</p>
+
+            <h2 id="section-mis-lights">Light sampling with MIS</h2>
+
+            <p>There's a catch when using direct light sampling inside multiple importance sampling. Typically, when you have many lights (e.g. light-emitting triangles), you might select one of them at random, pick a random point on its surface, and set your direction sample to point in the direction of this point. However, for MIS to work, we need to compute the probability of generating a direction sample using <i>all</i> our distributions. This means that we need to compute the probability of generating this sample by <i>every</i> light source!</p>
+
+            <p>This ultimately boils down to sending a ray in this direction and finding <i>all light sources</i> that intersect this ray. Not just the <i>closest</i> hit, but <i>all of them</i>. If you're doing some raytracing, you probably want a <a href="https://jacco.ompf2.com/2022/04/13/how-to-build-a-bvh-part-1-basics/">BVH</a> for that, or even a separate BVH just for the light sources (this is what students do in my course).</p>
+
+            <p>This can be seen as an instance of MIS inside MIS. Our top-level MIS is composed of, say, two distributions: one for the material (BRDF) of the surface, and one for the light sources. The latter is itself a MIS combining individual distributions pointing towards individual light sources.</p>
+
+            <h2 id="section-stratified-sampling">Stratified sampling</h2>
+
+            <p>Stratified sampling is a technique which subdivides the original integration domain into some disjoint sections</p>
+
+            \[ \Omega = \coprod \Omega_i \]
+
+            <p><i>(Here, \( \coprod \) is the <a href="https://en.wikipedia.org/wiki/Disjoint_union">disjoint union</a>.)</i></p>
+
+            <p>Then we generate a sample in each of this sections \( X_i \in \Omega_i \) using some distribution \( p_i \) supported on this section, meaning it has zero probability outside of it.</p>
+
+            <p>Then the Monte-Carlo estimate is given by</p>
+
+            \[ I_{MC} = \sum \frac{f(X_i)}{p_i(X_i)} \]
+
+            <p>But wait, we know that this is a wrong formula! We should sum the probabilities, instead of just using one of them! And where's the \( \frac{1}{N} \) factor?</p>
+
+            <p>Well, actually we're secretely summing the probabilities already. Each \( p_i \) is nonzero on its own section \( \Omega_i \) of the whole domain \( \Omega \), so for each point \( X \in \Omega \) only one of the \( p_i \) can be nonzero. Since we generated \( X_i \) using \( p_i \), we know that \( p_i \) is the one distribution having nonzero probability at \( X_i \), and all the others are zero.</p>
+
+            <p>However, since we're still using \( N \) different sampling strategies (one for each section \( \Omega_i \)), we can pretend that we're selecting them at random, each with probability \( \frac{1}{N} \), this the final probability of the sample \( X_i \) is</p>
+
+            \[ p(X_i) = \frac{1}{N}p_i(X_i) \]
+
+            <p>and the N-sample Monte-Carlo estimator is</p>
+
+            \[ I_{MC} = \frac{1}{N}\sum\frac{f(X_i)}{p(X_i)} = \frac{1}{N}\sum\frac{f(X_i)}{\frac{1}{N}p_i(X_i)} = \frac{1}{N}\cdot N\cdot\sum\frac{f(X_i)}{p_i(X_i)} = \sum\frac{f(X_i)}{p_i(X_i)} \]
+
+            <p>So, stratified sampling can be seen as <i>kind of</i> a special case of multiple importance sampling. <i>Kind of</i>, because pretending that something non-random (using one sample from each \( \Omega_i \)) is actually random (selecting a random \( \Omega_i \) and its \( p_i \)) is sketchy. The proper derivation of stratified sampling simply partitions the integration domain and represents the integral as a sum</p>
+
+            \[ I = \sum I_i = \sum\limits_i \int\limits_{\Omega_i}f(x)dx \]
+
+            <p>and uses a single-sample Monte-Carlo estimator in each of the sections. Still, I think this is a fun and curious connection :)</p>
+
+            <h2 id="section-veach">Veach'97 thesis</h2>
+
+            <p>Now, what's with the <a href="https://graphics.stanford.edu/papers/veach_thesis/thesis.pdf">Veach's thesis</a> that introduced this technique? If we go to part II, section 9.2 of the thesis, which is literally titled <i>"Multiple importance sampling"</i>, we see something weird, involving generating <i>several samples</i> \( X_{ij} \) using <i>each</i> of the sampling strategies \( p_i \), and mixing them with some <i>weights</i> \( w_i \). The final formula for the estimator</p>
+
+            \[ \sum\limits_i^N \frac{1}{N_i} \sum\limits_j^{N_i} w_i(X_{ij})\frac{f(X_{ij})}{p_i(X_{ij})} \]
+
+            <p>doesn't even look like a Monte-Carlo estimator &ndash; it has some extra terms in it!</p>
+
+            <p>The explanation is rather simple: Veach consideres a <i>more general scenario</i>, where you decide on the number of samples for each stratagy <i>beforehand</i>, and then use this formula for the integral.</p>
+
+            <p>If we take the weights \( w_i \) acording to the <i>balance heuristic</i> described in the same section of the thesis, and use the <i>one-sample estimator</i> described in section 9.2.4 <i>"One-sample model"</i>, we arrive at the very sample formula for multiple importance sampling that we derived earlier in this article.</p>
+
+            <h2 id="section-end">End section</h2>
+
+            <p>So, this was a lot of text and images and formulas, but I hope you've learnt the most important thing in this article:</p>
+
+            <center><blockquote>To properly apply multiple importance sampling, we need to add up the probabilities of generating a sample by <i>all</i> of our sampling strategies, and use it in the denominator of the Monte-Carlo estimator.</blockquote></center>
+
+            <p>I could just tweet this sentence, but where's the fun in that, huh? :)</p>
+
+            <p>And, as always, thanks for reading.</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>

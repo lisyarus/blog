@@ -89,3 +89,62 @@ if (document.getElementById("contents")) {
         contents.innerHTML += contentsHTML;
     }
 }
+
+// Based on https://www.w3schools.com/howto/howto_js_image_comparison.asp
+for (let leftImage of document.getElementsByClassName("image-compare-left")) {
+    let width = leftImage.offsetWidth;
+    let height = leftImage.offsetHeight;
+
+    leftImage.style.width = (width / 2) + "px";
+
+    let slider = document.createElement("div");
+    slider.setAttribute("class", "image-compare-slider");
+
+    leftImage.parentElement.insertBefore(slider, leftImage);
+
+    slider.style.left = (width / 2) - (slider.offsetWidth / 2) + "px";
+    slider.style.height = height + "px";
+
+    function cursorPosition(event) {
+        if (event.changedTouches)
+            event = event.changedTouches[0];
+
+        let boundingRect = leftImage.getBoundingClientRect();
+
+        return event.pageX - boundingRect.left - window.pageXOffset;
+    }
+
+    function moveSlider(x) {
+        leftImage.style.width = x + "px";
+        slider.style.left = leftImage.offsetWidth - (slider.offsetWidth / 2) + "px";
+    }
+
+    let mouseDown = false;
+
+    function startDrag(event) {
+        event.preventDefault();
+        mouseDown = true;
+    }
+
+    function stopDrag() {
+        mouseDown = false;
+    }
+
+    function drag(event) {
+        if (!mouseDown)
+            return;
+
+        let x = cursorPosition(event);
+        if (x < 20) x = 20;
+        if (x > width - 20) x = width - 20;
+
+        moveSlider(x);
+    }
+
+    slider.addEventListener("mousedown", startDrag);
+    slider.addEventListener("touchstart", startDrag);
+    window.addEventListener("mouseup", stopDrag);
+    window.addEventListener("touchend", stopDrag);
+    window.addEventListener("mousemove", drag);
+    window.addEventListener("touchmove", drag);
+}

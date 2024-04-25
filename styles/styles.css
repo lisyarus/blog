@@ -258,6 +258,49 @@ summary:hover {
 	cursor: pointer;
 }
 
+.image-compare-container {
+	position: relative;
+  	margin-left: auto;
+  	margin-right: auto;
+	margin-top: 16px;
+	margin-bottom: 16px;
+}
+
+.image-compare {
+	position: absolute;
+	width: auto;
+	height: auto;
+	overflow: hidden;
+}
+
+.image-compare-left {
+	z-index: 2;
+	border-top-left-radius: 20px;
+	border-bottom-left-radius: 20px;
+}
+
+.image-compare-right {
+	z-index: 1;
+	
+	border-radius: 20px;
+	box-shadow: 0px 0px 10px 0px #0007;
+}
+
+.image-compare img {
+/*	display: block;*/
+}
+
+.image-compare-slider {
+	position: absolute;
+	top: 0px;
+	z-index: 3;
+	cursor: ew-resize;
+	width: 8px;
+	height: 40px;
+	background-color: #777;
+	opacity: 0.7;
+}
+
 ::-webkit-scrollbar {
     width: 16px;
 }
