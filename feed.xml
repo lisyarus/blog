@@ -5,7 +5,6 @@
 		<link>https://lisyarus.github.io/blog</link>
 		<description>I write stuff about math, simulation, graphics, gamedev, and programming</description>
 		<language>en-us</language>
-		<atom:link href="https://lisyarus.github.io/blog/feed.xml" rel="self" type="application/rss+xml"/>
 
 		<item>
 			<title>3D shape matching with quaternions</title>
