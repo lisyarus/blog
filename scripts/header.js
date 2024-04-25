@@ -7,7 +7,7 @@ let headerHTML = `
     <a href="/blog/about.html" class="header-link">About</a>
 </span>
 <hr class="header-separator">
-<div class="header-description">// I write stuff about math, simulation, graphics, gamedev, and programming</div>
+<div class="header-description">// I write stuff about math, simulation, graphics, gamedev, and programming <span class="header-rss-link"><a href="https://lisyarus.github.io/blog/feed.xml">RSS feed</a></span></div>
 <hr class="header-separator">
 `;
 

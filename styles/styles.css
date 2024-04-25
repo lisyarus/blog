@@ -51,6 +51,11 @@ body {
 	white-space: pre;
 }
 
+.header-rss-link {
+	font-family: monospace;
+	float: right;
+}
+
 #blog-footer {
 	margin: 0px;
 }
