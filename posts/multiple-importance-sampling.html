@@ -351,7 +351,7 @@
 
             <p>We can see that the noise is <i>severely</i> reduced! It is still quite noisy, but hey, that's just 64 samples :)</p>
 
-            <p>We can apply this to our plane-with-a-light scenes. This time, we'll use 3 different distributions:</p>
+            <p>We can apply this to our plane-with-a-light scenes. This time, we'll use 3 different distributions with equal probabilities:</p>
 
             <ul>
                 <li>Cosine-weighted distribution, which is good for the diffuse part</li>
@@ -399,6 +399,23 @@
             <p>or compared to just a cosine-weighted distribution, which is completely useless for reflective surfaces:</p>
 
             <center><img src="/blog/media/multiple-importance-sampling/box2-cosine-256.png" class="image-embed"></center>
+
+            <p>We can also take a smarter approach and choose different probabilities for each strategy based on material properties. For example, for rough materials we probably need cosine-weighted distribution \( p_{cosine} \) and direct light sampling \( p_{light} \), while for smooth materials we're better use the VNDF \( p_{vndf} \) for sampling directly the reflected direction. So, given roughness \( \sigma \), we can take the distribution</p>
+
+            \[ \sigma \left(\frac{1}{2} p_{cosine} + \frac{1}{2} p_{light}\right) + (1 - \sigma) p_{vndf} \]
+
+            <p>and it gives even more improvement compared to MIS with equal weights:</p>
+
+            <center>
+                <div class="image-compare-container" style="width: 512px; height: 512px">
+                    <div class="image-compare image-compare-left">
+                        <img src="/blog/media/multiple-importance-sampling/box2-mis-256.png">
+                    </div>
+                    <div class="image-compare image-compare-right">
+                        <img src="/blog/media/multiple-importance-sampling/box2-mis2-256.png">
+                    </div>
+                </div>
+            </center>
 
             <p>In general, if you have a bunch of sampling strategies \( \{p_1\dots p_M\} \), and for each sample you use on of them with some probability \( w_i \) (of course, \( \sum w_i = 1 \)), your final probability of choosing a sample is</p>
 
