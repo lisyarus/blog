@@ -5,167 +5,162 @@
 		<link>https://lisyarus.github.io/blog</link>
 		<description>I write stuff about math, simulation, graphics, gamedev, and programming</description>
 		<language>en-us</language>
-		<image>
-			<title>lisyarus blog</title>
-			<link>https://lisyarus.github.io/blog</link>
-			<url>https://lisyarus.github.io/blog/assets/cover.png</url>
-			<width>520</width>
-			<height>240</height>
-		</image>
+		<atom:link href="https://lisyarus.github.io/blog/feed.xml" rel="self" type="application/rss+xml"/>
+
+		<item>
+			<title>3D shape matching with quaternions</title>
+			<pubDate>Tue, 26 Dec 2023 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/3d-shape-matching-with-quaternions.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>Computing forces in a system of beams, properly</title>
+			<pubDate>Sun, 29 Oct 2023 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/structural-mechanics-2.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>Computing forces in a system of beams</title>
+			<pubDate>Sun, 15 Oct 2023 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/structural-mechanics.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>So, you want to make a game engine</title>
+			<pubDate>Fri, 15 Sep 2023 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/so-you-want-to-make-a-game-engine.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>Quaternion derivatives</title>
+			<pubDate>Wed, 13 Sep 2023 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/quaternion-derivatives.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>Complex numbers, Wirtinger derivatives and 2D inverse kinematics</title>
+			<pubDate>Thu, 3 Aug 2023 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/complex-derivatives.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>Porting my C++ game engine to Android</title>
+			<pubDate>Wed, 19 Jul 2023 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/porting-for-android.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>Skeletal animation in glTF</title>
+			<pubDate>Mon, 3 Jul 2023 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/gltf-animation.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>Uniqueness of matrix inverses</title>
+			<pubDate>Wed, 21 Jun 2023 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/matrix-inverses.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>Making a 2D soft-body physics engine</title>
+			<pubDate>Wed, 10 May 2023 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/soft-body-physics.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>How not to design a UI library</title>
+			<pubDate>Sat, 11 Mar 2023 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/how-not-to-ui.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>Two-pass Gaussian blur coeffifients generator</title>
+			<pubDate>Fri, 24 Feb 2023 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/blur-coefficients-generator.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>My favourite animation trick: exponential smoothing</title>
+			<pubDate>Tue, 21 Feb 2023 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/exponential-smoothing.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>Super simple generic animation controller in C++</title>
+			<pubDate>Fri, 17 Feb 2023 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/animation-controller.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>Building a quadtree in 22 lines of code</title>
+			<pubDate>Wed, 21 Dec 2022 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/building-a-quadtree.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>The quest for perfect collisions</title>
+			<pubDate>Tue, 25 Oct 2022 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/perfect-collisions.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>C++ audio mixing library design</title>
+			<pubDate>Sat, 15 Oct 2022 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/audio-mixing.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>C++ behavior trees library design</title>
+			<pubDate>Mon, 22 Aug 2022 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/behavior-trees.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>A stupidly simple spatial data structure</title>
+			<pubDate>Tue, 16 Aug 2022 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/expanding-nd-array.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>A simple texture atlas packing algorithm</title>
+			<pubDate>Sat, 6 Aug 2022 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/texture-packing.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>A better point light attenuation function</title>
+			<pubDate>Sat, 30 Jul 2022 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/point-light-attenuation.html</link>
+			<description></description>
+		</item>
+
+		<item>
+			<title>Compute shaders in graphics: Gaussian blur</title>
+			<pubDate>Thu, 21 Apr 2022 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/compute-blur.html</link>
+			<description></description>
+		</item>
+
 	</channel>
-
-	<item>
-		<title>3D shape matching with quaternions</title>
-		<pubDate>Tue, 26 Dec 2023 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/3d-shape-matching-with-quaternions.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>Computing forces in a system of beams, properly</title>
-		<pubDate>Sun, 29 Oct 2023 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/structural-mechanics-2.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>Computing forces in a system of beams</title>
-		<pubDate>Sun, 15 Oct 2023 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/structural-mechanics.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>So, you want to make a game engine</title>
-		<pubDate>Fri, 15 Sep 2023 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/so-you-want-to-make-a-game-engine.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>Quaternion derivatives</title>
-		<pubDate>Wed, 13 Sep 2023 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/quaternion-derivatives.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>Complex numbers, Wirtinger derivatives and 2D inverse kinematics</title>
-		<pubDate>Thu, 3 Aug 2023 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/complex-derivatives.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>Porting my C++ game engine to Android</title>
-		<pubDate>Wed, 19 Jul 2023 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/porting-for-android.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>Skeletal animation in glTF</title>
-		<pubDate>Mon, 3 Jul 2023 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/gltf-animation.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>Uniqueness of matrix inverses</title>
-		<pubDate>Wed, 21 Jun 2023 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/matrix-inverses.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>Making a 2D soft-body physics engine</title>
-		<pubDate>Wed, 10 May 2023 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/soft-body-physics.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>How not to design a UI library</title>
-		<pubDate>Sat, 11 Mar 2023 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/how-not-to-ui.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>Two-pass Gaussian blur coeffifients generator</title>
-		<pubDate>Fri, 24 Feb 2023 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/blur-coefficients-generator.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>My favourite animation trick: exponential smoothing</title>
-		<pubDate>Tue, 21 Feb 2023 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/exponential-smoothing.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>Super simple generic animation controller in C++</title>
-		<pubDate>Fri, 17 Feb 2023 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/animation-controller.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>Building a quadtree in 22 lines of code</title>
-		<pubDate>Wed, 21 Dec 2022 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/building-a-quadtree.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>The quest for perfect collisions</title>
-		<pubDate>Tue, 25 Oct 2022 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/perfect-collisions.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>C++ audio mixing library design</title>
-		<pubDate>Sat, 15 Oct 2022 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/audio-mixing.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>C++ behavior trees library design</title>
-		<pubDate>Mon, 22 Aug 2022 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/behavior-trees.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>A stupidly simple spatial data structure</title>
-		<pubDate>Tue, 16 Aug 2022 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/expanding-nd-array.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>A simple texture atlas packing algorithm</title>
-		<pubDate>Sat, 6 Aug 2022 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/texture-packing.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>A better point light attenuation function</title>
-		<pubDate>Sat, 30 Jul 2022 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/point-light-attenuation.html</link>
-		<description></description>
-	</item>
-
-	<item>
-		<title>Compute shaders in graphics: Gaussian blur</title>
-		<pubDate>Thu, 21 Apr 2022 18:00:00 GMT</pubDate>
-		<link>https://lisyarus.github.io/blog/posts/compute-blur.html</link>
-		<description></description>
-	</item>
 
 </rss>
