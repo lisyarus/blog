@@ -94,6 +94,8 @@
 
             <p>With Monte-Carlo, we generate random directions \( \omega_{in} \), thus effectively following the potential path that a light could have taken (but backwards). Hence the name <i>path tracing</i>.</p>
 
+            <p>Note that in basic path tracing we use a <i>one-sample Monte-Carlo estimate</i>. When the ray hits something, we generate just a single direction sample and shoot a ray in this direction, effectively approximating the integral in this particular point using a single sample. This is to prevent exponential explosion of the number of traced rays: if we generated e.g. 5 new directions at each hit, at ray depth of 4 we'd already get 625 simultaneously traced rays, which defeats our idea of having an easily controllable execution time.</p>
+
             <h2 id="section-some-proofs">Some proofs</h2>
 
             <p>Let's do some math (oh no) to better understand what's going on. Say we're integrating a function \( I = \int\limits_\Omega f(x)dx \) and we estimate the value of this integral using the Monte-Carlo estimator</p>
@@ -208,6 +210,7 @@
             <p>You can find the inverse function on the <a href="https://iquilezles.org/articles/ismoothstep/">Inigo Quilez</a> site. Here's what we get using this sampling method, compared to uniform sampling:</p>
 
             <center><img src="/blog/media/multiple-importance-sampling/sine-2.png" class="image-embed"></center>
+            <center><i>I've hidden a few starting samples on the left since they are way off (as they should be).</i></center>
 
             <p>It clearly converges much faster! Let's look at our other examples.</p>
 
