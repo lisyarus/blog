@@ -414,4 +414,11 @@ summary:hover {
 		height: auto;
 		aspect-ratio: 16 / 9;
 	}
+
+	table.data-table {
+		display: block;
+		max-width: 100%;
+		overflow: hidden;
+		overflow-x: auto;
+	}
 }
