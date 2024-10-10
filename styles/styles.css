@@ -408,4 +408,10 @@ summary:hover {
 		max-width: 100%;
     box-sizing: border-box;
 	}
+
+	.video-embed {
+		width: 100%;
+		height: auto;
+		aspect-ratio: 16 / 9;
+	}
 }
