@@ -403,4 +403,9 @@ summary:hover {
 		gap: 20px 40px;
 		flex-wrap: wrap;
 	}
+
+	code.block {
+		max-width: 100%;
+    box-sizing: border-box;
+	}
 }
