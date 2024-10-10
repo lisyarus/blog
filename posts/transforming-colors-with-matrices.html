@@ -92,11 +92,11 @@
 
             <p>How bad these problems are is a different question, but note that if a pixel is really close to being completely transparent, you probably won't notice the severe color quantization in it anyway.</p>
 
-            <p>The reason I'm brining this up is that premultiplied colors work better with matrices! Specifically, note that a premultiplied color is the same as fully-opaque color of the same color, multiplied by the alpha value:</p>
+            <p>The reason I'm bringing this up is that premultiplied colors work better with matrices! Specifically, note that a premultiplied color is the same as fully-opaque color of the same shade, multiplied by the alpha value:</p>
 
             \[ \begin{pmatrix}R\cdot A \\ G\cdot A \\ B\cdot A \\ A \end{pmatrix} = A \cdot \begin{pmatrix}R \\ G \\ B \\ 1\end{pmatrix} \]
 
-            <p>Now, multiplication by a constant \(A\) is a very nice operations, because it commutes with all linear operations! I.e. if we have a matrix \(M\) and some vector \(V\), it doesn't matter if we apply the matrix and then multiply by \(A\), or if we first multiply by \(A\) and then apply the matrix - the results are identical:</p>
+            <p>Now, multiplication by a constant \(A\) is a very nice operation, because it commutes with all linear operations! I.e. if we have a matrix \(M\) and some vector \(V\), it doesn't matter if we apply the matrix and then multiply by \(A\), or if we first multiply by \(A\) and then apply the matrix - the results are identical:</p>
 
             \[ M \cdot A \cdot V = A \cdot M \cdot V \]
 
@@ -130,7 +130,7 @@
 
             \[  \begin{pmatrix}1-t & 0 & 0 & t \\ 0 & 1-t & 0 & t \\ 0 & 0 & 1-t & t \\ 0 & 0 & 0 & 1 \end{pmatrix} \]
 
-            <p>This time the matrix doesn't work for non-premultiplied colors with \(A\neq 1\), because it uses the 4-th color component to add the value of \(t\) to other channels, similar to how translations use the \(W\) component of points in homogeneous coordinates to implement the translation as a \(4\times 4\) matrix.</p>
+            <p>This time the matrix doesn't work for non-premultiplied colors with \(A\neq 1\), because it uses the 4-th color component to add the value of \(t\) to other channels, similar to how affine translations use the \(W\) component of points in homogeneous coordinates to implement the translation as a \(4\times 4\) matrix.</p>
 
             <p>In fact, the formula for non-premultiplied colors would be</p>
 
@@ -152,7 +152,7 @@
 
             <h2 id="section-replacing">Replacing with a fixed color</h2>
 
-            <p>As a special case of blending with \(t=1\), let's look at the operation with entirely replacing our color with a new color \((R',G',B')\). Just set \(t=1\) in the previous section to get</p>
+            <p>As a special case of blending with \(t=1\), let's look at the operation of entirely replacing our color with a new color \((R',G',B')\). Just set \(t=1\) in the previous section to get</p>
 
             \[ \begin{pmatrix}0 & 0 & 0 & R' \\ 0 & 0 & 0 & G' \\ 0 & 0 & 0 & B' \\ 0 & 0 & 0 & 1 \end{pmatrix} \]
 
@@ -192,7 +192,7 @@
 
             \[ \begin{pmatrix}t & 0 & 0 & (1-t)\cdot L \\ 0 & t & 0 & (1-t)\cdot L \\ 0 & 0 & t & (1-t)\cdot L \\ 0 & 0 & 0 & 1 \end{pmatrix} \]
 
-            <p>This matrix still depends on the original color, though (through the \(L\) parameter). Let's explicitly write the resulting color vector:</p>
+            <p>This matrix still depends on the original color, though (via the \(L\) parameter). Let's explicitly write the resulting color vector:</p>
 
             \[
                 \begin{pmatrix}
