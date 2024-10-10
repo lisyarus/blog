@@ -1,0 +1,357 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <meta property="og:type" content="article" />
+        <meta property="og:title" content="Transforming colors with matrices">
+        <meta property="og:site_name" content="lisyarus blog">
+        <meta property="og:image" content="/blog/media/transforming-colors-with-matrices/cover.png" />
+        <meta property="og:image:height" content="240" />
+        <meta property="og:image:width" content="520" />
+        <title>3D shape matching with quaternions | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+        <style>
+            .results-table {
+                border-collapse: collapse;
+                border: 1px solid #bbb;
+                margin: 0px;
+                padding: 0px;
+            }
+
+            .results-table td {
+                padding: 10px;
+            }
+
+            .results-table tr:nth-child(odd) {
+                background-color: #fafafa;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Transforming colors with matrices</div></center><br/>
+            <center><span class="post-date">2024 Oct 10</span></center><br/>
+
+            <p>There's one trick we use at work, and now I'm using in my current medieval village building game project, which apparently isn't as well-known as I thought: transforming colors using matrices, interpreting colors as 3D RGB or 4D RGBA vectors. In this article I'll try to explain how it works and which operations on colors can be represented this way.</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-why">But why?</h2>
+
+            <p>I mean, if you're a graphics programmer, you've probably worked with colors before, and you probably never needed to apply matrices to colors, unless you're doing something hardcore like transforming to <a href="https://en.wikipedia.org/wiki/CIE_1931_color_space">CIE XYZ</a> or <a href="https://en.wikipedia.org/wiki/Oklab_color_space">Oklab</a> color spaces. You probably needed to compute lighting, apply some post-processing and tone-mapping, - operations which are almost never linear. Why matrices?</p>
+
+            <p>At work, we're rendering stylized maps, and we allow the user to have a fair amount of customization. In particular, the user can decide to e.g. roads darker, make buildings more saturated, and shift the hue of forests into the yellow region. All these are simple operations, but they are vastly different in implementation. It would be a nightmare to support a dozen uniform parameters in the shader just to implement all these operations.</p>
+
+            <p>However, we can represent all these operations as <i>matrices</i>! Now composition of these is trivial (matrix-matrix multiplication), and applying them in the shader is also trivial (matrix-vector multiplication). Matrices are simple, efficient, and easy to reason about, so it's a total win-win.</p>
+
+            <p>In my game project, any type of resource (wood, meat, metal, etc) can have a certain <i>material</i>: e.g. there are currently 4 wood materials, namely birch, poplar, oak, and spruce. This material affects the color of the object via a special per-material <i>color matrix</i> which is applied to the object's albedo before doing any lighting calculations in the shader.</p>
+
+            <center><img src="/blog/media/transforming-colors-with-matrices/wood-materials.png" class="image-embed"></center>
+            <center><i>All 4 wood materials</i></center>
+
+            <p>For this to work, the meshes themselves should have some unusual coloring: in the case of wood materials, which use just two colors (a lighter and a darker one), the raw mesh colors are combinations of red and green which sum to 1 (otherwise the resulting color would overflow):</p>
+
+            <center><img src="/blog/media/transforming-colors-with-matrices/wood-objects-raw.png" class="image-embed"></center>
+            <center><i>Raw meshes in blender</i></center>
+
+            <h2 id="section-pros-cons">Pros'n'cons</h2>
+
+            <p>So, matrices can describe a wide range of color transformations (which we'll discuss in detail shortly), they are easy to combine and apply. Are there any disadvantages to doing this?</p>
+
+            <p>Of course there are, or, rather, there is one main problem: not all operations on colors are <i>linear</i>, so not all of them can be represented as <i>matrices</i>. A few examples:</p>
+
+            <ul>
+                <li>Transformation between color spaces (RGB \(\leftrightarrow\) HSV \(\leftrightarrow\) CIE XYZ, etc) is typically non-linear</li>
+                <li>Gamma-correction is non-linear</li>
+                <li>Tone mapping is non-linear (apart from the trivial "divide by max" tone-mapping that nobody uses)</li>
+                <li>Hue shifting is non-linear, if done correctly</li>
+            </ul>
+
+            <p>etc, etc.</p>
+
+            <p>So, if you really need some operations that involve non-linear stuff, you just can't use matrices for that. Maybe you can figure out some clever way to apply a fixed non-linear transformation to your RGBA vector, then apply the matrix, then apply the inverse of said non-linear transformation to obtain the effects you want, but I won't be talking about this option.</p>
+
+            <h2 id="section-premult">To premultiply or not to premultiply</h2>
+
+            <p><i>Premultiplied alpha</i> is a way of storing semi-transparent color values not as \((R,G,B,A)\) vectors, but instead as \((R\cdot A,G\cdot A,B\cdot A,A)\) vectors. This approach tends to work better in most formulas, behaves nicer with color mixing, image filtering, mipmapping, blurring, and so on. The downsides are that</p>
+
+            <ul>
+                <li>You lose some precision in the color channels. E.g. if storing each channel as an unsigned byte, if the value of the alpha channel is, say, 15, you have only 16 (from 0 to 15) possible values for the color channels.</li>
+                <li>In particular, for pixels that are completely transparent (alpha = 0), the color information is lost completely.</li>
+            </ul>
+
+            <p>How bad these problems are is a different question, but note that if a pixel is really close to being completely transparent, you probably won't notice the severe color quantization in it anyway.</p>
+
+            <p>The reason I'm brining this up is that premultiplied colors work better with matrices! Specifically, note that a premultiplied color is the same as fully-opaque color of the same color, multiplied by the alpha value:</p>
+
+            \[ \begin{pmatrix}R\cdot A \\ G\cdot A \\ B\cdot A \\ A \end{pmatrix} = A \cdot \begin{pmatrix}R \\ G \\ B \\ 1\end{pmatrix} \]
+
+            <p>Now, multiplication by a constant \(A\) is a very nice operations, because it commutes with all linear operations! I.e. if we have a matrix \(M\) and some vector \(V\), it doesn't matter if we apply the matrix and then multiply by \(A\), or if we first multiply by \(A\) and then apply the matrix - the results are identical:</p>
+
+            \[ M \cdot A \cdot V = A \cdot M \cdot V \]
+
+            <p>This means that, if we have a matrix \(M\) that encodes some color transformation that works for fully opaque colors, then <i>the same matrix</i> encodes the transformation for semi-transparent colors in premultiplied format, and leaves the alpha channel untouched:</p>
+
+            \[ M \cdot \begin{pmatrix}R\cdot A \\ G\cdot A \\ B\cdot A \\ A \end{pmatrix} = M \cdot A \cdot \begin{pmatrix}R \\ G \\ B \\ 1\end{pmatrix} = A \cdot M \cdot  \begin{pmatrix}R \\ G \\ B \\ 1\end{pmatrix} = A \cdot  \begin{pmatrix}R' \\ G' \\ B' \\ 1\end{pmatrix} = \begin{pmatrix}R'\cdot A \\ G'\cdot A \\ B'\cdot A \\ A \end{pmatrix} \]
+
+            <p>Thus, for working with color matrices, it is <i>reeeally</i> useful to have premultiplied colors. Though, in what follows, I'll try to mention which matrices work for non-premultiplied semi-transparent colors as well, and which don't.</p>
+
+            <p>Now, let's see how we can represent some typical color operations as matrices.</p>
+
+            <h2 id="section-darkening">Darkening a color</h2>
+
+            <p>This is probably the simplest operation. Usually darkening means just making the color closer to zero. Let's parametrize this with a parameter \(t\): \(t=0\) means no darkening, and \(t=1\) means full darkening. Then, the corresponding operation is</p>
+
+            \[ \begin{pmatrix}R \\ G \\ B \\ 1\end{pmatrix} \mapsto (1-t)\cdot \begin{pmatrix}R \\ G \\ B \\ 1\end{pmatrix} \]
+
+            <p>which is just scaling the color channels by \(1-t\). This can be easily achieved with a matrix:</p>
+
+            \[ \begin{pmatrix}1-t & 0 & 0 & 0 \\ 0 & 1-t & 0 & 0 \\ 0 & 0 & 1-t & 0 \\ 0 & 0 & 0 & 1\end{pmatrix} \]
+
+            <p>If you're familiar with affine transformations, you might recognize this as the usual 3D scaling matrix in homogeneous coordinates, because it literally <i>is</i> scaling! This matrix works both for premultiplied colors and for non-premultiplied ones.</p>
+
+            <h2 id="section-lighting">Lightening a color</h2>
+
+            <p>I'll define lightening as lerping the color towards white \((1,1,1)\). Again, \(t=0\) means no lightening, while \(t=1\) means turning the color into white. This is just a typical lerp formula:</p>
+
+            \[ \begin{pmatrix}R \\ G \\ B \\ 1\end{pmatrix} \mapsto (1-t)\cdot\begin{pmatrix}R \\ G \\ B \\ 1\end{pmatrix} + t\cdot \begin{pmatrix}1 \\ 1 \\ 1 \\ 1\end{pmatrix} \]
+
+            <p>which can be achieved by the matrix</p>
+
+            \[  \begin{pmatrix}1-t & 0 & 0 & t \\ 0 & 1-t & 0 & t \\ 0 & 0 & 1-t & t \\ 0 & 0 & 0 & 1 \end{pmatrix} \]
+
+            <p>This time the matrix doesn't work for non-premultiplied colors with \(A\neq 1\), because it uses the 4-th color component to add the value of \(t\) to other channels, similar to how translations use the \(W\) component of points in homogeneous coordinates to implement the translation as a \(4\times 4\) matrix.</p>
+
+            <p>In fact, the formula for non-premultiplied colors would be</p>
+
+            \[ \begin{pmatrix}R \\ G \\ B \\ A\end{pmatrix} \mapsto \begin{pmatrix}(1-t)\cdot R + t \\ (1-t)\cdot G + t \\ (1-t)\cdot B + t \\ A\end{pmatrix} \]
+
+            <p>which is <b>not</b> a linear operation, and cannot be represented as a matrix.</p>
+
+            <h2 id="section-blending">Blending with a fixed color</h2>
+
+            <p>Both darkening and lightening are special cases of lerping towards a fixed color \((R',G',B')\) with a factor of \(t\). Equivalently, this is the same as alpha-blending the color \((R',G',B',t)\) over our color, while leaving the alpha channel of our color unchanged. Again, this is a well-known lerp formula:</p>
+
+            \[ \begin{pmatrix}R \\ G \\ B \\ 1\end{pmatrix} \mapsto (1-t)\cdot\begin{pmatrix}R \\ G \\ B \\ 1\end{pmatrix} + t\cdot \begin{pmatrix}R' \\ G' \\ B' \\ 1\end{pmatrix} \]
+
+            <p>and the matrix is</p>
+
+            \[  \begin{pmatrix}1-t & 0 & 0 & t\cdot R' \\ 0 & 1-t & 0 & t\cdot G' \\ 0 & 0 & 1-t & t\cdot B' \\ 0 & 0 & 0 & 1 \end{pmatrix} \]
+
+            <p>And again, this doesn't work for non-premultiplied colors.</p>
+
+            <h2 id="section-replacing">Replacing with a fixed color</h2>
+
+            <p>As a special case of blending with \(t=1\), let's look at the operation with entirely replacing our color with a new color \((R',G',B')\). Just set \(t=1\) in the previous section to get</p>
+
+            \[ \begin{pmatrix}0 & 0 & 0 & R' \\ 0 & 0 & 0 & G' \\ 0 & 0 & 0 & B' \\ 0 & 0 & 0 & 1 \end{pmatrix} \]
+
+            <p>This also doesn't work for non-premultiplied colors.</p>
+
+            <h2 id="section-adding">Adding a fixed color</h2>
+
+            <p>While this operation is somewhat weird, we can still implement it: add another color \((R',G',B')\) to our color, component-wise. This can, of course, make the color values overflow, but we'll pretend that the user knows what to do with that. The formula is</p>
+
+            \[ \begin{pmatrix}R \\ G \\ B \\ 1\end{pmatrix} \mapsto \begin{pmatrix}R \\ G \\ B \\ 1\end{pmatrix} + \begin{pmatrix}R' \\ G' \\ B' \\ 0\end{pmatrix} \]
+
+            <p>(notice the 0 in the alpha channel of the second vector), and the matrix is</p>
+
+            \[ \begin{pmatrix}1 & 0 & 0 & R' \\ 0 & 1 & 0 & G' \\ 0 & 0 & 1 & B' \\ 0 & 0 & 0 & 1 \end{pmatrix} \]
+
+            <p>which is just the usual \(4\times 4\) translation matrix in homogeneous coordinates. This also doesn't work for non-premultiplied colors, and instead adds the color \((R',G',B')\) multiplied by the input color alpha.</p>
+
+            <p>By the way, we can, of course, <i>subtract</i> a fixed color instead: just make the \((R',G',B')\) negative.</p>
+
+            <h2 id="section-contrast">Changing contrast</h2>
+
+            <p>Contrast is about the grayness of the color. Color with zero contrast is just the uniform gray \((0.5,0.5,0.5)\). Color with contrast of 1 is our original color. You can probably guess that color with contrast \(t\) is just lerping from our color to the 0.5-gray with a lerping parameter of \(1-t\). Substitute \(t \mapsto 1-t\) and \((R',G',B') = (0.5,0.5,0.5)\) in the blending section to get</p>
+
+            \[ \begin{pmatrix}t & 0 & 0 & \frac{1-t}{2} \\ 0 & t & 0 & \frac{1-t}{2} \\ 0 & 0 & t & \frac{1-t}{2} \\ 0 & 0 & 0 & 1 \end{pmatrix} \]
+
+            <p>Note that \(t=1\) gives the identity matrix (i.e. the color doesn't change), while \(t=0\) gives the matrix of replacing with the fixed gray color. Again, this doesn't work for non-premultiplied colors.</p>
+
+            <h2 id="section-saturation">Changing saturation</h2>
+
+            <p>Saturation is somewhat similar to contrast, but instead of grayness, it is about vividness of the colors. The simplest way to implement saturation is to compute the <i>luminance</i> \(L\) of our color, and then lerp towards/from the gray color \((L,L,L)\). Note that this is similar to contrast, but now the gray point depends on the input color.</p>
+
+            <p>Thankfully, all these operations are still linear. Let's take the luminance formula <a href="https://en.wikipedia.org/wiki/Relative_luminance">from wikipedia</a> to get</p>
+
+            \[ L = 0.2126\cdot R + 0.7152\cdot G + 0.0722\cdot B = w_R\cdot R + w_G \cdot G + w_B \cdot B \]
+
+            <p>where I've defined the luminance weights \((w_R, w_G, w_B)\) for convenienve. Now the matrix is</p>
+
+            \[ \begin{pmatrix}t & 0 & 0 & (1-t)\cdot L \\ 0 & t & 0 & (1-t)\cdot L \\ 0 & 0 & t & (1-t)\cdot L \\ 0 & 0 & 0 & 1 \end{pmatrix} \]
+
+            <p>This matrix still depends on the original color, though (through the \(L\) parameter). Let's explicitly write the resulting color vector:</p>
+
+            \[
+                \begin{pmatrix}
+                    t\cdot R + (1-t)\cdot L \\
+                    t\cdot G + (1-t)\cdot L \\
+                    t\cdot B + (1-t)\cdot L \\
+                    1
+                \end{pmatrix}
+                =
+                \begin{pmatrix}
+                    t\cdot R + (1-t)\cdot (w_R\cdot R + w_G \cdot G + w_B \cdot B) \\
+                    t\cdot G + (1-t)\cdot (w_R\cdot R + w_G \cdot G + w_B \cdot B) \\
+                    t\cdot B + (1-t)\cdot (w_R\cdot R + w_G \cdot G + w_B \cdot B) \\
+                    1
+                \end{pmatrix}
+                = \\
+                =
+                \begin{pmatrix}
+                    (t+(1-t)w_R)\cdot R + (1-t)w_G\cdot G + (1-t)\cdot B \\
+                    (1-t)w_R\cdot R + (t+(1-t)w_G)\cdot G + (1-t)\cdot B \\
+                    (1-t)w_R\cdot R + (1-t)w_G\cdot G + (t+(1-t))\cdot B \\
+                    1
+                \end{pmatrix}
+            \]
+
+            <p>This lets us to see the matrix directly:</p>
+
+            \[
+                \begin{pmatrix}
+                    t+(1-t)w_R & (1-t)w_G & (1-t)w_B & 0 \\
+                    (1-t)w_R & t+(1-t)w_G & (1-t)w_B & 0 \\
+                    (1-t)w_R & (1-t)w_G & t+(1-t)w_B & 0 \\
+                    0 & 0 & 0 & 1
+                \end{pmatrix}
+            \]
+
+            <p>In this case, since the \(t=0\) color depends <i>linearly</i> on the input color, the whole operation still works for non-premultiplied colors (as opposed to changing contrast, where the \(t=0\) color is fixed).</p>
+
+            <h2 id="section-permuting">Permuting channels</h2>
+
+            <p>Say, I want to implement a very simple hue shift by interchanging the red and green channels. Easy:</p>
+
+            \[ \begin{pmatrix}0 & 1 & 0 & 0 \\ 1 & 0 & 0 & 0 \\ 0 & 0 & 1 & 0 \\ 0 & 0 & 0 & 1 \end{pmatrix} \]
+
+            <p>This does work for non-premultiplied colors, since it doesn't involve <i>translating</i> the color, i.e. adding or subtracting something to/from it.</p>
+
+            <h2 id="section-hue-shift">Hue shifting</h2>
+
+            <p>Ok, now I want to implement a proper hue shifting by an arbitrary angle for my color. Bad news: the proper way of doing this (converting to HSV, shifting the hue, converting back to RGB) is <i>not linear</i>. However, we can cheat a little, and use a simpler formula.</p>
+
+            <p>Imagine an RGB color cube: the X axis corresponds to the red channel, and so on. Rotating the hue means rotating this cube around its diagonal: rotating by exactly \(120^\circ\) will turn red into green, green into blue, and blue into red. However, if we rotate by an angle that is not a multiple of \(120^\circ\), parts of the cube will end up somewhere outside the cube. This is the cheating I was talking about: we will pretend that this is not an issue, and let the user deal with the resulting color overflow and clipping.</p>
+
+            <p>Now, the matrix of this operation is just the matrix of rotation around the cube diagonal by some angle \(\theta\). The diagonal is \((1,1,1)\), or, since the rotation axis is assumed to be normalized, it should be \(\left(\frac{1}{\sqrt 3}, \frac{1}{\sqrt 3}, \frac{1}{\sqrt 3}\right)\). Grab the matrix <a href="https://en.wikipedia.org/wiki/Rotation_matrix#Rotation_matrix_from_axis_and_angle">directly from wikipedia</a> and we get</p>
+
+            \[
+                \begin{pmatrix}
+                    \frac{1 + 2\cos\theta}{3} & \frac{1 - \cos\theta}{3} - \frac{\sin\theta}{\sqrt 3} & \frac{1 - \cos\theta}{3} + \frac{\sin\theta}{\sqrt 3} & 0 \\
+                    \frac{1 - \cos\theta}{3} + \frac{\sin\theta}{\sqrt 3} & \frac{1 + 2\cos\theta}{3} & \frac{1 - \cos\theta}{3} - \frac{\sin\theta}{\sqrt 3} & 0 \\
+                    \frac{1 - \cos\theta}{3} - \frac{\sin\theta}{\sqrt 3} & \frac{1 - \cos\theta}{3} + \frac{\sin\theta}{\sqrt 3} & \frac{1 + 2\cos\theta}{3} & 0 \\
+                    0 & 0 & 0 & 1
+                \end{pmatrix}
+            \]
+
+            <p>Not the prettiest thing ever, but hey, at least that's a matrix. Also, if you already have a decent maths library around, you probably already have a function that computes this matrix, so just call it with \(\text{axis}=\left(\frac{1}{\sqrt 3}, \frac{1}{\sqrt 3}, \frac{1}{\sqrt 3}\right)\) and \(\text{angle}=\theta\).</p>
+
+            <p>This one also works with non-premultiplied colors: it just rotates the \((R,G,B)\) part around the origin, without needing to translate the color anywhere.</p>
+
+            <h2 id="section-tweaking-alpha">Tweaking the alpha channel</h2>
+
+            <p>If I want to, say, make the color 50% more transparent, this is easy: just multiply the alpha channel by \(0.5\). For premultiplied colors, the matrix would be</p>
+
+            \[ \begin{pmatrix} 0.5 & 0 & 0 & 0 \\ 0 & 0.5 & 0 & 0 \\ 0 & 0 & 0.5 & 0 \\ 0 & 0 & 0 & 0.5 \end{pmatrix} \]
+
+            <p>and for non-premultiplied, it is simply</p>
+
+            \[ \begin{pmatrix} 1 & 0 & 0 & 0 \\ 0 & 1 & 0 & 0 \\ 0 & 0 & 1 & 0 \\ 0 & 0 & 0 & 0.5 \end{pmatrix} \]
+
+            <p>Unfortunately, if I want to make the color 50% more opaque, i.e. replace the alpha channel \(A\) by \(\frac{1-A}{2}\), this wouldn't work, regardless of whether the color is premultiplied or not. To make things like lerping possible for opaque colors, we used the \(A=1\) to make translation into a linear operation, much like \(4x4\) affine translation matrix uses the forth \(W=1\) coordinate to do the same. For premultiplied colors it worked automatically, as we've discussed in the beginning of the article.</p>
+
+            <p>However, to <i>add something</i> to the alpha channel, we'd need some other (fifth?) channel equal to 1, which we could use to add something to our channel. Typically colors have 3 or 4 channels, though, and never 5. So, we cannot represent this operation as a \(4\times 4\) RGBA matrix, and similarily most non-trivial operations with the alpha channel as well.</p>
+
+            <h2 id="section-everything">Everything in one table</h2>
+
+            <p>Here I've organized all operations mentioned above in a single table. All these work with opaque or premultiplied colors:</p>
+
+            <center>
+            <table class="results-table">
+
+                <tr>
+                    <td>Darkening by a factor of \(t\)<br>\(t=0\) is the original color<br>\(t=1\) is black</td>
+                    <td>\[ \begin{pmatrix}1-t & 0 & 0 & 0 \\ 0 & 1-t & 0 & 0 \\ 0 & 0 & 1-t & 0 \\ 0 & 0 & 0 & 1\end{pmatrix} \]</td>
+                </tr>
+
+                <tr>
+                    <td>Lightening by a factor of \(t\)<br>\(t=0\) is the original color<br>\(t=1\) is white</td>
+                    <td>\[ \begin{pmatrix}1-t & 0 & 0 & t \\ 0 & 1-t & 0 & t \\ 0 & 0 & 1-t & t \\ 0 & 0 & 0 & 1 \end{pmatrix} \]</td>
+                </tr>
+
+                <tr>
+                    <td>Blending with a fixed color \((R',G',B')\) by factor of \(t\)<br>\(t=0\) is the original color<br>\(t=1\) is \((R',G',B')\)</td>
+                    <td>\[ \begin{pmatrix}1-t & 0 & 0 & t\cdot R' \\ 0 & 1-t & 0 & t\cdot G' \\ 0 & 0 & 1-t & t\cdot B' \\ 0 & 0 & 0 & 1 \end{pmatrix} \]</td>
+                </tr>
+
+                <tr>
+                    <td>Replacing with a fixed color \((R',G',B')\)</td>
+                    <td>\[ \begin{pmatrix}0 & 0 & 0 & R' \\ 0 & 0 & 0 & G' \\ 0 & 0 & 0 & B' \\ 0 & 0 & 0 & 1 \end{pmatrix} \]</td>
+                </tr>
+
+                <tr>
+                    <td>Adding/subtracting a fixed color \((R',G',B')\)</td>
+                    <td>\[ \begin{pmatrix}1 & 0 & 0 & R' \\ 0 & 1 & 0 & G' \\ 0 & 0 & 1 & B' \\ 0 & 0 & 0 & 1 \end{pmatrix} \]</td>
+                </tr>
+
+                <tr>
+                    <td>Setting contrast to \(t\)<br>\(t=0\) is 50% gray<br>\(t=1\) is the original color</td>
+                    <td>\[ \begin{pmatrix}t & 0 & 0 & \frac{1-t}{2} \\ 0 & t & 0 & \frac{1-t}{2} \\ 0 & 0 & t & \frac{1-t}{2} \\ 0 & 0 & 0 & 1 \end{pmatrix} \]</td>
+                </tr>
+
+                <tr>
+                    <td>Setting saturation to \(t\)<br>\(t=0\) is gray depending on input luminance<br>\(t=1\) is the original color</td>
+                    <td>
+                        \[
+                            \begin{pmatrix}
+                                t+(1-t)w_R & (1-t)w_G & (1-t)w_B & 0 \\
+                                (1-t)w_R & t+(1-t)w_G & (1-t)w_B & 0 \\
+                                (1-t)w_R & (1-t)w_G & t+(1-t)w_B & 0 \\
+                                0 & 0 & 0 & 1
+                            \end{pmatrix}
+                        \]
+                    </td>
+                </tr>
+
+                <tr>
+                    <td>Permuting red and green channels</td>
+                    <td>\[ \begin{pmatrix}0 & 1 & 0 & 0 \\ 1 & 0 & 0 & 0 \\ 0 & 0 & 1 & 0 \\ 0 & 0 & 0 & 1 \end{pmatrix} \]</td>
+                </tr>
+
+                <tr>
+                    <td>Rotating hue by angle \(\theta\)</td>
+                    <td>
+                        \[
+                            \begin{pmatrix}
+                                \frac{1 + 2\cos\theta}{3} & \frac{1 - \cos\theta}{3} - \frac{\sin\theta}{\sqrt 3} & \frac{1 - \cos\theta}{3} + \frac{\sin\theta}{\sqrt 3} & 0 \\
+                                \frac{1 - \cos\theta}{3} + \frac{\sin\theta}{\sqrt 3} & \frac{1 + 2\cos\theta}{3} & \frac{1 - \cos\theta}{3} - \frac{\sin\theta}{\sqrt 3} & 0 \\
+                                \frac{1 - \cos\theta}{3} - \frac{\sin\theta}{\sqrt 3} & \frac{1 - \cos\theta}{3} + \frac{\sin\theta}{\sqrt 3} & \frac{1 + 2\cos\theta}{3} & 0 \\
+                                0 & 0 & 0 & 1
+                            \end{pmatrix}
+                        \]
+                    </td>
+                </tr>
+
+            </table>
+            </center>
+
+            <p>Hope this will be useful for you! Cheers, and thanks for reading.</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
