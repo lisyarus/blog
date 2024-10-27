@@ -589,7 +589,7 @@
 
             <h2 id="section-dot-product-via-conjugation">Dot product via conjugation</h2>
 
-            <p>Now, let \(p=a+u=(a,b,c,d)\) and \(q=w+v=(w,x,y,z\) be two quaternions. Let's compute the product \(p\cdot q^*\):</p>
+            <p>Now, let \(p=a+u=(a,b,c,d)\) and \(q=w+v=(w,x,y,z)\) be two quaternions. Let's compute the product \(p\cdot q^*\):</p>
 
             \[
                 p\cdot q^* = (a+u)\cdot(w-v) = (aw+\langle u, v\rangle) + (-av+wu-u\times v)
@@ -876,7 +876,7 @@
             \[
                 e_1^2=e_2^2=e_3^2=1 \\
                 e_1e_2=-e_2e_1\\
-                e_1e_3=-e_3e_2\\
+                e_1e_3=-e_3e_1\\
                 e_2e_3=-e_3e_2
             \]
 
@@ -897,9 +897,9 @@
             <p>and etc. Defining \(i,j,k\) to be the <a href="https://en.wikipedia.org/wiki/Bivector"><i>bivectors</i></a></p>
 
             \[
-                i = e_2e_3\\
-                j = e_3e_1\\
-                k = e_1e_2
+                i = e_3e_2 = -e_2e_3\\
+                j = e_1e_3 = -e_3e_1\\
+                k = e_2e_1 = -e_1e_2
             \]
 
             <p>we get that the subspace of elements of the form \(a+bi+cj+dk\) is closed under multiplication and is isomorphic to quaternions. This is called the <i>even subalgebra</i> \(\operatorname{Cl}^0\) of the full Clifford algebra, because it only contains products of even number of vectors. Note that a vector is a product of an odd number of vectors (namely, a product containing 1 vector), so vectors don't belong to the even subalgebra.</p>
@@ -909,7 +909,7 @@
             \[
                 e_1^T = e_1\\
                 (e_1e_2)^T = e_2e_1 = -e_1e_2\\
-                (e_1e_2e_3)^T = e_3e_2e_1
+                (e_1e_2e_3)^T = e_3e_2e_1 = -e_1e_2e_3
             \]
 
             <p>which leads to</p>
@@ -938,17 +938,17 @@
             <p>while in the quaternions it maps to </p>
 
             \[
-                xi+yj+zk = xe_2e_3+ye_3e_1+ze_1e_2
+                xi+yj+zk = xe_3e_2+ye_1e_3+ze_2e_1
             \]
 
             <p>This can be repaired using something called the <i>unit pseudoscalar</i> \(\omega=e_1e_2e_3\). Notice that</p>
 
             \[
-                \omega e_3 = e_1e_2e_3e_3 = e_1e_2 \\
-                \omega e_1e_2 = e_1e_2e_3e_1e_2 = -e_3
+                \omega e_3 = e_1e_2e_3e_3 = e_1e_2 = -e_2e_1 \\
+                \omega e_2e_1 = e_1e_2e_3e_2e_1 = e_3
             \]
 
-            <p>and etc, so we can bridge the two rotation formulas together: given a vector in the quaternion representation \(v=xe_2e_3+ye_3e_1+ze_1e_2\), the element \(-\omega\cdot v\) is a vector \(xe_1+ye_2+ze_3\) in the Clifford algebra representation, and we can apply the Clifford algebra rotation to it \(-p\omega v p^T\), and then transform it back to the original quaternion representation:</p>
+            <p>and etc, so we can bridge the two rotation formulas together: given a vector in the quaternion representation \(v=xe_3e_2+ye_1e_3+ze_2e_1\), the element \(\omega\cdot v\) is a vector \(xe_1+ye_2+ze_3\) in the Clifford algebra representation, and we can apply the Clifford algebra rotation to it \(p\omega v p^T\), and then transform it back to the original quaternion representation by multiplying with \(-\omega\):</p>
 
             \[
                 v \mapsto -\omega p \omega v p^T
@@ -958,7 +958,7 @@
 
             \[
                 \omega^2 = e_1e_2e_3e_1e_2e_3 = -1 \\
-                \omega e_1e_2 \omega = e_1e_2e_3e_1e_2e_1e_2e_3 = -e_1e_2
+                \omega e_2e_1 \omega = e_1e_2e_3e_2e_1e_1e_2e_3 = -e_2e_1
             \]
 
             <p>and etc, meaning that if \(p\) is an element of the even subalgebra (aka a quaternion), then \(-\omega p \omega = p\), and the formula above simplifies to</p>
