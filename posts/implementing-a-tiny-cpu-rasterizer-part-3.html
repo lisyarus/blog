@@ -116,17 +116,17 @@ namespace rasterizer
 
             \[ C = \lambda_0C_0+\lambda_1C_1+\lambda_2C_2 \]
 
-            <p>This is precisely what's called <i>linear interpolation</i> inside a triangle: it is interpolation using barycentric coordinates.</p>
+            <p>This is precisely what's called <i>linear interpolation</i> inside a triangle: it is interpolation using barycentric coordinates. Notice that for the case \(P=V_0\) the coordinates are \((1,0,0)\), and the resulting color will be \(C=1\cdot C_0+0\cdot C_1+0\cdot C_2=C_0\), the original color of this vertex, and similarly for \(V_1\) and \(V_2\).</p>
 
             <p>Now, how do we compute these coordinates for the current pixel we're rasterizing? There are many different ways of doing it. One is purely algebraic: take the definition of the barycentric coordinates, and subtract, for example, \(V_0\) from both sides:</p>
 
-            \[ \lambda_0V_0+\lambda_1V_1+\lambda_2V_2-V_0=P-V_0 \]
+            \[ \lambda_0V_0+\lambda_1V_1+\lambda_2V_2{\color{blue}-V_0}=P{\color{blue}-V_0} \]
 
             <p>Now, since, \(\lambda_0+\lambda_1+\lambda_2=1\), we can rewrite it as</p>
 
-            \[ \lambda_0V_0+\lambda_1V_1+\lambda_2V_2-(\lambda_0+\lambda_1+\lambda_2)\cdot V_0=P-V_0 \]
-            \[ \lambda_0V_0+\lambda_1V_1+\lambda_2V_2-\lambda_0V_0-\lambda_1V_0-\lambda_2V_0=P-V_0 \]
-            \[ \lambda_1(V_1-V_0)+\lambda_2(V_2-V_0)=P-V_0 \]
+            \[ \lambda_0V_0+\lambda_1V_1+\lambda_2V_2-{\color{blue}(\lambda_0+\lambda_1+\lambda_2)}\cdot V_0=P-V_0 \]
+            \[ \lambda_0V_0+\lambda_1V_1+\lambda_2V_2{\color{blue}-\lambda_0V_0-\lambda_1V_0-\lambda_2V_0}=P-V_0 \]
+            \[ \lambda_1(V_1{\color{blue}-V_0})+\lambda_2(V_2{\color{blue}-V_0})=P-V_0 \]
 
             <p>This is an equation on 2D points, so it is effectively 2 scalar equations, with 2 unknowns \(\lambda_1,\lambda_2\). So it's a 2x2 linear system, and we can directly use <a href="https://en.wikipedia.org/wiki/Cramer%27s_rule">Cramer's rule</a> to solve it. This rule gives explicit formulas for the unknowns in terms of some determinants. Let's get the formula for \(\lambda_2\):</p>
 
@@ -137,13 +137,13 @@ namespace rasterizer
             <p>Because none of the three triangle vertices are more special than the others, it must be that the formulas for \(\lambda_0\) and \(\lambda_1\) can be found by making a cyclic permutation of the vertices \(V_0V_1V_2\), and we'll get</p>
 
             \[ \lambda_1 = \frac{\det(V_0-V_2,P-V_2)}{\det(V_0-V_2,V_1-V_2)} \]
-            \[ \lambda_2 = \frac{\det(V_2-V_1,P-V_1)}{\det(V_2-V_1,V_0-V_1)} \]
+            \[ \lambda_0 = \frac{\det(V_2-V_1,P-V_1)}{\det(V_2-V_1,V_0-V_1)} \]
 
-            <p>Again, the numerators look like what we've already get, but the denominators look different, but they're actually still the same. This follows from various properties of determinants, or more simply from the fact that all 3 denominators equal \(\frac{1}{2}\) of the area of our triangle.</p>
+            <p>Again, the numerators look like what we've already get, but the denominators look different, but they're actually still the same. This follows from various properties of determinants, or more simply from the fact that all 3 denominators equal 2x of the area of our triangle.</p>
 
             <h2 id="section-barycentric-coordinates-code">Barycentric coordinates: code</h2>
 
-            <p>This was quite a bit of formulas, but change to our rasterizer code is really tiny. When rasterizing a triangle, grab its colors together with vertex positions:</p>
+            <p>This was quite a bit of formulas, but the change to our rasterizer code is really tiny. When rasterizing a triangle, grab its colors together with vertex positions:</p>
 
             <pre><code class="language-cpp block" data-filename="source/renderer.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/329bf36810162de74de285edfe1c1025dba8fef6/source/renderer.cpp">auto v0 = command.transform * as_point(command.mesh.positions[vertex_index + 0]);
 auto v1 = command.transform * as_point(command.mesh.positions[vertex_index + 1]);
