@@ -120,13 +120,13 @@ namespace rasterizer
 
             <p>Now, how do we compute these coordinates for the current pixel we're rasterizing? There are many different ways of doing it. One is purely algebraic: take the definition of the barycentric coordinates, and subtract, for example, \(V_0\) from both sides:</p>
 
-            \[ \lambda_0V_0+\lambda_1V_1+\lambda_2V_2{\color{blue}-V_0}=P{\color{blue}-V_0} \]
+            \[ \lambda_0V_0+\lambda_1V_1+\lambda_2V_2\color{blue}{-V_0}=P\color{blue}{-V_0} \]
 
             <p>Now, since, \(\lambda_0+\lambda_1+\lambda_2=1\), we can rewrite it as</p>
 
-            \[ \lambda_0V_0+\lambda_1V_1+\lambda_2V_2-{\color{blue}(\lambda_0+\lambda_1+\lambda_2)}\cdot V_0=P-V_0 \]
-            \[ \lambda_0V_0+\lambda_1V_1+\lambda_2V_2{\color{blue}-\lambda_0V_0-\lambda_1V_0-\lambda_2V_0}=P-V_0 \]
-            \[ \lambda_1(V_1{\color{blue}-V_0})+\lambda_2(V_2{\color{blue}-V_0})=P-V_0 \]
+            \[ \lambda_0V_0+\lambda_1V_1+\lambda_2V_2-\color{blue}{(\lambda_0+\lambda_1+\lambda_2)}\cdot V_0=P-V_0 \]
+            \[ \lambda_0V_0+\lambda_1V_1+\lambda_2V_2\color{blue}{-\lambda_0V_0-\lambda_1V_0-\lambda_2V_0}=P-V_0 \]
+            \[ \lambda_1(V_1\color{blue}{-V_0})+\lambda_2(V_2\color{blue}{-V_0})=P-V_0 \]
 
             <p>This is an equation on 2D points, so it is effectively 2 scalar equations, with 2 unknowns \(\lambda_1,\lambda_2\). So it's a 2x2 linear system, and we can directly use <a href="https://en.wikipedia.org/wiki/Cramer%27s_rule">Cramer's rule</a> to solve it. This rule gives explicit formulas for the unknowns in terms of some determinants. Let's get the formula for \(\lambda_2\):</p>
 
