@@ -1,0 +1,218 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta property="og:type" content="article" />
+        <meta property="og:title" content="Implementing a tiny CPU rasterizer | Part 3: Interpolating colors">
+        <meta property="og:site_name" content="lisyarus blog">
+        <meta property="og:image" content="/blog/media/implementing-a-tiny-cpu-rasterizer/cover.png" />
+        <meta property="og:image:height" content="240" />
+        <meta property="og:image:width" content="520" />
+        <title>Implementing a tiny CPU rasterizer | Part 3: Interpolating colors | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/cmake.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+        <script async src="//platform.twitter.com/widgets.js" charset="utf-8"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Implementing a tiny CPU rasterizer</div></center><br/>
+            <center><div class="page-title">Part 3: Interpolating colors</div></center><br/>
+            <center><span class="post-date">2024 Nov 1</span></center><br/>
+
+            <div id="tutorial-series-contents" data-part="3"></div>
+
+            <p><i>The code for this part is available <a href="https://github.com/lisyarus/tiny-rasterizer/commit/329bf36810162de74de285edfe1c1025dba8fef6">in this commit</a>.</i></p>
+
+            <p><a href="/blog/posts/implementing-a-tiny-cpu-rasterizer-part-2.html">Last time </a> we finally drew a triangle on screen, but it was filled with one fixed color. Today our goal is to fill it with a gradient of colors instead. And for that, we need something called <i>attribute interpolation</i>.</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-attributes">Attributes</h2>
+
+            <p>In graphics, a <i>vertex attribute</i> is just any data that is stored per-vertex. Right now our only vertex attribute is 3D position; other examples of attributes include colors, normals, texture coordinates, joint IDs and weights, etc.</p>
+
+            <p>To fill our triangle with a gradient, we need to set the colors of our vertices to some values, and then our engine will <i>interpolate</i> the colors in the pixels, thus forming a gradient. On the GPU this happens somewhere between the vertex and the fragment shaders.</p>
+
+            <p>Later we'll need even more attributes, so let's define a convenience wrapper for it:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/attribute.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/329bf36810162de74de285edfe1c1025dba8fef6/include/rasterizer/attribute.hpp">#pragma once
+
+#include &lt;cstdint&gt;
+
+namespace rasterizer
+{
+
+    template &lt;typename T&gt;
+    struct attribute
+    {
+        void const * pointer = nullptr;
+        std::uint32_t stride = sizeof(T);
+
+        // Get attribute by vertex index
+        T const & operator[] (std::uint32_t i) const
+        {
+            return *(T const *)((char const *)(pointer) + stride * i);
+        }
+    };
+
+}</code></pre>
+
+            <p>Here we have the pointer to the attribute data, and something called a <i>stride</i>. Stride is the distance in bytes between two values of this attribute corresponding to two consecutive vertices. This makes vertex storage more flexible:</p>
+
+            <ul>
+                <li>We can make a <code>vertex</code> struct with position and color, and have an array of such structures (called SoA &mdash; structure-of-arrays). Then, the attribute <code>pointer</code>s will point to the position and color of the first vertex, while the <code>stride</code> will be equal to the size of the vertex.</li>
+                <li>We can make separate arrays with positions and colors. Then the attribute <code>pointer</code>s will point to the starts of these two arrays, while the stride will be the size of a single attribute (e.g. 12 bytes for a <code>vector3f</code> position and 4 bytes for a <code>color4ub</code> color).</li>
+            </ul>
+
+            <p>This is how it is typically done in GPUs, and this is the convention we will adopt. Note that in our <code>attribute</code> class <code>stride</code> is equal to the size of the attribute by default, i.e. it assumes all values of this particular attribute are packed in a separate array. Also note that in case of <code>stride = 0</code> we effectively can pass a single value as the common attribute value for all vertices, which can be really useful. Some graphics APIs like OpenGL don't allow a stride value of 0, and instead interpret it as our default value of <code>stride = sizeof(T)</code>.</p>
+
+            <p>Now, let's tweak our <code>mesh</code> class to add the color attribute:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/mesh.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/329bf36810162de74de285edfe1c1025dba8fef6/include/rasterizer/mesh.hpp">#pragma once
+
+#include &lt;rasterizer/types.hpp&gt;
+#include &lt;rasterizer/attribute.hpp&gt;
+
+namespace rasterizer
+{
+
+    struct mesh
+    {
+        attribute&lt;vector3f&gt; positions = {};
+        attribute&lt;vector4f&gt; colors = {};
+        std::uint32_t vertex_count = 0;
+    };
+
+}</code></pre>
+
+            <p>The syntax <code>= {}</code> means the field will be initialized with default values. I've chosen to use vectors of 4 floating-points for colors for simplicity, but you can instead use <code>color4ub</code> for them and add the conversion in the rasterizer, it doesn't matter that much for us.</p>
+
+            <h2 id="section-barycentric-coordinates-theory">Barycentric coordinates: theory</h2>
+
+            <p><i>Who the hell is Bary?</i></p>
+
+            <p>Now we need to figure our how to actually compute interpolated colors. Luckily, in a triangle there is a unique way of doing this! If we want a linear color gradient, we could assume that the function mapping pixel positions to colors is linear, or, technically, <i>affine</i>, i.e. of the form \(Ax+By+C\). Then, if we know the value of this function at 3 different points, we can make a 3x3 system of linear equations for the unknowns \(A,B,C\), which by general linear algebra almost always has a solution (unless the three points lie on a straight line). So, our color-for-pixel function is uniquely determined by the values at 3 vertices!</p>
+
+            <p>Though, the usual way of doing this doens't solve this system, but instead computes something called the <i>barycentric coordinates</i>. Given three vertices \(V_0,V_1,V_2\), the barycentric coordinates of some point \(P\) are special numbers \(\lambda_0,\lambda_1,\lambda_2\) such that</p>
+
+            \[ \lambda_0+\lambda_1+\lambda_2=1 \]
+            \[ \lambda_0V_0+\lambda_1V_1+\lambda_2V_2=P \]
+
+            <p>That is, point \(P\) is an <i>affine combination</i> of points \(V_0,V_1,V_2\) with coefficients \(\lambda_0,\lambda_1,\lambda_2\). They are also unique, which follows from a similar argument of constructing a 3x3 linear system for them. <i>The condition that their sum is equal to 1 is essential, because otherwise the sum \(\lambda_0V_0+\lambda_1V_1+\lambda_2V_2\) is not well-defined: it depends on a choice of coordinate system origin.</i></p>
+
+            <p>We can plug \(P=V_0\), and since \(V_0=1\cdot V_0 + 0\cdot V_1 + 0\cdot V_2\), and since the barycentric coordinates are unique, we see that for this point the coordinates must be simply \((1,0,0)\). Similarly, they are \((0,1,0)\) for \(V_1\) and \((0,0,1)\) for \(V_2\).</p>
+
+            <p>Now, if we have some value at the three vertices \(V_0,V_1,V_2\), for example the colors \(C_0,C_1,C_2\), we can interpolate them with the formula</p>
+
+            \[ C = \lambda_0C_0+\lambda_1C_1+\lambda_2C_2 \]
+
+            <p>This is precisely what's called <i>linear interpolation</i> inside a triangle: it is interpolation using barycentric coordinates.</p>
+
+            <p>Now, how do we compute these coordinates for the current pixel we're rasterizing? There are many different ways of doing it. One is purely algebraic: take the definition of the barycentric coordinates, and subtract, for example, \(V_0\) from both sides:</p>
+
+            \[ \lambda_0V_0+\lambda_1V_1+\lambda_2V_2-V_0=P-V_0 \]
+
+            <p>Now, since, \(\lambda_0+\lambda_1+\lambda_2=1\), we can rewrite it as</p>
+
+            \[ \lambda_0V_0+\lambda_1V_1+\lambda_2V_2-(\lambda_0+\lambda_1+\lambda_2)\cdot V_0=P-V_0 \]
+            \[ \lambda_0V_0+\lambda_1V_1+\lambda_2V_2-\lambda_0V_0-\lambda_1V_0-\lambda_2V_0=P-V_0 \]
+            \[ \lambda_1(V_1-V_0)+\lambda_2(V_2-V_0)=P-V_0 \]
+
+            <p>This is an equation on 2D points, so it is effectively 2 scalar equations, with 2 unknowns \(\lambda_1,\lambda_2\). So it's a 2x2 linear system, and we can directly use <a href="https://en.wikipedia.org/wiki/Cramer%27s_rule">Cramer's rule</a> to solve it. This rule gives explicit formulas for the unknowns in terms of some determinants. Let's get the formula for \(\lambda_2\):</p>
+
+            \[ \lambda_2 = \frac{\det(V_1-V_0,P-V_0)}{\det(V_1-V_0,V_2-V_0)} \]
+
+            <p>Do you recognize this determinants? The numerator is exactly what we used to figure out if the point \(P\) is to the left of an edge \(V_0V_1\), while the denominator is exactly what we used to figure out the orientation of our triangle!</p>
+
+            <p>Because none of the three triangle vertices are more special than the others, it must be that the formulas for \(\lambda_0\) and \(\lambda_1\) can be found by making a cyclic permutation of the vertices \(V_0V_1V_2\), and we'll get</p>
+
+            \[ \lambda_1 = \frac{\det(V_0-V_2,P-V_2)}{\det(V_0-V_2,V_1-V_2)} \]
+            \[ \lambda_2 = \frac{\det(V_2-V_1,P-V_1)}{\det(V_2-V_1,V_0-V_1)} \]
+
+            <p>Again, the numerators look like what we've already get, but the denominators look different, but they're actually still the same. This follows from various properties of determinants, or more simply from the fact that all 3 denominators equal \(\frac{1}{2}\) of the area of our triangle.</p>
+
+            <h2 id="section-barycentric-coordinates-code">Barycentric coordinates: code</h2>
+
+            <p>This was quite a bit of formulas, but change to our rasterizer code is really tiny. When rasterizing a triangle, grab its colors together with vertex positions:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/renderer.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/329bf36810162de74de285edfe1c1025dba8fef6/source/renderer.cpp">auto v0 = command.transform * as_point(command.mesh.positions[vertex_index + 0]);
+auto v1 = command.transform * as_point(command.mesh.positions[vertex_index + 1]);
+auto v2 = command.transform * as_point(command.mesh.positions[vertex_index + 2]);
+
+auto c0 = command.mesh.colors[vertex_index + 0];
+auto c1 = command.mesh.colors[vertex_index + 1];
+auto c2 = command.mesh.colors[vertex_index + 2];</code></pre>
+    
+            <p>Then, when drawing a pixel, compute its barycentric coordinates and interpolate the colors. Remember: the barycentric coordinates are just fractions composed of determinants that we have already at hand:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/renderer.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/329bf36810162de74de285edfe1c1025dba8fef6/source/renderer.cpp">if (det01p >= 0.f && det12p >= 0.f && det20p >= 0.f)
+{
+    float l0 = det12p / det012;
+    float l1 = det20p / det012;
+    float l2 = det01p / det012;
+
+    color_buffer.at(x, y) = to_color4ub(l0 * c0 + l1 * c1 + l2 * c2);
+}</code></pre>
+
+            <p>Now let's tweak our mesh definition in <code>main.cpp</code>:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/329bf36810162de74de285edfe1c1025dba8fef6/source/main.cpp">vector3f positions[] =
+{
+    {  0.f,   0.f, 0.f},
+    {100.f,   0.f, 0.f},
+    {  0.f, 100.f, 0.f},
+};
+
+vector4f colors[] =
+{
+    {1.f, 0.f, 0.f, 1.f},
+    {0.f, 1.f, 0.f, 1.f},
+    {0.f, 0.f, 1.f, 1.f},
+};
+
+for (int i = 0; i < 100; ++i)
+    draw(color_buffer,
+        draw_command{
+            .mesh = {
+                .positions = {positions},
+                .colors = {colors},
+                .vertex_count = 3,
+            },
+            .transform = {
+                1.f, 0.f, 0.f, mouse_x + 100.f * (i % 10),
+                0.f, 1.f, 0.f, mouse_y + 100.f * (i / 10),
+                0.f, 0.f, 1.f, 0.f,
+                0.f, 0.f, 0.f, 1.f,
+            },
+        }
+    );</code></pre>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/implementing-a-tiny-cpu-rasterizer/03-gradient-triangles.mp4" type="video/mp4"></video></center>
+
+            <p>Today's article was more formulas as less code than usual. This will happen again next time, when we start working on actual 3D graphics and tackle perspective projection!</p>
+
+            <table style="width: 100%; table-layout: fixed;">
+                <tr>
+                    <td style="text-align: left;"><a href="/blog/posts/implementing-a-tiny-cpu-rasterizer-part-2.html">\(\leftarrow\) Part 2: Drawing a triangle</a></td>
+                    <td style="text-align: center;"><a href="https://github.com/lisyarus/tiny-rasterizer/tree/329bf36810162de74de285edfe1c1025dba8fef6"><i>Source code for this part</i></a></td>
+                    <td style="text-align: right;">Part 4: Changing perspective <i>(wip)</i> \(\rightarrow\)</td>
+                </tr>
+            </table>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/implementing-a-tiny-cpu-rasterizer.js"></script>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>

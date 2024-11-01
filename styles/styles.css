@@ -138,6 +138,15 @@ a:hover {
 	text-decoration: underline;
 }
 
+a.white-link {
+	text-decoration: none;
+	color: #aaa;
+}
+
+a.white-link:hover {
+	text-decoration: underline;
+}
+
 .youtube-embed {
 	width: 640px;
 	height: 360px;

@@ -1,0 +1,488 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta property="og:type" content="article" />
+        <meta property="og:title" content="Implementing a tiny CPU rasterizer | Part 1: Clearing the screen">
+        <meta property="og:site_name" content="lisyarus blog">
+        <meta property="og:image" content="/blog/media/implementing-a-tiny-cpu-rasterizer/cover.png" />
+        <meta property="og:image:height" content="240" />
+        <meta property="og:image:width" content="520" />
+        <title>Implementing a tiny CPU rasterizer | Part 1: Clearing the screen | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/cmake.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+        <script async src="//platform.twitter.com/widgets.js" charset="utf-8"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Implementing a tiny CPU rasterizer</div></center><br/>
+            <center><div class="page-title">Part 1: Clearing the screen</div></center><br/>
+            <center><span class="post-date">2024 Oct 30</span></center><br/>
+
+            <div id="tutorial-series-contents" data-part="1"></div>
+
+            <p><i>The code for this part is available <a href="https://github.com/lisyarus/tiny-rasterizer/commit/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3">in this commit</a>.</i></p>
+
+            <p>In the OpenGL course I'm teaching at a university, my students learn that the GPU uses something called <i>rasterization</i> to draw stuff on the screen. Then, I explain how &mdash; in theory &mdash; rasterization works, e.g. how would one write the code to draw a fixed triangle on screen. Of course, the GPU does that for us, but it is nice to understand that what it does is not some dark magic, but actually some pretty simple algorithms. <i>Well, for the most part.</i></p>
+
+            <p>Then one day I had a very strong itch in my head: why don't I try actually doing this? Why don't I implement triangle rasterization, just for the fun of it? And I did, and it didn't take long to have the first triangle appearing on screen. I was happy and satisfied.</p>
+
+            <center><blockquote class="twitter-tweet" data-lang="en"><a href="https://x.com/lisyarus/status/1849819653087912225"></a></blockquote></center>
+
+            <p>But then I had another itch: what if I turn this thing into a <i>full-blown rendering engine</i>? What if I implemented most of the fixed-function pipeline of old-school graphics API's? And what if I document the process?</p>
+
+            <p>So, that's what it is, my journey on creating a CPU-only 3D rasterization engine from scratch, documented in the form of a tutorial series.</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-but-why">But why?</h2>
+
+            <p>If the GPU and graphics APIs do all that for us, why bother with emulating that on a CPU? Well, it definitely doesn't make sense if your goal is to create a 3D game or something similar, making a CPU rasterizer is usually pretty much a waste of time in this case (unless your game is really light on rendering and you want to add some crazy rendering effects that are easier to do on CPU than on GPU; or maybe you're doing it just for the fun of it).</p>
+
+            <p>However, there are still some legitimate reasons to do that:</p>
+
+            <ul>
+                <li><b>It is a good programming exercise.</b> There's some low-level stuff, some algorithms, some maths, some graphics, all mixed into a single standalone project.</li>
+                <li><b>It is a great way to learn what GPU does.</b> Implementing a thing yourself from scratch is the best way to understand how that thing works. Making a CPU rasterizer will definitely make you a better graphics programmer, even if you're mostly working with GPUs.</li>
+                <li><b>It is a good starting point before doing compute shader GPU sofrware rendering,</b> like the stuff that Nanite does. The algorithms there are pretty much the same as the ones we'll use in this series, just in a compute shader.</li>
+                <li><b>It can be a stepping stone towards hardware implementation.</b> FPGAs are quite popular these days, and you could try to actually make your own GPU from scratch. But first you need to learn what the GPU actually does.</li>
+                <li><b>It is a hell lot of fun.</b> A capable rendering engine in which you literally write the code to put pixels on screen yourself, now how cool is that?</li>
+            </ul>
+
+            <p>Though, beware that our rasterizer will be <i>reeeeeally slow</i>. Even after we'll try to optimize it in the end of this series, it will still be painstakingly slow. It might work well in, say, 640x480 resolution, with a simple enough scene, but anything bigger willl probably struggle to keep at 60 FPS. There is a reason we offload all rending to the GPU these days, which is much better suited to these tasks on the hardware level. Once again, making your own CPU rasterizer will make you really appreciate what the GPU does for us!</p>
+
+            <h2 id="section-but-how">But how?</h2>
+
+            <p>Ok, fine, for one reason or another you've decided to follow along. What's our plan? We essentially need to do three things today:</p>
+
+            <ul>
+                <li>Create an OS window that we'll render to</li>
+                <li>Create a buffer that will be our "canvas", which we'll then show on screen</li>
+                <li>Clear this buffer to some fixed color</li>
+            </ul>
+
+            <p>That's not much, but we gotta start somewhere!</p>
+
+            <h2 id="section-creating-a-window">Creating a window</h2>
+
+            <p>This is usually done either using platform-dependent APIs like <code>WinAPI</code> on Windows or <code>Xlib/XCB</code> on Linux. These APIs are typically stupidly cumbersome and obviously non-portable, so instead we'll use a library called <a href="https://www.libsdl.org">SDL2</a> which abstracts away all this boring stuff. <i>Though, using platform APIs might give you more fine-grained control over the screen buffer format, synchronization, and stuff like that, but we'll stick to the simpler option in this tutorial.</i></p>
+
+            <p>You can either download the library from the official site, or install it using your package manager. On Linux chances are you already have this library installed. <i>Note that we need the development version of this library, i.e. the one that also provides header files.</i></p>
+
+            <p>By the way, SDL2 itself is completely optional here, and you can replace it with any library of your choice, or even use the aforementioned platform APIs. All we need is a raw array of pixels that we can directly write to, everything else doesn't really matter.</p>
+
+            <p>I'll also use <a href="https://cmake.org/">CMake</a> as my build system, which is pretty much the standard for C++ these days. Let's write a basic <code>CMakeLists.txt</code> file describing our project:</p>
+
+            <pre><code class="language-cmake block" data-filename="CMakeLists.txt" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3/CMakeLists.txt">cmake_minimum_required(VERSION 3.20)
+project(tiny-rasterizer)
+
+set(CMAKE_CXX_STANDARD 20)
+
+find_package(SDL2 REQUIRED)
+
+file(GLOB_RECURSE RASTERIZER_HEADERS "include/*.hpp")
+file(GLOB_RECURSE RASTERIZER_SOURCES "source/*.cpp")
+
+add_executable(tiny-rasterizer
+    ${RASTERIZER_HEADERS}
+    ${RASTERIZER_SOURCES}
+)
+
+target_include_directories(tiny-rasterizer PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${SDL2_INCLUDE_DIRS}"
+)
+
+target_link_libraries(tiny-rasterizer PUBLIC
+    ${SDL2_LIBRARIES}
+)</code></pre>
+
+            <p>Here we're defining the project name (<code>tiny-rasterizer</code>), specifying that we use the C++20 standard, find the SDL2 library, find all files in <code>include/</code> and <code>source/</code> directories to be included as sources for our <code>tiny-rasterizer</code> executable, and say that it should include and link the SDL2 library, and also include the <code>include/</code> path where all our project's include files will be.</p>
+
+            <p>Now, we need a minimal <code>main.cpp</code> file that simply creates a window and enters an infinite event-processing loop, without actually drawing anything:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3/source/main.cpp">#include &lt;SDL2/SDL.h&gt;
+
+int main()
+{
+    SDL_Init(SDL_INIT_VIDEO);
+
+    int width = 800;
+    int height = 600;
+
+    SDL_Window * window = SDL_CreateWindow("Tiny rasterizer",
+        SDL_WINDOWPOS_UNDEFINED,
+        SDL_WINDOWPOS_UNDEFINED,
+        width, height,
+        SDL_WINDOW_RESIZABLE | SDL_WINDOW_SHOWN);
+
+    int mouse_x = 0;
+    int mouse_y = 0;
+
+    bool running = true;
+    while (running)
+    {
+        for (SDL_Event event; SDL_PollEvent(&event);) switch (event.type)
+        {
+        case SDL_WINDOWEVENT:
+            switch (event.window.event)
+            {
+            case SDL_WINDOWEVENT_RESIZED:
+                width = event.window.data1;
+                height = event.window.data2;
+                break;
+            }
+            break;
+        case SDL_QUIT:
+            running = false;
+            break;
+        case SDL_MOUSEMOTION:
+            mouse_x = event.motion.x;
+            mouse_y = event.motion.y;
+            break;
+        }
+
+        if (!running)
+            break;
+    }
+}</code></pre>
+
+            <p>First, we create a window with an initial size of 800x600 pixels. We set its position to unspecified, though it can also be <code>SDL_WINDOWPOS_CENTERED</code> or simply the coordinates of the top-left corner of the window. We flag the window as resizeable, which you can turn off by removing this flag if you want it to stay at a fixed resolution.</p>
+
+            <p>Next, we enter the event-processing loop. <code>SDL_PollEvent</code> return true if there was a new event, spitting them one be one until no unprocessed events are left. Then we handle the quitting, resizing, and mouse movement events, and that's it.</p>
+
+            <p>This program will run successfully, but since we're not drawing anything yet, what you'll see in that window depends hugely on your particular system. On my system (Gentoo + XMonad) the window just shows a fixed image with the contents of some underlying window at the moment of startup.</p>
+
+            <h2 id="section-creating-a-draw-buffer">Creating a draw buffer</h2>
+
+            <p>Now we need some way to draw stuff to the screen. We want to be able to arbitrarily write actual pixel values, so the best way would be to simply have an single array of pixels corresponding to our screen. In terms of SDL2, this is called a <a href="https://wiki.libsdl.org/SDL2/SDL_Surface"><i>surface</i></a>. We have two options here:</p>
+
+            <ol>
+                <li>Request the surface corresponding to our window and write directly to it</li>
+                <li>Create our own surface, draw to it, then copy the result to our window</li>
+            </ol>
+
+            <p>It seems that the first option is better &mdash; we use less memory, and we don't need an extra pixel copying step. However, the window surface can be in pretty much arbitraty format (it is <code>RGB8</code> on my system), which (as far as I know) we can't control.</p>
+
+            <p>So, let's create our own SDL2 surface with a format that we want (<code>RGBA8</code>), draw to it, and then copy the pixels back to screen. Instead of creating it immediately at the start, we will do it lazily, when we actually need to draw on it. This way it will be easier to handle window resize.</p>
+
+            <p>Declare the surface somewhere at the top of the <code>main</code> function:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3/source/main.cpp">int main()
+{
+    ...
+
+    SDL_Surface * draw_surface = nullptr;
+
+    ...
+}</code></pre>
+
+            <p>Add the code to delete the surface if the window was resized:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3/source/main.cpp">...
+
+case SDL_WINDOWEVENT_RESIZED:
+    if (draw_surface)
+        SDL_FreeSurface(draw_surface);
+    draw_surface = nullptr;
+    width = event.window.data1;
+    height = event.window.data2;
+    break;
+
+...</code></pre>
+
+            <p>And finally add the code for actually creating the surface inside the main loop, right after processing the events:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3/source/main.cpp">...
+
+if (!running)
+    break;
+
+if (!draw_surface)
+{
+    draw_surface = SDL_CreateRGBSurfaceWithFormat(0, width, height,
+        32, SDL_PIXELFORMAT_RGBA32);
+    SDL_SetSurfaceBlendMode(draw_surface, SDL_BLENDMODE_NONE);
+}
+
+...</code></pre>
+
+            <p>In <code>SDL_CreateRGBSurfaceWithFormat</code>, the first argument is an unused flag parameter that must be zero according to docs, <code>width</code> and <code>height</code> are the dimensions of our draw surface in pixels (we want it to be equal to the size of the window), <code>32</code> is the number of bits per pixel (with <code>RGBA8</code> we have 4 channels with 8 bits each, thus 32 bits in total), and <code>SDL_PIXELFORMAT_RGBA32</code>. In SDL terms, <code>RGBA32</code> means 4 channels and 32-bit in total, so this is the same as <code>RGBA8</code> in e.g. OpenGL.</p>
+
+            <p>The second function <code>SDL_SetSurfaceBlendMode</code> disables automatic blending when copying the results onto the screen. We want to disable it for a few reasons:</p>
+
+            <ul>
+                <li>If our draw buffer has not-fully-opaque pixels (alpha component is less that 255), it will blend the draw buffer with the previous frame, which is rarely what we want</li>
+                <li>GPUs don't do that automatically either</li>
+                <li>We're implementing a rendering engine ourselves, surely it should be us who implements blending as well!</li>
+            </ul>
+
+            <p><i>Though, to be honest, I wasn't planning to include blending in this tutorial series anyway, and the alpha channel ended up being a bit useless. However, nothing prevents you from implementing it yourself!</i></p>
+
+            <h2 id="section-clearing-the-screen">Clearing the screen</h2>
+
+            <p>Now we have a draw buffer, but we're not drawing anything to it, and we're not displaying it on the screen either. Time to change that!</p>
+
+            <p>First, let's display it on the screen. This is pretty easy: we use <code>SDL_GetWindowSurface</code> to get the destination surface corresponding to our window, copy the pixels from our draw surface using <code>SDL_BlitSurface</code>, and tell the window that we've done drawing and it can update the image on the screen using <code>SDL_UpdateWindowSurface</code>. Just put this in the very end of our main loop:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3/source/main.cpp">...
+
+SDL_Rect rect{.x = 0, .y = 0, .w = width, .h = height};
+SDL_BlitSurface(draw_surface, &rect, SDL_GetWindowSurface(window), &rect);
+
+SDL_UpdateWindowSurface(window);</code></pre>
+
+            <p>We use an <code>SDL_Rect</code> struct to specify the source and destination regions we want to copy from and to. Since we're copying the full surface, and the two surfaces are of the same size, this rect simply covers the whole available space.</p>
+
+            <p>At this point you'll probably see something new on the screen, though I'm not sure what exactly, since we didn't draw anything to the draw buffer yet. On my system, the buffer appears completely black. Probably SDL2 clears the surface upon creation.</p>
+
+            <p>To actually clear it to our desired color, we need to fill the surface pixels with some fixed color. Our pixels are in <code>RGBA8</code> format, so it's reaasonable to simply use the <code>uint32_t</code> type to refer to one pixel. Using <code>draw_surface->pixels</code> we can access and write the raw pixels of the surface.</p>
+
+            <p>We could make a single loop over all pixels, like so:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3/source/main.cpp">for (int i = 0; i < width * height; ++i)
+    (uint32_t *)(draw_surface->pixels)[i] = color;</code></pre>
+
+            <p>but the C++ standard library already has a function for that:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3/source/main.cpp">std::fill_n((uint32_t *)draw_surface->pixels, width * height, color);</code></pre>
+
+            <p>Alternatively, we could use <code>std::fill</code> and pass the pointer to the end of the pixels array instead of the size of the array. In any case, we'll need to include the <code>&lt;algorithm&gt;</code> header for that.</p>
+
+            <p>So, set the color to something like <code>0xffffdfdf</code> (this corresponds to <code>0xAABBGGRR</code> channels in little-endian), and you should see a nice light-blue color in our window:</p>
+
+            <center><img src="/blog/media/implementing-a-tiny-cpu-rasterizer/01-blue-screen.png" class="image-embed"></center>
+
+            <h2 id="section-designing-the-api">Designing the API</h2>
+
+            <p>Ok, we did finally draw something on screen! However, we're going to write a ton of code in this series, and it's best to start structuring it early, so let's begin designing the API of our rendering engine.</p>
+
+            <p>Now, we could just take some existing graphics API like OpenGL or Vulkan, and literatlly implement them. This would be especially cool because we could take an existing program that uses, say, OpenGL, replace the <code>libGL.so/opengl32.dll</code> with our own implementation, and it would work!</p>
+
+            <p>However, there are downsides to this, too. Most graphics APIs fall into 2 categories:</p>
+
+            <ol>
+                <li>They are old and stupidly structured, meaning that implementing them will be 80% just dealing with idiosyncrasies of decades old API decisions, or</li>
+                <li>They are notoriopusly verbose, meaning that implementing them will be 80% writing gluing code that exists only to satisfy the specification</li>
+            </ol>
+
+            <p>There is a third option: design the API ourselves! Since we're probably doing all this just for fun anyway, this is a good chance to try to come up with a reasonable and nice API which isn't restricted by the peculiarities of modern GPUs.</p>
+
+            <p>What we'll do is try to design such an API, somewhat mimicking existing graphics APIs, but making it simpler and nicer whenever we have the chance to do so.</p>
+
+            <p>Ok, enough talking, let's write some code! First, we need some basic data types. <code>uint32_t</code> is good enough for storing <code>RGBA8</code> pixels, but it's a bit clunky to work with. Let's instead define our own <code>color4ub</code> (color with 4 unsigned bytes) type! I'll put it in a <code>types.hpp</code> header file:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/types.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3/include/rasterizer/types.hpp">#pragma once
+
+#include &lt;cstdint&gt;
+
+namespace rasterizer
+{
+
+    struct color4ub
+    {
+        std::uint8_t r, g, b, a;
+    };
+
+}</code></pre>
+            
+            <p>As you can see, I've defined a <code>rasterizer</code> namespace, which will contain all of our engine. Of course, you can come up with your own name, or ditch namespaces altogether. We could also add <code>alignas(4)</code> to this struct in the hope that the compiler will produce better optimized code.</p>
+
+            <p>Now, in graphics we usually store colors as <code>RGBA8</code>, but the intermediate computations are usually done in floating-point. So, let's also define a 4D floating-point vector type, and the conversion from it to <code>color4ub</code>, all in the same <code>types.hpp</code> file:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/types.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3/include/rasterizer/types.hpp">...
+
+namespace rasterizer
+{
+
+    ...
+
+    struct vector4f
+    {
+        float x, y, z, w;
+    };
+
+    inline color4ub to_color4ub(vector4f const & c)
+    {
+        color4ub result;
+
+        result.r = max(0.f, min(255.f, c.x * 255.f));
+        result.g = max(0.f, min(255.f, c.y * 255.f));
+        result.b = max(0.f, min(255.f, c.z * 255.f));
+        result.a = max(0.f, min(255.f, c.w * 255.f));
+
+        return result;
+    }
+
+}</code></pre>
+
+            <p><i>In the linked github file, I'm defining my own <code>min</code> and <code>max</code>, simply to avoid including the whole <code>&lt;algorithm&gt;</code> header for them.</i></p>
+
+            <p><i>Also yes, I'm an <a href="https://hackingcpp.com/cpp/design/east_vs_west_const.html">east const</a> guy.</i></p>
+
+            <p>By the way, we could just take an existing library like <a href="https://github.com/g-truc/glm">glm</a> for vectors and stuff like that, but we won't need too much from vectors, so I'll just slap some hand-made classes instead.</p>
+
+            <p>Next, we need to describe the set of pixels that is our "draw buffer". This is literally just a pointer to pixels array, plus the width and height of our screen. We'll call that an <i>image view</i>, because it simply <i>references</i> the pixels. This is important enough to deserve a separate file:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/image_view.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3/include/rasterizer/image_view.hpp">#pragma once
+
+#include &lt;rasterizer/types.hpp&gt;
+
+#include &lt;cstdint&gt;
+
+namespace rasterizer
+{
+
+    struct image_view
+    {
+        color4ub * pixels = nullptr;
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+    };
+
+}</code></pre>
+
+            <p>Finally, we need our actual rendering API, which I'll put in the <code>renderer.hpp</code> file. Right now the only thing we can do is clear the screen, so</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/renderer.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3/include/rasterizer/renderer.hpp">#pragma once
+
+#include &lt;rasterizer/types.hpp&gt;
+#include &lt;rasterizer/image_view.hpp&gt;
+
+namespace rasterizer
+{
+
+    void clear(image_view const & color_buffer, vector4f const & color);
+
+}</code></pre>
+
+            <p>And the implementation is pretty straightforward:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/renderer.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3/source/renderer.cpp">#include &lt;rasterizer/renderer.hpp&gt;
+
+#include &lt;algorithm&gt;
+
+namespace rasterizer
+{
+
+    void clear(image_view const & color_buffer, vector4f const & color)
+    {
+        auto ptr = color_buffer.pixels;
+        auto size = color_buffer.width * color_buffer.height;
+        std::fill_n(ptr, size, to_color4ub(color));
+    }
+
+}</code></pre>
+
+            <p>As I've said earlier, we could instead do <code>std::fill(ptr, ptr + size, ...)</code>, which is the same thing.</p>
+
+            <p>All this might feel a bit verbose, but it will pay off in the long run.</p>
+
+            <p>Now in our <code>main.cpp</code> we simply set up the image view and call clear:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3/source/main.cpp">...
+
+#include &lt;rasterizer/renderer.hpp&gt;
+
+using namespace rasterizer;
+
+int main()
+{
+    ...
+
+    while (running)
+    {
+        ...
+
+        image_view color_buffer
+        {
+            .pixels = (color4ub *)draw_surface->pixels,
+            .width = (std::uint32_t)width,
+            .height = (std::uint32_t)height,
+        };
+
+        clear(color_buffer, {0.8f, 0.9f, 1.f, 1.f});
+
+        SDL_Rect rect{.x = 0, .y = 0, .w = width, .h = height};
+        SDL_BlitSurface(draw_surface, &rect,
+            SDL_GetWindowSurface(window), &rect);
+
+        SDL_UpdateWindowSurface(window);
+    }
+}</code></pre>
+
+            <p>And voila, we have the beginnings of our new CPU-only graphics API! It's not much yet, but it's a start.</p>
+
+            <h2 id="section-measuring-fps">Measuring FPS</h2>
+
+            <p>One final thing I'd like to do in this part is to measure our FPS, just to have an understanding of the performance of our rasterizer. This is relatively easy to do using C++ standard library header <code>&lt;chronoe&gt;</code>. First, somewhere at the start of <code>main</code> we'll specify which clock type we'll use, and remember the time the main loop started:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3/source/main.cpp">...
+
+#include &lt;chrono&gt;
+
+int main()
+{
+    ...
+
+    using clock = std::chrono::high_resolution_clock;
+
+    auto last_frame_start = clock::now();
+
+    ...
+}</code></pre>
+
+            <p>Then, in the main loop I'll record the time the new frame started, and the difference between frame staring times is exactly the time we spent rendering the last frame:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3/source/main.cpp">int main()
+{
+    ...
+
+    while (running)
+    {
+        ... // handle events
+
+        auto now = clock::now();
+        float dt = std::chrono::duration_cast&lt;std::chrono::duration&lt;float&gt;&gt;(
+            now - last_frame_start).count();
+        last_frame_start = now;
+
+        std::cout << dt << std::endl;
+
+        ... // render the frame
+    }
+}</code></pre>
+
+            <p>This <code>duration_cast</code> thing is a bit verbose, but all it's doing is converting the time delta from whatever representation <code>high_resolution_clock</code> uses to simple floating-point seconds. Note that I'm logging the time spent per frame, and not the FPS (which is the inverse), because time spent is a much better metric. For example, it is often additive &mdash; time spent doing X and Y is time spent doing X plus time spent doing Y, while the relation for FPS is much more complicated, namely \(\left(\frac{1}{\text{fps}_1}+\frac{1}{\text{fps}_2}\right)^{-1}\).</p>
+
+            <p>I usually put this code in the beginning of the frame, so that I can use this <code>dt</code> for simulation & camera updates, but it also means that for the very first frame <code>dt</code> will be pretty much zero. This usually doesn't cause any issues, though.</p>
+
+            <p>What numbers do we expect to see here? That depends on a particular system, of course, but on my machine at 1920x1080 resolution the whole frame takes something about 3.7 ms (milliseconds). If we comment out the <code>clear</code> call, we'll basically measure just the blitting to screen (<code>SDL_BlitSurface</code>), which on my machine gives about 3.3 ms. And if we comment out the blitting but leave the clearing, I get about 0.3 ms. So, our clear call is pretty fast (though we can't expect to do more than a few dozen of them per frame), while the blitting is rather slow (which makes sense, given that it probably also does some platform-related synchronization or other stuff since it's blitting directly to an OS window). This gives us something around 270 FPS for now. Not bad for a start!</p>
+
+            <p>That's it for today. In the <a href="/blog/posts/implementing-a-tiny-cpu-rasterizer-part-2.html">next part</a> we'll start actually drawing some triangles!</p>
+
+            <table style="width: 100%; table-layout: fixed;">
+                <tr>
+                    <td style="text-align: left;"></td>
+                    <td style="text-align: center;"><a href="https://github.com/lisyarus/tiny-rasterizer/tree/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3"><i>Source code for this part</i></a></td>
+                    <td style="text-align: right;"><a href="/blog/posts/implementing-a-tiny-cpu-rasterizer-part-2.html">Part 2: Drawing a triangle \(\rightarrow\)</a></td>
+                </tr>
+            </table>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/implementing-a-tiny-cpu-rasterizer.js"></script>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
