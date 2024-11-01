@@ -36,7 +36,7 @@
 
             <p>Then one day I had a very strong itch in my head: why don't I try actually doing this? Why don't I implement triangle rasterization, just for the fun of it? And I did, and it didn't take long to have the first triangle appearing on screen. I was happy and satisfied.</p>
 
-            <center><blockquote class="twitter-tweet" data-lang="en"><a href="https://x.com/lisyarus/status/1849819653087912225"></a></blockquote></center>
+            <center><blockquote class="twitter-tweet" data-lang="en"><a href="https://twitter.com/lisyarus/status/1849819653087912225"></a></blockquote></center>
 
             <p>But then I had another itch: what if I turn this thing into a <i>full-blown rendering engine</i>? What if I implemented most of the fixed-function pipeline of old-school graphics API's? And what if I document the process?</p>
 
@@ -425,7 +425,7 @@ int main()
 
             <h2 id="section-measuring-fps">Measuring FPS</h2>
 
-            <p>One final thing I'd like to do in this part is to measure our FPS, just to have an understanding of the performance of our rasterizer. This is relatively easy to do using C++ standard library header <code>&lt;chronoe&gt;</code>. First, somewhere at the start of <code>main</code> we'll specify which clock type we'll use, and remember the time the main loop started:</p>
+            <p>One final thing I'd like to do in this part is to measure our FPS, just to have an understanding of the performance of our rasterizer. This is relatively easy to do using C++ standard library header <code>&lt;chrono&gt;</code>. First, somewhere at the start of <code>main</code> we'll specify which clock type we'll use, and remember the time the main loop started:</p>
 
             <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/731e6cc315f2f599c06ab5dbb6756cc8f2cb47d3/source/main.cpp">...
 
