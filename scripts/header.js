@@ -39,7 +39,7 @@ let endSectionHTML = `
 <hr class="header-separator">
 <p>Hey, if you like my articles, consider supporting my other work!</p>
 <p>For example, watch my <a href="https://youtube.com/@lisyarus">YouTube devlogs</a>, like this one:</p>
-<center><iframe src="https://www.youtube.com/embed/JgizLjPmDyM" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen class="youtube-embed"></iframe></center>
+<center><iframe src="https://www.youtube.com/embed/48t-U4VWX7I" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen class="youtube-embed"></iframe></center>
 `;
 
 document.getElementById("blog-header").innerHTML = headerHTML;
