@@ -1,0 +1,652 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta property="og:type" content="article" />
+        <meta property="og:title" content="Implementing a tiny CPU rasterizer | Part 4: Changing perspective">
+        <meta property="og:site_name" content="lisyarus blog">
+        <meta property="og:image" content="/blog/media/implementing-a-tiny-cpu-rasterizer/cover.png" />
+        <meta property="og:image:height" content="240" />
+        <meta property="og:image:width" content="520" />
+        <title>Implementing a tiny CPU rasterizer | Part 4: Changing perspective | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/cmake.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+            console.log("HIGHLIGHTED");
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+        <script async src="//platform.twitter.com/widgets.js" charset="utf-8"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Implementing a tiny CPU rasterizer</div></center><br/>
+            <center><div class="page-title">Part 4: Changing perspective</div></center><br/>
+            <center><span class="post-date">2024 Nov 8</span></center><br/>
+
+            <div id="tutorial-series-contents" data-part="4"></div>
+
+            <p><i>The code for this part is available <a href="https://github.com/lisyarus/tiny-rasterizer/commit/dea226064c929f09c01445cb3e34ba9a0177124c">in this commit</a>.</i></p>
+
+            <p>So, now we can draw some triangles and even put color gradients on them, but they're all rather flat. We want to go full 3D!</p>
+
+            <p>Complete 3D support will take several steps (tutorial parts 4-6), but first let's change our coordinate system to something more convenient and conventional.</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-viewport">Viewport</h2>
+
+            <p>All graphics APIs have the concept of a <i>viewport</i>: a rectangular area on the screen/window/offscreen texture/etc, where rendering currently takes place. Nothing will be rendered outside the viewport, ever.</p>
+
+            <p>It might sound a bit silly &mdash; for example, why doesn't the viewport coincide with the full screen? Well, sometimes you want to specifically render to only part of the screen. Maybe you're rendering 4 different projections of some CAD model, or maybe you're generating mipmaps for a particular region in a texture atlas. This viewport setting is rarely needed, but it is sometimes immensely useful.</p>
+
+            <p>Another useful thing is to get rid of the window coordinate system in pixels, and use some virtual coordinates that don't depend on the screen. The typical solution in graphics APIs is to say that X and Y coordinates are in the range \([-1,1]\), with Y going up (and not down, like in pixel coordinate system). This coordinate space is called <i>normalized device coordinates</i>, or <i>NDC</i> (normalized here means that the coordinates are in a fixed \([-1,1]\) range, and don't depend on screen size). Of course, we'll have to do the conversion to actual pixels somewhere before rasterizing a triangle.</p>
+
+            <p>So, let's create a new file for the viewport and define it, together with a helpful function for converting from \([-1,1]\) to pixels:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/viewport.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/include/rasterizer/viewport.hpp">#pragma once
+
+#include &lt;rasterizer/vector.hpp&gt;
+
+#include &lt;cstdint&gt;
+
+namespace rasterizer
+{
+
+    struct viewport
+    {
+        std::int32_t xmin, ymin, xmax, ymax;
+    };
+
+    inline vector4f apply(viewport const & viewport, vector4f v)
+    {
+        v.x = viewport.xmin + (viewport.xmax - viewport.xmin) * (0.5f + 0.5f * v.x);
+        v.y = viewport.ymin + (viewport.ymax - viewport.ymin) * (0.5f - 0.5f * v.y);
+        return v;
+    }
+
+}</code></pre>
+
+            <p>Here, <code>xmax</code> and <code>ymax</code> are exclusive, i.e. the right-most pixel included in the viewport will have the X coordinate of <code>xmax-1</code>.</p>
+
+            <p>Now, let's add this <code>viewport</code> to our <code>draw</code> function as a parameter:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/renderer.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/include/rasterizer/renderer.hpp">...
+
+#include &lt;rasterizer/viewport.hpp&gt;
+
+...
+
+    void draw(image_view const & color_buffer, viewport const & viewport,
+        draw_command const & command);
+
+...</code></pre>
+
+            <p>I'm not adding it to the <code>draw_command</code> struct, because it's kind of a property of the output buffer and not of the rendered objects themselves. We could probably create a <code>render_target</code> class containing a color buffer and a viewport, like this:</p>
+
+            <pre><code class="language-cpp block">struct render_target
+{
+    image_view color_buffer;
+    viewport viewport;
+};</code></pre>
+
+            <p>and use it as a parameter to the <code>draw</code> function, but I didn't bother doing this.</p>
+
+            <p>Now, we need to implement viewport support in our rasterization code. This is rather straightforward: just convert the coordinates from \([-1,1]\) to screen pixels using the <code>apply</code> function we made earlier, and make sure we never touch pixels outside the viewport:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/renderer.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/source/renderer.cpp">...
+
+void draw(image_view const & color_buffer, viewport const & viewport,
+    draw_command const & command)
+{
+    ...
+
+
+    auto v0 = command.transform * as_point(command.mesh.positions[vertex_index + 0]);
+    auto v1 = command.transform * as_point(command.mesh.positions[vertex_index + 1]);
+    auto v2 = command.transform * as_point(command.mesh.positions[vertex_index + 2]);
+
+    v0 = apply(viewport, v0);
+    v1 = apply(viewport, v1);
+    v2 = apply(viewport, v2);
+
+    ...
+
+    std::int32_t xmin = std::max&lt;std::int32_t&gt;(viewport.xmin, 0);
+    std::int32_t xmax = std::min&lt;std::int32_t&gt;(viewport.xmax, color_buffer.width) - 1;
+    std::int32_t ymin = std::max&lt;std::int32_t&gt;(viewport.ymin, 0);
+    std::int32_t ymax = std::min&lt;std::int32_t&gt;(viewport.ymax, color_buffer.height) - 1;
+
+    xmin = std::max&lt;float&gt;(xmin, std::min({std::floor(v0.x), std::floor(v1.x), std::floor(v2.x)}));
+    xmax = std::min&lt;float&gt;(xmax, std::max({std::floor(v0.x), std::floor(v1.x), std::floor(v2.x)}));
+    ymin = std::max&lt;float&gt;(ymin, std::min({std::floor(v0.y), std::floor(v1.y), std::floor(v2.y)}));
+    ymax = std::min&lt;float&gt;(ymax, std::max({std::floor(v0.y), std::floor(v1.y), std::floor(v2.y)}));
+
+    ...
+}</code></pre>
+
+            <p>Notice that I'm also doing stuff like <code>max(viewport.xmin, 0)</code> in case somebody gives us a viewport that is larger than the screen itself.</p>
+
+            <p>Now we need to update our main rendering loop to use the viewport. Let's just draw a single triangle for a quick test:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/source/main.cpp">...
+
+viewport viewport
+{
+    .xmin = 0,
+    .ymin = 0,
+    .xmax = (std::int32_t)color_buffer.width,
+    .ymax = (std::int32_t)color_buffer.height,
+};
+
+clear(color_buffer, {0.9f, 0.9f, 0.9f, 1.f});
+
+vector3f positions[]
+{
+    { 0.f,   0.5f, 0.f},
+    {-0.5f, -0.5f, 0.f},
+    { 0.5f, -0.5f, 0.f},
+};
+
+vector4f colors[]
+{
+    {1.f, 0.f, 0.f},
+    {0.f, 1.f, 0.f},
+    {0.f, 0.f, 1.f},
+};
+
+draw(color_buffer, viewport,
+    draw_command {
+        .mesh = {
+            .positions = {positions},
+            .colors = {colors},
+            .count = 3,
+        },
+    }
+);
+
+...</code></pre>
+
+            <p>We should get a colored triangle around the center of the screen:</p>
+
+            <center><img src="/blog/media/implementing-a-tiny-cpu-rasterizer/04-new-triangle.png" class="image-embed"></center><br>
+
+            <p>Note that if we change the size of our window, the triangle will scale alongside it, because now it exists in a virtual relative coordinate system. In particular, the triangle can get flattened along one axis without changing along the other axis (if we do the same with the window). This is a feature, not a bug: using a simple coordinate system like \([-1,1]\) will help us simplify the formulas later.</p>
+
+            <h2 id="section-indexed-rendering">Indexed rendering</h2>
+
+            <p>It's time we moved on from triangles to something more substantial. When describing 3D meshes, it often happens that the same vertex is shared among many triangles (in fact, among 6 triangles on average, as a consequence of <a href="https://en.wikipedia.org/wiki/Euler_characteristic">Euler's formula</a>). Our current API doesn't allow that: we'd have to duplicate the vertex for each triangle containing it.</p>
+
+            <p>Instead, graphics APIs usually support <i>indexed rendering</i>: the triangles don't contain vertices, but instead refer to them by indices. So, we have a separate array of vertices which come in any order, and an array of triangles, where each triangle is a triple of vertex indices. This allows us to remove vertex duplication: the only thing that is duplicated is the index, which is always small (typically 2-4 bytes).</p>
+
+            <p>So, let's update our <code>mesh</code> definition to include indices:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/mesh.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/include/rasterizer/mesh.hpp">...
+
+struct mesh
+{
+    attribute&lt;vector3f&gt; positions = {};
+    attribute&lt;vector4f&gt; colors = {};
+    std::uint32_t const * indices = nullptr;
+    std::uint32_t count = 0;
+};
+
+...</code></pre>
+
+            <p>Note that I've renamed the <code>vertex_count</code> field to just <code>count</code>. If <code>indices</code> is non-null, we will use indexed rendering, and <code>count</code> specifies the number of indices in our index array (i.e the number of triangles times 3). If <code>indices</code> is null, we use the old version of non-indexed rendering, and <code>count</code> is the number of vertices.</p>
+
+            <p>Now, supporting indexed rendering in our rasterizer is very easy &mdash; just replace <code>vertex_index + 0</code> with the actual vertex index in case we're using indexed rendering:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/renderer.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/source/renderer.cpp">...
+
+std::uint32_t i0 = vertex_index + 0;
+std::uint32_t i1 = vertex_index + 1;
+std::uint32_t i2 = vertex_index + 2;
+
+if (command.mesh.indices)
+{
+    i0 = command.mesh.indices[i0];
+    i1 = command.mesh.indices[i1];
+    i2 = command.mesh.indices[i2];
+}
+
+auto v0 = command.transform * as_point(command.mesh.positions[i0]);
+auto v1 = command.transform * as_point(command.mesh.positions[i1]);
+auto v2 = command.transform * as_point(command.mesh.positions[i2]);
+
+v0 = apply(viewport, v0);
+v1 = apply(viewport, v1);
+v2 = apply(viewport, v2);
+
+auto c0 = command.mesh.colors[i0];
+auto c1 = command.mesh.colors[i1];
+auto c2 = command.mesh.colors[i2];
+
+...</code></pre>
+
+            <p>To test indexed rendering, replace our triangle with a square, so that we have 4 vertices and 2 triangles (thus 6 indices):</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/source/main.cpp">...
+
+vector3f positions[]
+{
+    {-0.5f, -0.5f, 0.f},
+    {-0.5f,  0.5f, 0.f},
+    { 0.5f, -0.5f, 0.f},
+    { 0.5f,  0.5f, 0.f},
+};
+
+vector4f colors[]
+{
+    {1.f, 0.f, 0.f},
+    {0.f, 1.f, 0.f},
+    {0.f, 0.f, 1.f},
+    {1.f, 1.f, 1.f},
+};
+
+std::uint32_t indices[]
+{
+    0, 1, 2,
+    2, 1, 3,
+};
+
+draw(color_buffer, viewport,
+    draw_command{
+        .mesh = {
+            .positions = {positions},
+            .colors = {colors},
+            .indices = indices,
+            .count = 6,
+        },
+    }
+);
+
+...</code></pre>
+
+            <p>And we should get a nice rectangle:</p>
+
+            <center><img src="/blog/media/implementing-a-tiny-cpu-rasterizer/04-square.png" class="image-embed"></center><br>
+
+            <h2 id="section-3d-transformations">3D transformations</h2>
+
+            <p>I've promised you some 3D, but all we've done now is still 2D. Let's actually get to 3D!</p>
+
+            <p>You'd think that the 3rd coordinate of our vertices has something to do with 3D, but we're not using it yet: it is just completely ignored by our rasterizer. However, it is <i>not</i> ignored by our \(4\times 4\) transformation matrices!</p>
+
+            <p>Since our <code>types.hpp</code> file got really big, I've split it into <a href="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/include/rasterizer/vector.hpp"><code>vector.hpp</code></a>, <a href="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/include/rasterizer/color.hpp"><code>color.hpp</code></a> and <a href="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/include/rasterizer/matrix.hpp"><code>matrix.hpp</code></a>. Since we'll be using a lot of various 3D matrix transformations later, I've added a bunch of utility functions for creating these transformations:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/matrix.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/include/rasterizer/matrix.hpp">...
+
+struct matrix4x4f
+{
+    float values[16];
+
+    static matrix4x4f identity();
+    static matrix4x4f scale(vector3f const & s);
+    static matrix4x4f scale(float s);
+    static matrix4x4f translate(vector3f const & s);
+    static matrix4x4f rotateXY(float angle);
+    static matrix4x4f rotateYZ(float angle);
+    static matrix4x4f rotateZX(float angle);
+};
+
+...</code></pre>
+
+            <p>with the <a href="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/include/rasterizer/matrix.hpp">usual implementations</a>, as well as a very straightforward function for multiplying \(4\times 4\) matrices:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/matrix.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/include/rasterizer/matrix.hpp">...
+
+inline matrix4x4f operator * (matrix4x4f const & m1, matrix4x4f const & m2)
+{
+    matrix4x4f result
+    {
+        0.f, 0.f, 0.f, 0.f,
+        0.f, 0.f, 0.f, 0.f,
+        0.f, 0.f, 0.f, 0.f,
+        0.f, 0.f, 0.f, 0.f,
+    };
+
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j)
+            for (int k = 0; k < 4; ++k)
+                result.values[4 * i + j] += m1.values[4 * i + k] * m2.values[4 * k + j];
+
+    return result;
+}
+
+...</code></pre>
+
+            <p><i>Why did I keep all these functions in the header, instead of creating a separate <code>matrix.cpp</code> file? I don't know. Probably out of pure laziness.</i></p>
+
+            <p>Now, let's rotate our poor square around the Y axis:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/source/main.cpp">...
+
+int main()
+{
+    ...
+
+    float time = 0.f;
+
+    ...
+
+    while (running)
+    {
+        ...
+
+        time += dt;
+
+        ...
+
+        matrix4x4f transform = matrix4x4f::rotateZX(time);
+
+        draw(color_buffer, viewport,
+            draw_command{
+                .mesh = {
+                    .positions = {positions},
+                    .colors = {colors},
+                    .indices = indices,
+                    .count = 6,
+                },
+                .transform = transform,
+            }
+        );
+
+        ...
+    }
+}</code></pre>
+
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/implementing-a-tiny-cpu-rasterizer/04-rotating-square.mp4" type="video/mp4"></video></center>
+
+            <p>Is it what you expected? Well, it's quite heavily distorted along the X axis due to the aspect ratio of the window, but otherwise that' how a rotating rectangle would look like if you looked at it from far away. Or would it? It's hard to say when our mesh is still in 2D.</p>
+
+            <h2 id="section-the-cube">The Cube</h2>
+
+            <p>Instead of dull, flat 2D objects, let's use something that actually uses the 3 dimensions. Something canonical and well-known. Something like a cube!</p>
+
+            <p>A cube has 8 vertices, but I want each face of the cube to have its own color, so I can't share vertices between different faces. So, I'll have 4 square faces, each composed of 4 vertices and 2 triangles. Setting up the cube mesh is rather boring, so I moved it to a separate pair of <a href="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/include/rasterizer/cube.hpp">header</a> and <a href="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/source/cube.cpp">source</a> files. The header file simply exposes the cube as a ready-to-use mesh:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/cube.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/include/rasterizer/cube.hpp">#pragma once
+
+#include &lt;rasterizer/mesh.hpp&gt;
+
+namespace rasterizer
+{
+
+    extern const mesh cube;
+
+}</code></pre>
+
+            <p>Now we can use this mesh in place of our square in the main rendering loop:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/source/main.cpp">...
+
+#include &lt;rasterizer/cube.hpp&gt;
+
+...
+
+        draw(color_buffer, viewport,
+            draw_command{
+                .mesh = cube,
+                .transform = transform,
+            }
+        );
+
+...</code></pre>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/implementing-a-tiny-cpu-rasterizer/04-rotating-cube-1.mp4" type="video/mp4"></video></center>
+
+            <p>Huh?...</p>
+
+            <p>Well, our cube occupies the region \([-1,1]^3\) of the 3D space, which is the same as the region occupied by the screen in virtual XY coordinates. That's why the cube fills the whole screen.</p>
+
+            <p>Let's scale it down by a factor of 2 first:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/source/main.cpp">...
+
+matrix4x4f transform = matrix4x4f::scale(0.5f) * matrix4x4f::rotateZX(time);
+
+...</code></pre>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/implementing-a-tiny-cpu-rasterizer/04-rotating-cube-2.mp4" type="video/mp4"></video></center>
+
+            <p>Now, let's remove the distortion due to screen aspect ratio, by scaling the X coordinate in proportion to the aspect ratio:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/source/main.cpp">...
+
+matrix4x4f transform = matrix4x4f::scale({height * 1.f / width, 1.f, 1.f})
+    * matrix4x4f::scale(0.5f) * matrix4x4f::rotateZX(time);
+
+...</code></pre>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/implementing-a-tiny-cpu-rasterizer/04-rotating-cube-3.mp4" type="video/mp4"></video></center>
+
+            <p>It's still weird. Let's rotate it along some other axis as well, using a different rotation speed:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/source/main.cpp">...
+
+matrix4x4f transform = matrix4x4f::scale({height * 1.f / width, 1.f, 1.f})
+    * matrix4x4f::scale(0.5f)
+    * matrix4x4f::rotateZX(time)
+    * matrix4x4f::rotateXY(time * 1.61f);
+
+...</code></pre>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/implementing-a-tiny-cpu-rasterizer/04-rotating-cube-4.mp4" type="video/mp4"></video></center>
+
+            <p>That's definitely a cube, but the drawing order of the faces is wrong: some faces that should be at the back are drawn on top of faces that should've been at front!</p>
+
+            <p>This makes sense: after all, we didn't do literally anything to prevent this from happening. The full solution to this problem will come in <a href="/blog/posts/implementing-a-tiny-cpu-rasterizer-part-6.html">part 6</a> of this tutorial; for now, we can simply use the fact that a cube is a <i>convex</i> polyhedron, and back-face culling should fix the issue for now:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/source/main.cpp">...
+
+draw(color_buffer, viewport,
+    draw_command{
+        .mesh = cube,
+        .cull_mode = cull_mode::cw,
+        .transform = transform,
+    }
+);
+
+...</code></pre>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/implementing-a-tiny-cpu-rasterizer/04-rotating-cube-5.mp4" type="video/mp4"></video></center>
+
+            <p>Now that's a perfectly good cube! It's definitely 3D, and it's even rotating.</p>
+
+            <p>Though, it still looks a little bit flat, as if we were looking at it from a large distance through a spyglass or a telescope. This is because we're using an <i>orthographic projection</i>: a type of 3D-to-2D projection that maps the image parallel to some direction vector. In our case, this direction is the Z axis: the rasterizer simply ignores it, and takes the remaining XY coordinates to project the point to the screen:</p>
+
+            <center><img src="/blog/media/implementing-a-tiny-cpu-rasterizer/04-orthographic.png" class="image-embed"></center><br>
+
+            <h2 id="section-perspective-projection-theory">Perspective projection: theory</h2>
+
+            <p>The issue with orthographic projection is that it doesn't give us any information about how far certain objects are in relation to each other, as if they are all infinitely far. This is not how eyes and camera lenses work: they clearly let us distinguish nearby and far away objects, simply because the latter appear smaller. This is a feature of <i>perspective projection</i> &mdash; it makes distanct objects smaller:</p>
+
+            <center><img src="/blog/media/implementing-a-tiny-cpu-rasterizer/04-perspective.png" class="image-embed"></center><br>
+
+            <p>It achieves this simply by dividing the XY coordinates by the Z coordinate before projecting to the screen. This way, further objects will appear smaller on screen.</p>
+
+            <p>However, dividing by a coordinate is a <i>non-linear</i> operation, meaning that it <i>cannot</i> be done using a matrix. We'll have to support dividing by Z in our rasterizer explicitly.</p>
+
+            <p>But what if we don't want to divide? What if an orthographic projection is exactly what we need, e.g. for an isometric perspective in an RPG game? We need some way to switch between perspective and orthographic modes.</p>
+
+            <p>Luckily, our ancestors already figured this out: <i>use the W coordinate</i>! Specifically, set \(W=1\) if you want orthographic projection, or set \(W=Z\) if you want the perspective one. This way, our rasterizer can <i>always</i> divide by \(W\): for an orthographic projection this will be a no-op. This step is called the <i>perspective divide</i>.</p>
+
+            <p>Conveniently, leaving \(W=1\) or setting \(W=Z\) can also be done using a matrix, the so-called <i>projection matrix</i>. After applying this matrix, our points are in a 4D space called the <i>clip space</i> (the name will make more sense in <a href="/blog/posts/implementing-a-tiny-cpu-rasterizer-part-5.html">the next part</a>). Applying perspective division in <i>clip space</i> results in points in <i>NDC</i>. Note that points in clip space can have \(W\neq 1\) now, due to the perspective projection matrix.</p>
+
+            <p>Though, usually the full formula is a bit more complicated. Firstly, we usually take \(-Z\) as our "forward" direction in 3D, just so that XYZ would form a <i>right-handed</i> coordinate system (which affects stuff like triangle orientations, normal vector directions, etc).</p>
+
+            <p>Secondly, the Z coordinate is also divided by W, which in case of a perspective projection would simply give \(\frac{Z}{Z} = 1\). However, we want to use this value later for the depth buffer, and we want to constrain it to be in some predefined range because the depth buffer precision is limited. This range is usually \([-1,1]\) in OpenGL or \([0,1]\) in other graphics APIs. We'll stick to the OpenGL convention here.</p>
+
+            <p>To limit the Z coordinate after dividing by W, we choose two distances called <i>near</i> and <i>far</i> that will become \(-1\) and \(1\) respectively after applying our projection matrix and doing the perspective divide. They effectively define the range of distances that our camera can see:</p>
+
+            <center><img src="/blog/media/implementing-a-tiny-cpu-rasterizer/04-frustum.png" class="image-embed"></center><br>
+
+            <p>A matrix can only replace a coordinate \(Z\) with a linear combination of other coordinates, and we probably don't want to involve X or Y here, so the formula for the clip-space\(Z\) coordinate after applying our matrix should be something like \(A\cdot Z + B\cdot W\). Meanwhile, for the clip-space \(W\) coordinate, the matrix should simply set \(W=-Z\). Here's the current look of our perspective projection matrix:</p>
+
+            \[
+                \begin{pmatrix}
+                1 & 0 & 0 & 0 \\
+                0 & 1 & 0 & 0 \\
+                0 & 0 & A & B \\
+                0 & 0 & -1 & 0
+                \end{pmatrix}
+            \]
+
+            <p>(We're not doing anything with X and Y for now).</p>
+
+            <p>Recall that for input vertices (in world space, before applying the projection matrix) we have \(W=1\) (because they are <i>points</i> in homogeneous coordinates). We want \(Z=-\text{near}\) to become \(-1\) after applying the matrix and perspective divide, and similarly for \(Z=-\text{far}\) and \(1\). This leads to a system of equations</p>
+
+            \[
+                \frac{A\cdot (-\text{near}) + B}{\text{near}} = -1 \\
+                \frac{A\cdot (-\text{far}) + B}{\text{far}} = 1 \\
+            \]
+
+            <p>Solving this, we get</p>
+
+            \[
+                A = -\frac{\text{far}+\text{near}}{\text{far}-\text{near}} \\
+                B = -\frac{2\cdot\text{far}\cdot\text{near}}{\text{far}-\text{near}}
+            \]
+
+            <p>and the matrix looks like</p>
+
+            \[
+                \begin{pmatrix}
+                1 & 0 & 0 & 0 \\
+                0 & 1 & 0 & 0 \\
+                0 & 0 & -\frac{\text{far}+\text{near}}{\text{far}-\text{near}} & -\frac{2\cdot\text{far}\cdot\text{near}}{\text{far}-\text{near}} \\
+                0 & 0 & -1 & 0
+                \end{pmatrix}
+            \]
+
+            <p>Though, if we use this matrix, things will look weird, because our X and Y coordinate ranges also depend on Z now (since the rendering engine will divide by Z in case of perspective projection). I'll skip the full derivation (see <a href="https://www.songho.ca/opengl/gl_projectionmatrix.html">here</a>), but the final matrix turns out to be</p>
+
+            \[
+                \begin{pmatrix}
+                \frac{1}{\tan\frac{\text{fovX}}{2}} & 0 & 0 & 0 \\
+                0 & \frac{1}{\tan\frac{\text{fovY}}{2}} & 0 & 0 \\
+                0 & 0 & -\frac{\text{far}+\text{near}}{\text{far}-\text{near}} & -\frac{2\cdot\text{far}\cdot\text{near}}{\text{far}-\text{near}} \\
+                0 & 0 & -1 & 0
+                \end{pmatrix}
+            \]
+
+            <p>where \(\text{fovX}\) is the field of view angle for the X direction (i.e. how much does the camera see horizontally), and \(\text{fovY}\) is a similar angle for Y.</p>
+
+            <h2 id="section-perspective-projection-implementation">Perspective projection: implementation</h2>
+
+            <p>A lot of formulas again! Jeez, who knew that 3D rendering is just a ton of math and almost nothing else...</p>
+
+            <center><img src="/blog/media/implementing-a-tiny-cpu-rasterizer/04-how-to-make-games.png" class="image-embed"></center><br>
+
+            <p>Anyway, let's finally implement perspective projection. This will take a tiny amount of code! First, let's add a perspective division helper function in <a href="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/include/rasterizer/vector.hpp"><code>vector.hpp</code></a>:
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/vector.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/include/rasterizer/vector.hpp">...
+
+inline vector4f perspective_divide(vector4f v)
+{
+    v.x /= v.w;
+    v.y /= v.w;
+    v.z /= v.w;
+    return v;
+}
+
+...</code></pre>
+
+            <p>Now, apply it in our rasterizer right after reading vertex positions, before converting them to screen-space pixel coordinates:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/renderer.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/source/renderer.cpp">...
+
+auto v0 = command.transform * as_point(command.mesh.positions[i0]);
+auto v1 = command.transform * as_point(command.mesh.positions[i1]);
+auto v2 = command.transform * as_point(command.mesh.positions[i2]);
+
+v0 = perspective_divide(v0);
+v2 = perspective_divide(v1);
+v1 = perspective_divide(v2);
+
+v0 = apply(viewport, v0);
+v1 = apply(viewport, v1);
+v2 = apply(viewport, v2);
+
+...</code></pre>
+
+            <p>Nothing should change now, because we're still using an orthographic projection, and perspective divide is just dividing by \(1\). Let's add a helper function to <a href="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/include/rasterizer/matrix.hpp"><code>matrix.hpp</code></a> that implements a perspective projection matrix:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/matrix.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/include/rasterizer/matrix.hpp">...
+
+static matrix4x4f perspective(float near, float far, float fovY, float aspect_ratio)
+{
+    float top = near * std::tan(fovY / 2.f);
+    float right = top * aspect_ratio;
+
+    return matrix4x4f
+    {
+        near / right, 0.f, 0.f, 0.f,
+        0.f, near / top, 0.f, 0.f,
+        0.f, 0.f, -(far + near) / (far - near), - 2.f * far * near / (far - near),
+        0.f, 0.f, -1.f, 0.f,
+    };
+}
+
+...</code></pre>
+
+            <p>Notice that I'm using <code>aspect_ratio</code> instead of <code>fovX</code> directly, so that it's easier to make a projection matrix that compensates the distortion created by the output window dimensions.</p>
+
+            <p>Now, set our <code>transform</code> matrix in the main rendering loop to apply a perspective projection after other transformations (except the scalings, we don't need them anymore):</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/source/main.cpp">...
+
+matrix4x4f transform =
+    matrix4x4f::perspective(0.01f, 10.f, M_PI / 3.f, width * 1.f / height)
+    * matrix4x4f::rotateZX(time)
+    * matrix4x4f::rotateXY(time * 1.61f);
+
+...</code></pre>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/implementing-a-tiny-cpu-rasterizer/04-rotating-cube-6.mp4" type="video/mp4"></video></center>
+
+            <p>Huh???</p>
+
+            <p>What we see is a rotating cube, but we're looking at it <i>from inside</i> the cube, at it's clearly wrong: there shouldn't be any weird intersecting triangles or crosses there.</p>
+
+            <p>We'll fix this in the <a href="/blog/posts/implementing-a-tiny-cpu-rasterizer-part-5.html">next part</a>; for now, let's simply move the cube away from the camera after rotating it, but before the projection matrix. The camera looks in the \(-Z\) direction, so that's the direction we need to move the cube along:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/dea226064c929f09c01445cb3e34ba9a0177124c/source/main.cpp">...
+
+matrix4x4f transform =
+    matrix4x4f::perspective(0.01f, 10.f, M_PI / 3.f, width * 1.f / height)
+    * matrix4x4f::translate({0.f, 0.f, -5.f})
+    * matrix4x4f::rotateZX(time)
+    * matrix4x4f::rotateXY(time * 1.61f);
+
+...</code></pre>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/implementing-a-tiny-cpu-rasterizer/04-rotating-cube-7.mp4" type="video/mp4"></video></center>
+
+            <p>Finally, we get a truly 3D rotating cube with a perspective projection!</p>
+
+            <p>There are still a ton of issues with our code, which we'll be fixing in the next two parts.</p>
+
+            <table style="width: 100%; table-layout: fixed;">
+                <tr>
+                    <td style="text-align: left;"><a href="/blog/posts/implementing-a-tiny-cpu-rasterizer-part-3.html">\(\leftarrow\) Part 3: Interpolating colors</a></td>
+                    <td style="text-align: center;"><a href="https://github.com/lisyarus/tiny-rasterizer/tree/dea226064c929f09c01445cb3e34ba9a0177124c"><i>Source code for this part</i></a></td>
+                    <td style="text-align: right;"><a href="/blog/posts/implementing-a-tiny-cpu-rasterizer-part-5.html">Part 5: Fixing issues with 3D \(\rightarrow\)</a></td>
+                </tr>
+            </table>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/implementing-a-tiny-cpu-rasterizer.js"></script>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>

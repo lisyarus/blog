@@ -3,9 +3,9 @@ let tutorialSeriesContentsHTML = `
     <li id="li-part-1"><a href="/blog/posts/implementing-a-tiny-cpu-rasterizer-part-1.html">Part 1: Clearing the screen</a></li>
     <li id="li-part-2"><a href="/blog/posts/implementing-a-tiny-cpu-rasterizer-part-2.html">Part 2: Drawing a triangle</a></li>
     <li id="li-part-3"><a href="/blog/posts/implementing-a-tiny-cpu-rasterizer-part-3.html">Part 3: Interpolating colors</a></li>
-    <li id="li-part-4">Part 4: Changing perspective <i>(work in progress)</i></li>
-    <li id="li-part-5">Part 5: Fixing 3D <i>(work in progress)</i></li>
-    <li id="li-part-6">Part 6: Adding some depth <i>(work in progress)</i></li>
+    <li id="li-part-4"><a href="/blog/posts/implementing-a-tiny-cpu-rasterizer-part-4.html">Part 4: Changing perspective</a></li>
+    <li id="li-part-5"><a href="/blog/posts/implementing-a-tiny-cpu-rasterizer-part-5.html">Part 5: Fixing issues with 3D</a></li>
+    <li id="li-part-6"><a href="/blog/posts/implementing-a-tiny-cpu-rasterizer-part-6.html">Part 6: Adding some depth</a></li>
     <li id="li-part-7">Part 7: Shedding some light <i>(work in progress)</i></li>
     <li id="li-part-8">Part 8: Texturing <i>(work in progress)</i></li>
     <li id="li-part-9">Part 9: Loading models <i>(work in progress)</i></li>

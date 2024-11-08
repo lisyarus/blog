@@ -1,0 +1,418 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta property="og:type" content="article" />
+        <meta property="og:title" content="Implementing a tiny CPU rasterizer | Part 6: Adding some depth">
+        <meta property="og:site_name" content="lisyarus blog">
+        <meta property="og:image" content="/blog/media/implementing-a-tiny-cpu-rasterizer/cover.png" />
+        <meta property="og:image:height" content="240" />
+        <meta property="og:image:width" content="520" />
+        <title>Implementing a tiny CPU rasterizer | Part 6: Adding some depth | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/cmake.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+            console.log("HIGHLIGHTED");
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+        <script async src="//platform.twitter.com/widgets.js" charset="utf-8"></script>
+        <style>
+            .rainbow-text {
+                background-image: linear-gradient(to left, violet, indigo, blue, green, yellow, orange, red);
+                -webkit-background-clip: text;
+                color: rgba(0,0,0,0.25);
+            }
+        </style>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Implementing a tiny CPU rasterizer</div></center><br/>
+            <center><div class="page-title">Part 6: Adding some depth</div></center><br/>
+            <center><span class="post-date">2024 Nov 11</span></center><br/>
+
+            <div id="tutorial-series-contents" data-part="6"></div>
+
+            <p><i>The code for this part is available <a href="https://github.com/lisyarus/tiny-rasterizer/commit/7f337779bbedb90e48bfaf1208b122961f957539">in this commit</a>.</i></p>
+
+            <p>We've fixed most of the notorious problems with 3D rendering and perspective interpolation, but there's still one problem left. We can draw a cube, but what if we disable back-face culling?</p>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/implementing-a-tiny-cpu-rasterizer/06-one-rotating-cube-wrong.mp4" type="video/mp4"></video></center>
+
+            <p>That's clearly not great.</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-rendering-order-matters">Rendering order matters</h2>
+
+            <p>Well, if disabling back-face culling breaks our cube, then...don't disable it? Of course, it's not that simple. It only works because a cube is a <i>convex</i> object. We can easily make a non-convex scene by rendering <i>two</i> cubes: first, one closer to the camera, and then one further from it (in this exact order!). Then, the further cube will be drawn on top of the closer one, even with back-face culling enabled:</p>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/implementing-a-tiny-cpu-rasterizer/06-two-rotating-cubes-wrong.mp4" type="video/mp4"></video></center>
+
+            <p>Back-face culling can remove invisible faces from a single convex object, but between two separate cubes nothing tells our rendering engine about what should be drawn on top of what.</p>
+
+            <p>One of the solutions that comes up to mind is <i>sorting</i> everything in relation to the camera, which is called the <i><a href="https://en.wikipedia.org/wiki/Painter%27s_algorithm">painter's algorithm</a></i>. It's called like that because that's how painters do things: draw far away objects (e.g. mountains) first, draw closer objects (e.g. a forest) next, draw even closer objects on top of them (e.g. a house), etc. This might work in painting, but it doesn't work in computer graphics. First, there are cases when no ordering on the input triangles can produce a solution:</p>
+
+            <center><img src="/blog/media/implementing-a-tiny-cpu-rasterizer/06-painters-fail.png" class="image-embed"></center><br>
+
+            <p>Secondly, it's not clear what we should do when rendering intersecting triangles. In both these cases we'd probably have to tessellate the input triangles into finer triangles, and figuring out how exactly to do this can be tricky.</p>
+
+            <p>Also, sorting is a costly operation, and we need to do it on <i>all triangles in the scene</i>, which completely breaks our API of independent decoupled <code>draw</code> calls.</p>
+
+            <h2 id="section-depth-buffer">Depth buffer</h2>
+
+            <p>Of course, there is another solution. It comes with it's own downsides, but these turn out to be more manageable. This solution is called the <i>depth buffer</i>.</p>
+
+            <p>Here's the idea: when outputting a pixel color, let's also write it's distance to the camera somewhere. Say, we'd have a full-screen sized buffer with such distances, one number per each pixel. Then, when drawing a pixel, we simply write this pixel's camera distance to that buffer. Then, if we draw something else, we compare the distance of our new pixel with what is already remembered in the depth buffer: if the depth buffer value is smaller, it means there's something on screen already that is closer to the camera than our current pixel, and we skip outputting the current pixel, because it is occluded. This distance comparison thing is called the <i>depth test</i>.</p>
+
+            <p>The actual value written to the depth buffer is the post-projection \(\frac{Z}{W}\), mapped from the \([-1, 1]\) range to whatever the depth buffer format supports. Recall that we've carefully crafted our perspective projection matrix so that the range \([\text{near},\text{far}]\) of Z coordinates maps precisely to \([-1, 1]\) after perspective divide.</p>
+
+            <p>Typically, depth buffers are unsigned normalized 24-bit buffers, meaning that each depth buffer value is represented by a number \([0..16777215]\). However, C++ (and most other languages too) doesn't have a built-in 24-bit unsigned integer type, so I'll use 32-bit unsigned ints instead. This won't change much other than a few constants in the code. You can use a 16-bit buffer instead, which is also a common value supported by GPUs.</p>
+
+            <p>So, to use a depth buffer, we need to allocate its memory first. We already have an <code>image_view</code> type that <i>references</i> an image, but this time we need to <i>own</i> the image itself, so we'll create an <code>image</code> class. I'm making it a template, since we'll need images with different pixel types when we start working on textures. Let's create a new file:</p>
+
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/image.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/include/rasterizer/image.hpp">#pragma once
+
+#include &lt;rasterizer/image_view.hpp&gt;
+
+#include &lt;cstdint&gt;
+#include &lt;memory&gt;
+
+namespace rasterizer
+{
+
+    template &lt;typename Pixel&gt;
+    struct image
+    {
+        std::unique_ptr&lt;Pixel[]&gt; pixels;
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+
+        explicit operator bool() const
+        {
+            return pixels != nullptr;
+        }
+    };
+
+}</code></pre>
+
+            <p>We're just storing an array of pixels in a <code>std::unique_ptr&lt;Pixel[]&gt;</code>, and we have an operator to check if the image is valid (i.e. has been allocated).</p>
+
+            <p>Now, to actually allocate the image, let's add a static method to this class:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/image.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/include/rasterizer/image.hpp">static image allocate(std::uint32_t width, std::uint32_t height)
+{
+    return image
+    {
+        .pixels = std::make_unique&lt;Pixel[]&gt;(width * height),
+        .width = width,
+        .height = height,
+    };
+}</code></pre>
+
+            <p>i.e. we simply allocate an array of pixels. Finally, we'll want to convert this <code>image</code> into an <code>image_view</code>, so we add a (non-static) method for that:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/image.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/include/rasterizer/image.hpp">image_view&lt;Pixel&gt; view()
+{
+    return image_view&lt;Pixel&gt;
+    {
+        .pixels = pixels.get(),
+        .width = width,
+        .height = height,
+    };
+}</code></pre>
+
+            <p>Oh, and, for that we need to make <code>image_view</code> a template as well:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/image_view.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/include/rasterizer/image_view.hpp">template &lt;typename Pixel&gt;
+struct image_view
+{
+    Pixel * pixels = nullptr;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+
+    explicit operator bool() const
+    {
+        return pixels != nullptr;
+    }
+
+    Pixel & at(std::uint32_t x, std::uint32_t y) const
+    {
+        return pixels[x + y * width];
+    }
+};</code></pre>
+
+            <h2 id="section-framebuffer">Framebuffer</h2>
+
+            <p>Now that we need to render both a color buffer and a depth buffer, it's a good idea to bundle these together. The object containing various output buffers for rendering is typically called a <i>framebuffer</i>. Let's create a separate file for it as well:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/framebuffer.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/include/rasterizer/framebuffer.hpp">#pragma once
+
+#include &lt;rasterizer/image_view.hpp&gt;
+#include &lt;rasterizer/color.hpp&gt;
+
+namespace rasterizer
+{
+
+    struct framebuffer
+    {
+        image_view&lt;color4ub&gt; color;
+        image_view&lt;std::uint32_t&gt; depth;
+
+        std::uint32_t width() const
+        {
+            if (color)
+                return color.width;
+            return depth.width;
+        }
+
+        std::uint32_t height() const
+        {
+            if (color)
+                return color.height;
+            return depth.height;
+        }
+    };
+
+}</code></pre>
+
+            <p>This struct simply stores two image views: one for the color buffer, one for the depth buffer. Note that I've hard-coded the depth buffer format to be <code>uint32_t</code>.</p>
+
+            <p>I've also added two convenience methods to retrieve the framebuffer width and height: they return the size of the color buffer if it is present, otherwise they fallback to the size of the depth buffer. Note that I'm assuming that the size of the color buffer and depth buffer is the same; otherwise, it is an error and can probably crash. We could add a <code>valid()</code> method to check that, and refuse to render to an invalid framebuffer.</p>
+
+            <p><i>Why can a color buffer be missing? Isn't that the actual rendering result, after all? Well, wait until we implement shadow mapping :)</i></p>
+
+            <p>Now we need to tweak our <code>draw</code> function: now it takes a full <code>framebuffer</code> instead of just a color_buffer:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/renderer.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/include/rasterizer/renderer.hpp">void draw(framebuffer const & framebuffer, viewport const & viewport,
+    draw_command const & command);</code></pre>
+
+            <p>Now, in the rasterization code, we need to change <code>color_buffer.width</code> to <code>framebuffer.width()</code> and similarly for height, and we also need to check if the color buffer is present when outputting the color:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/renderer.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/source/renderer.cpp">if (framebuffer.color)
+    framebuffer.color.at(x, y) =
+        to_color4ub(l0 * v0.color + l1 * v1.color + l2 * v2.color);</code></pre>
+
+            <p>Great! Now let's fix our main rendering loop to work with the new framebuffer abstraction:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/source/main.cpp">framebuffer framebuffer
+{
+    .color = {
+        .pixels = (color4ub *)draw_surface->pixels,
+        .width = (std::uint32_t)width,
+        .height = (std::uint32_t)height,
+    },
+};
+
+...
+
+clear(framebuffer.color, {0.9f, 0.9f, 0.9f, 1.f});
+
+...
+
+draw(framebuffer, viewport,
+    draw_command { ... }
+);</code></pre>
+
+            <p>We still don't have the depth buffer, though. Let's define an <code>image</code> for it somewhere before the main loop:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/source/main.cpp">...
+
+image&lt;std::uint32_t&gt; depth_buffer;
+
+...</code></pre>
+
+            <p>Then, when the window is resized, we reset this image (so that we know we have to reallocate it):</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/source/main.cpp">case SDL_WINDOWEVENT_RESIZED:
+    ...
+    depth_buffer = {};
+    break;
+</code></pre>
+
+            <p>Then, in the beginning of a new frame, allocate the depth buffer if needed:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/source/main.cpp">if (!depth_buffer)
+    depth_buffer = image&lt;std::uint32_t&gt;::allocate(width, height);
+</code></pre>
+
+            <p>And finally add the depth buffer to our framebuffer setup:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/source/main.cpp">framebuffer framebuffer
+{
+    .color = {
+        .pixels = (color4ub *)draw_surface->pixels,
+        .width = (std::uint32_t)width,
+        .height = (std::uint32_t)height,
+    },
+    .depth = depth_buffer.view(),
+};</code></pre>
+
+            <p>Nice, we have a depth buffer! It isn't used by the rasterization code, though. Time to fix that.</p>
+
+            <h2 id="section-depth-test">Depth test</h2>
+
+            <p>The usual way to use the depth buffer is called <code>LESS</code>: if the depth value (i.e. \(\frac{Z}{W}\)) of the current pixel is <i>less</i> than what is written to the depth buffer, the pixel is said to <i>pass</i> the depth test, in which case it proceeds to be drawn on screen. However, other modes can be useful as well (for Z-prepass, reversed-Z, and other things). So, let's create a new enum for this depth testing mode, pretty much copying what various graphics APIs support:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/settings.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/include/rasterizer/settings.hpp">enum class depth_test_mode
+{
+    never,
+    always,
+    less,
+    less_equal,
+    greater,
+    greater_equal,
+    equal,
+    not_equal,
+};</code></pre>
+
+            <p>Now, occasionally it is useful to perform the depth test, but <i>skip</i> writing the depth value of the current pixel to the depth buffer. This can be used for transparent objects, particle systems, that sort of thing.</p>
+
+            <p>So, let's make a struct holding all settings related to the depth test:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/settings.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/include/rasterizer/settings.hpp">struct depth_settings
+{
+    bool write = true;
+    depth_test_mode mode = depth_test_mode::always;
+};</code></pre>
+
+            <p>By default, depth write is enabled, and the depth test mode is set to <code>ALWAYS</code>, meaning that all pixels will pass the test. This is a nice and safe default that will make code that doesn't need depth test work with no changes required.</p>
+
+            <p>Now add this struct to our <code>draw_command</code>:</p>
+
+            <pre><code class="language-cpp block" data-filename="include/rasterizer/draw_command.hpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/include/rasterizer/draw_command.hpp">struct draw_command
+{
+    struct mesh mesh;
+    enum cull_mode cull_mode = cull_mode::none;
+    depth_settings depth = {};
+    matrix4x4f transform = matrix4x4f::identity();
+};</code></pre>
+
+            <p>To actually support depth test in our rasterizer, let's first implement a convenience function that deals with all the various depth test modes (I've put it in our anonymous namespace in <code>renderer.cpp</code>):</p>
+
+            <pre><code class="language-cpp block" data-filename="source/renderer.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/source/renderer.cpp">bool depth_test_passed(depth_test_mode mode,
+    std::uint32_t value, std::uint32_t reference)
+{
+    switch (mode)
+    {
+    case depth_test_mode::always: return true;
+    case depth_test_mode::never: return false;
+    case depth_test_mode::less: return value < reference;
+    case depth_test_mode::less_equal: return value <= reference;
+    case depth_test_mode::greater: return value > reference;
+    case depth_test_mode::greater_equal: return value >= reference;
+    case depth_test_mode::equal: return value == reference;
+    case depth_test_mode::not_equal: return value != reference;
+    }
+
+    // Unreachable
+    return true;
+}</code></pre>
+
+            <p>Now, when rasterizing a pixel, <i>before</i> outputting the final color, check if a depth buffer is present. If it is, compute the intepolated Z-value (which will automatically work correctly, thanks to perspective-correct interpolation we've added earlier), and perform the depth test. If it doesn't pass, skip the current pixel altogether:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/renderer.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/source/renderer.cpp">if (framebuffer.depth)
+{
+    float z = l0 * v0.position.z + l1 * v1.position.z + l2 * v2.position.z;
+
+    // Convert from [-1, 1] to [0, UINT32_MAX]
+    std::uint32_t depth = (0.5f + 0.5f * z) * std::uint32_t(-1);
+
+    auto & old_depth = framebuffer.depth.at(x, y);
+    if (!depth_test_passed(command.depth.mode, depth, old_depth))
+        continue;
+
+    if (command.depth.write)
+        old_depth = depth;
+}</code></pre>
+
+            <p><code>uint32_t(-1)</code> is just a lazy way of getting the maximal possible value of <code>uint32_t</code>.</p>
+
+            <p>If we try to use this new depth test in our rendering, it won't work! Most probably you'll see nothing on the screen.</p>
+
+            <h2 id="section-clearing">Clearing the depth buffer</h2>
+
+            <p>We've forgot one crucial thing: <i>clearing</i> the depth buffer. Right now, each frame we use the depth buffer generated on the previous frame. Effectively, the depth buffer contains the smallest depth value (using <code>depth_test_mode::less</code>) that ever occurred in a particular pixel during the whole run of the program. Typical pixel depth values are larger than the smallest one possible in a particular scene, so they almost never pass the depth test.</p>
+
+            <p>The fix is easy: just add a function that clears a depth buffer with some fixed <code>uint32_t</code> value</p>
+
+            <pre><code class="language-cpp block" data-filename="source/renderer.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/source/renderer.cpp">void clear(image_view&lt;std::uint32_t&gt; const & depth_buffer,
+    std::uint32_t value)
+{
+    auto ptr = depth_buffer.pixels;
+    auto size = depth_buffer.width * depth_buffer.height;
+    std::fill(ptr, ptr + size, value);
+}</code></pre>
+
+            <p>And call this function right after clearing the main color buffer:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/source/main.cpp">clear(framebuffer.color, {0.9f, 0.9f, 0.9f, 1.f});
+clear(framebuffer.depth, -1);</code></pre>
+
+            <p>Now, set up a scene with our usual cube, disable back-face culling, and turn on the depth test (and add some projection matrix, and a model matrix to rotate the cube):</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/source/main.cpp">draw(framebuffer, viewport,
+    draw_command{
+        .mesh = cube,
+        .depth = {
+            .mode = depth_test_mode::less,
+        },
+        .transform = projection * view * model,
+    }
+);</code></pre>
+
+            <p><i>Btw, we've disabled culling just for a test, to see depth test in action. In actual code, we should keep culling on, because it lets us rasterize 2x less triangles.</i></p>
+
+            <p>We should see our glorious cube now with no artifacts:</p>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/implementing-a-tiny-cpu-rasterizer/06-one-rotating-cube-correct.mp4" type="video/mp4"></video></center>
+
+            <p>If we add another cube further from camera, the image shouldn't change, because the further cube will be occluded.</p>
+
+            <p>To really stress-test our depth test, create five intersecting rotating cubes, e.g. by offsetting them a little bit in the X direction:</p>
+
+            <pre><code class="language-cpp block" data-filename="source/main.cpp" data-url="https://github.com/lisyarus/tiny-rasterizer/blob/7f337779bbedb90e48bfaf1208b122961f957539/source/main.cpp">for (int i = -2; i <= 2; ++i)
+    draw(framebuffer, viewport,
+        draw_command{
+            .mesh = cube,
+            .cull_mode = cull_mode::cw,
+            .depth = {
+                .mode = depth_test_mode::less,
+            },
+            .transform = projection
+                * view
+                * matrix4x4f::translate({i, 0.f, 0.f})
+                * model,
+        }
+    );</code></pre>
+
+            <p>Here, my <code>model</code> matrix rotates the cube, <code>view</code> matrix moves them away from camera in -Z direction, and <code>projection</code> matrix implements the perspective projection.</p>
+
+            <p>We should see something like this:</p>
+
+            <center><video autoplay muted loop class="video-embed"><source src="/blog/media/implementing-a-tiny-cpu-rasterizer/06-five-rotating-cubes.mp4" type="video/mp4"></video></center>
+
+            <p>Notice how the cubes seem to perfectly occlude each other whenever they intersect. We're now fully 3D! Congrats.</p>
+
+            <table style="width: 100%; table-layout: fixed;">
+                <tr>
+                    <td style="text-align: left;"><a href="/blog/posts/implementing-a-tiny-cpu-rasterizer-part-5.html">\(\leftarrow\) Part 5: Fixing issues with 3D</a></td>
+                    <td style="text-align: center;"><a href="https://github.com/lisyarus/tiny-rasterizer/tree/7f337779bbedb90e48bfaf1208b122961f957539"><i>Source code for this part</i></a></td>
+                    <td style="text-align: right;">Part 7: Shedding some light <i>(wip)</i> \(\rightarrow\)</a></td>
+                </tr>
+            </table>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/implementing-a-tiny-cpu-rasterizer.js"></script>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
