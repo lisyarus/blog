@@ -66,6 +66,10 @@
 
             <p>Recall that after applying the projection matrix, the \(W\) coordinate contains the distance to the camera. It is positive if the point is in front of the camera, and it is negative if it is behind the camera. So, it seems that we need to cut off triangle parts with \(W \leq 0\) as well!</p>
 
+            <p>By the way, strictly speaking, we don't <i>have</i> to do clipping specifically. We could do the usual rasterization, and then check the <a href="#section-perspective-correct-interpolation-problem">properly interpolated</a> Z and W coordinates. However, rasterization is costly, since it iterates a ton of pixels, while clipping is cheap &mdash; it's just a dozen floating-point operations.</p>
+
+            <p><i>I'm also not sure if rasterization would work correctly for triangles intersecting the \(W=0\) plane, but clipping definitely removes this case!</i></p>
+
             <h2 id="section-clipping-equations">Clipping equations</h2>
 
             <p>Let's write down the exact equations that should be satisfied by points that survive clipping.</p>
@@ -644,6 +648,8 @@ else
 
             <p>As you can see, it's literally the same thing: take the original interpolation weights \(\lambda_i\), divide by the corresponding W-coordinates, normalize the resulting weights by dividing by their sum, and you're golden.</p>
 
+            <p>Notice how we <i>only</i> need to tweak the interpolation coefficients, and these same coefficients work for any vertex attribute. So, we don't need to worry about properly interpolating each separate attribute; rather, we tweak the interpolation weights, and these weights work correctly for any attribute.</p>
+
             <h2 id="section-perspective-correct-interpolation-code">Perspective-correct interpolation: the code</h2>
 
             <p>That was, once again, a ton of math. Thankfully, the fix in the code is really just a few lines! Do this in our interpolation coefficients computing code:</p>
@@ -662,7 +668,7 @@ l2 /= lsum;</code></pre>
 
             <center><video autoplay muted loop class="video-embed"><source src="/blog/media/implementing-a-tiny-cpu-rasterizer/05-chessboard-square-rotating-correct.mp4" type="video/mp4"></video></center>
 
-            <p>Notice how the checkerboard isn't distorted anymore, and looks pretty much how we'd expect it to look.</p>
+            <p>Notice how the checkerboard isn't distorted anymore, and looks pretty much how we'd expect it to look. And, once again, notice that we've only tweaked the weights <code>l0, l1, l2</code>, and we didn't touch the code that interpolates colors later.</p>
 
             <p>Now, in my code I did things ever so slightly differently. My <code>perspective_divide</code> function actually returns the <i>inverse</i> of the original W-coordinate in the W-coordinate of the result, for two reasons:</p>
 
