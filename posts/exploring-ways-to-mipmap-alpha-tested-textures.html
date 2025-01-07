@@ -100,7 +100,7 @@
                 <li><a href="https://bgolus.medium.com/anti-aliased-alpha-test-the-esoteric-alpha-to-coverage-8b177335ae4f">This post</a> by Ben Golus mentions the issue in the end, and suggests simply multiplying the alpha in the shader by <code>1.0 + lod * 0.25</code></li>
                 <li><a href="https://asawicki.info/articles/alpha_test.php5">This post</a> by Adam Sawicki talks in great depth about this issue, and suggests using a magic formula <code>max(alpha, alpha / 3.0 + 1.0 / 3.0)</code> to re-map alpha values when generating mipmaps,</li>
                 <li><a href="https://www.irrlicht3d.org/index.php?t=1526">This post</a> by Nikolaus Gebhardt also suggests a magic formula <code>a = mix(alpha, alphaMax, 0.35)</code> to re-map alpha values at mipmap generation, where <code>alphaMax</code> is the maximal alpha value encountered among 2x2 pixels from the previous mipmap level that contribute to the currently computed pixel,</li>
-                <li><a href="http://the-witness.net/news/2010/09/computing-alpha-mipmaps/">This post</a> by Ignacio Castaño from The Witness also suggests re-mapping alpha values, but in a clever way that preserves the overall <i>coverage</i>, i.e. the percentage of pixels that pass the alpha-test,</li>
+                <li><a href="https://www.ludicon.com/castano/blog/articles/computing-alpha-mipmaps/">This post</a> by Ignacio Castaño from The Witness also suggests re-mapping alpha values, but in a clever way that preserves the overall <i>coverage</i>, i.e. the percentage of pixels that pass the alpha-test,</li>
                 <li><a href="https://neubias.github.io/training-resources/filter_morphological/index.html">This page</a> describes something called <i>morphological filters</i> whose relation to our problem is a mystery to me.</li>
             </ul>
 
@@ -214,7 +214,7 @@
 
             <h2 id="section-method-6">Method 6: coverage-based alpha remapping</h2>
 
-            <p><a href="http://the-witness.net/news/2010/09/computing-alpha-mipmaps/">This last method</a> by Ignacio Castaño has the advantage of being based on something instead of being a random formula. It computes the coverage (i.e. proportion of pixels with opacity greater than 0.5) of the current mipmap level, then computes the next mipmap level by averaging, then finds a <i>new cutoff value</i> for the new level such that the coverage stays the same, then re-maps alpha values so that the cutoff stays at the 0.5 level. Finding a new cutoff value is done using a binary search.</p>
+            <p><a href="https://www.ludicon.com/castano/blog/articles/computing-alpha-mipmaps/">This last method</a> by Ignacio Castaño has the advantage of being based on something instead of being a random formula. It computes the coverage (i.e. proportion of pixels with opacity greater than 0.5) of the current mipmap level, then computes the next mipmap level by averaging, then finds a <i>new cutoff value</i> for the new level such that the coverage stays the same, then re-maps alpha values so that the cutoff stays at the 0.5 level. Finding a new cutoff value is done using a binary search.</p>
 
             <p>This method is rather involved compared to the previous ones; here's the full code I used for cutoff search and re-mapping (<code>source</code> is the previous mipmap level, <code>result</code> is the currently-generated one):</p>
 
@@ -251,6 +251,8 @@ for (auto & pixel : result)
             <center><img src="/blog/media/mipmap-alpha-tested-textures/method6_all.png" class="image-embed"></center>
 
             <p>We can see that it doesn't actually suit my case: by preserving the coverage value, it fills some holes in the texture at the expense of thinner features, thus once again shrinking the overall shape. It has the advantage of <i>guaranteeing</i> that your texture won't disappear, but on these textures the result is pretty similar to simple averaging.</p>
+
+            <p>Note that Ignacio <a href="https://mastodon.gamedev.place/@castano/113785693026704816">suggested</a> a few improvements to this method for my case later, which I didn't have time to try yet.</p>
 
             <h2 id="section-conclusions">Conclusions</h2>
 
