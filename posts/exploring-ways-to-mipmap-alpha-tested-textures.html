@@ -1,0 +1,280 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta property="og:type" content="article" />
+        <meta property="og:title" content="Exploring ways to mipmap alpha-tested textures">
+        <meta property="og:site_name" content="lisyarus blog">
+        <meta property="og:image" content="/blog/media/mipmap-alpha-tested-textures/cover.png" />
+        <meta property="og:image:height" content="240" />
+        <meta property="og:image:width" content="520" />
+        <title>Exploring ways to mipmap alpha-tested textures | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Exploring ways to mipmap alpha-tested textures</div></center><br/>
+            <center><span class="post-date">2025 Jan 5</span></center><br/>
+
+            <p>In my village building game I'm using alpha-tested transparency for foliage &mdash; trees, bushes, grass, etc. This works simply by discarding (i.e. not drawing) any pixels having an alpha value of less than 0.5, and keeping the others. This is much cheaper than proper transparency, which requires sorting objects or pixels by distance to camera. Here's what it looks like:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/fern.png" class="image-embed"></center>
+            <center><i>A fern rendered with alpha-testing</i></center>
+
+            <p>And here's the texture it uses:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/fern_texture.png" class="image-embed"></center>
+
+            <p>Naturally, we want these textures to have mipmaps, for the same reasons as usual: to prevent aliasing, to improve texture cache utilization, etc. But there is a problem.</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-problems-with-mipmaps">Disappearing textures</h2>
+
+            <p>Let us have a look at the same fern from a large distance. Though, it will be too small to notice anything, so let's instead pretend that we're far away and bias the mipmap selection in the shader. Specifically, I'll use WGSL's <a href="https://www.w3.org/TR/WGSL/#texturesamplebias"><code>textureSampleBias</code></a> function to shift the selected mipmap level by 4. And here's the result:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/fern_high_lod.png" class="image-embed"></center>
+
+            <p>It looks kinda round, instead of being pointy like before. <i> Somewhat hilariously, the shadows are still correct, since I didn't add the biasing to the shadow map shader.</i></p>
+
+            <p>For another example, have a look at this nice flower:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/cornflower.png" class="image-embed"></center>
+
+            <p>And here's the same flower with the mipmap bias added:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/cornflower_high_lod.png" class="image-embed"></center>
+
+            <p>Yep, the flower simply disappeared.</p>
+
+            <p>It might not sound like a big deal at first, &mdash; we messed with the shader, and now it produces bad results. However, our mipmap level biasing didn't introduce the problem, it merely amplified it. These flowers, for example, do indeed disappear at some distance with the original shader (without bias), and this distance is much smaller than you'd expect.</p>
+
+            <p>In retrospect, it is more or less obvious why this disappearing happens: when generating mipmaps, we average the alpha values, and if the alpha mask isn't dense enough, it stops passing the alpha test. Imaging having 4 pixels, two with 60% alpha and two with 20% alpha. With alpha testing, we discard anything below 50% opacity, so we see two of the four pixels, or 50% of the image. Then we generate the next mipmap level and average these 4 values to get 40%. This pixel doesn't pass the alpha test (because 40 < 50), and the texture disappears.</p>
+
+            <p>This is roughly what's happening with our flower, but simplified. Here are the first 6 mipmap levels of the flower texture:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/cornflower_mipmaps_blended.png" class="image-embed"></center>
+
+            <p>They look more or less like what you'd expect, right? But remember that we don't use true blending, but instead use alpha testing. Here's what they look like if we remove everything with less than 50% opacity:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/cornflower_mipmaps_tested.png" class="image-embed"></center>
+
+            <p>By mipmap level 3 the stem of the flower turns into a shapeless lump, and by level 5 the texture completely disappears.</p>
+
+            <h2 id="section-side-note-premultiply">Side note: premultiply your mipmaps!</h2>
+
+            <p>Now, before we dive deeper into this problem, I want to note that regardless of whether you're using alpha-testing or true transparency, you really, really want to have your textures in premultiplied alpha format, i.e. the RGB channels should be premultiplied by the alpha channel. Even if this isn't an option, you should at least do this while generating mipmaps, i.e. premultiply, downsample, then reverse the premultiplication.</p>
+
+            <p>The reason is that without premultiplied alpha, the color of transparent nearby pixels will mix with the opaque pixels, and you'll get unwanted "leaking" background color everywhere. Here's how it looks like on grass:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/grass_premultiplied_comparison.png" class="image-embed"></center>
+            <center><i>Top row: mipmaps generated with premultiplied alpha.<br>Bottom row: mipmaps generated without premultiplied alpha.</i></center>
+
+            <p>Premultiplied alpha fixes this because it effectively weighs pixel contributions by their alpha channels. When averaging alpha-premultiplied pixel values, more transparent pixels will have less contribution than more opaque pixels, and completely transparent (alpha = 0) pixels won't affect the result at all.</p>
+
+            <p>I should note that there are other popular solutions to this problem, like filling the transparent pixels with the color of the closest non-transparent pixels (commonly known as the <i>solidify</i> filter), something like this for the flower:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/cornflower_filled.png" class="image-embed"></center>
+            <center><i>Left: RGB channels. Right: alpha channel.</i></center>
+
+            <p>You still get some leakage of random neighbouring colors into your mipmap pixels, but this tends to be almost unnoticeable. However, I strongly prefer the premultiplied-alpha solution, as it does exactly what we'd want to happen (i.e. weighing pixels in accordance with their opacity).</p>
+
+            <p>In what follows, I'll tend to assume we're using premuiltiplied alpha when generating mipmaps.</p>
+
+            <h2 id="section-available-solutions">Available solutions</h2>
+
+            <p>To find out how people solve this problem, I used the time-tested method of posting my own solution (which we'll discuss shortly) on <a href="https://x.com/lisyarus/status/1875533044234543444">vairous</a> <a href="https://bsky.app/profile/lisyarus.bsky.social/post/3lew77f5fys2s">social</a> <a href="https://mastodon.gamedev.place/@lisyarus/113770301719861479">media</a> instead, and I got a ton of useful links in return. In particular,</p>
+
+            <ul>
+                <li><a href="https://bgolus.medium.com/anti-aliased-alpha-test-the-esoteric-alpha-to-coverage-8b177335ae4f">This post</a> by Ben Golus mentions the issue in the end, and suggests simply multiplying the alpha in the shader by <code>1.0 + lod * 0.25</code></li>
+                <li><a href="https://asawicki.info/articles/alpha_test.php5">This post</a> by Adam Sawicki talks in great depth about this issue, and suggests using a magic formula <code>max(alpha, alpha / 3.0 + 1.0 / 3.0)</code> to re-map alpha values when generating mipmaps,</li>
+                <li><a href="https://www.irrlicht3d.org/index.php?t=1526">This post</a> by Nikolaus Gebhardt also suggests a magic formula <code>a = mix(alpha, alphaMax, 0.35)</code> to re-map alpha values at mipmap generation, where <code>alphaMax</code> is the maximal alpha value encountered among 2x2 pixels from the previous mipmap level that contribute to the currently computed pixel,</li>
+                <li><a href="http://the-witness.net/news/2010/09/computing-alpha-mipmaps/">This post</a> by Ignacio Castaño from The Witness also suggests re-mapping alpha values, but in a clever way that preserves the overall <i>coverage</i>, i.e. the percentage of pixels that pass the alpha-test,</li>
+                <li><a href="https://neubias.github.io/training-resources/filter_morphological/index.html">This page</a> describes something called <i>morphological filters</i> whose relation to our problem is a mystery to me.</li>
+            </ul>
+
+            <p>So, it seems that all solutions boil down to tweaking alpha values, either using smart heuristics or magic constants, either at mipmap generation step or in the shader that samples the texture.</p>
+
+            <p>To me, doing this at mipmap generation makes the most sense (I'm generating them manually anyway!), so that's what I've chosen.</p>
+
+            <h2 id="section-hashed-alpha-testing-taa">Hashed alpha testing & TAA</h2>
+
+            <p>A number of people mentioned <a href="https://developer.download.nvidia.com/assets/gameworks/downloads/regular/GDC17/RealTimeRenderingAdvances_HashedAlphaTesting_GDC2017_FINAL.pdf">this incredible presentation</a> by Chris Wyman from GDC 2017 about a technique called <i>hashed alpha testing</i>. The idea is that instead of discarding fragments based on <code>alpha < 0.5</code>, we discard them with <code>alpha < rand()</code>, and make this <code>rand()</code> call uniform on the 0..1 interval but also somewhat persistent so that it doesn't flicker like crazy when the object or camera moves. The effect is similar to dithering, and makes alpha-tested objects look much, much better.</p>
+
+            <p>If we combine this with temporal anti-aliasing, we get a double-win, because we can make our TAA integrate the transparency over time, and we basically get true transparency values for free. This is something like computing the alpha-blended version of the image using Monte-Carlo integration on randomized alpha-tested images.</p>
+
+            <p>Supposedly with this technique, we don't need mipmaps at all, since the stochastic alpha testing together with TAA will average everything out. Sounds great!</p>
+
+            <p>Unfortunately, I can't use this method, because my game also has <i>outlines</i>:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/outlines.png" class="image-embed"></center>
+
+            <p>These outlines are added as a post-processing step and are computed purely based on depth discontinuities. If I add something like hashed alpha-testing together with TAA, I'll have a problem! If I add outlines after TAA, they will flicker a lot due to randomized alpha-testing samples. If I add outlines before TAA, they will still be randomized and the TAA will blur them, while I'd prefer them to stay nice and crisp.</p>
+
+            <p>Another problem is that TAA itself is pretty useless for me: these outlines typically happen on object boundaries, and so they <i>hide</i> most of the aliasing already. It doesn't look great, but it looks good enough for me not to care about some anti-aliasing sledgehammer.</p>
+
+            <p>So, no hashed alpha-testing and TAA for me, we gonna remap some alphas.</p>
+
+            <h2 id="section-the-testbed">The testbed</h2>
+
+            <p>To see which method works best in my case, I'll test each of them on three textures from my game: the grass, the fern, and the flower:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/grass_fern_flower.png" class="image-embed"></center>
+
+            <p>And since we're only interested in how these textures behave after alpha-testing, we'll only look at the alpha channel after alpha-testing was applied (and using bilinear filtering on them):</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/grass_fern_flower_mask.png" class="image-embed"></center>
+
+            <p>For reference, here's what happens for the first 6 mipmap levels with these textures using simple averaging when generating mipmaps:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/grass_fern_flower_mask_mipmaps.png" class="image-embed"></center>
+
+            <p>We see that the textures tend to lose detail & become blobby, &mdash; which is expected, &mdash; but also become smaller than the original texture, leading to objects looking smaller than they were or even completely disappearing (like in the case of the flower).</p>
+
+            <p>What I would want instead is for the textures to roughly <i>retain the overall shape</i> of the original texture. For my stylized non-photorealistic rendering, I don't care if the total opaque pixels coverage stays the same. I'm OK with the holes between grass blades to be artificially filled, but I'm not OK with the grass patches appearing 2x smaller than they are when viewed from a distance.</p>
+
+            <p>I'll also limit myself to methods that can be implemented inside the common image downsampling routine used for generating successive mipmap levels, without requiring some knowledge about the exact mipmap level being generated, just to keep the functions clean.</p>
+
+            <p>Some of the methods above also have the alpha cutoff value as a tweakable parameter; I will use a fixed cutoff value of 0.5 everywhere for simplicity and because that's the value I'm actually using.</p>
+
+            <p>By the way, all textures in this post are 128x128, and they are stored as part of a larger texture atlas, so some of the artifacts we'll see below are due to neighbouring atlas pixels leaking to our pixels via bilinear filtering. I could clean this up, but I was too lazy to do that :)</p>
+
+            <h2 id="section-method-1">Method 1: multiplying alpha</h2>
+
+            <p><a href="https://bgolus.medium.com/anti-aliased-alpha-test-the-esoteric-alpha-to-coverage-8b177335ae4f">The method</a> by Ben Golus multiplies the alpha in the shader by something like <code>1.0 + lod * 0.25</code>. Since this cannot be done at mipmap generation without knowing the exact LOD number, I'll approximate this as multiplying alpha by a fixed value when downsampling the texture.</p>
+
+            <p>Here's what it looks like if we multiply the alpha by values from 1.1 to 1.5 for grass:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method1_grass.png" class="image-embed"></center>
+
+            <p>fern:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method1_fern.png" class="image-embed"></center>
+
+            <p>and flower texture:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method1_flower.png" class="image-embed"></center>
+
+            <p>Something around 1.3 or 1.4 seems to do the job, though even 1.5 isn't enough for the flower, which gets severely distorted.</p>
+
+            <h2 id="section-method-2">Method 2: lerping towards max alpha</h2>
+
+            <p><a href="https://www.irrlicht3d.org/index.php?t=1526">The method</a> by Nikolaus Gebhardt, after some algebraic manipulations, boils down to finding the maximum alpha value of the 2x2 pixel quad from the previous mipmap level that generated the current pixel, and then lerping the computed average alpha value towards this maximal value: <code>newAlpha = mix(alpha, maxAlpha, coefficient)</code>. The post uses a lerping coefficient of 0.35; let's try different values from 0.25 to 1.0 (a value of 0.0 is the baseline with no remapping):</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method2_grass.png" class="image-embed"></center>
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method2_fern.png" class="image-embed"></center>
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method2_flower.png" class="image-embed"></center>
+
+            <p>This method seems to better preserve the shape, especially for the flower texture. Level 5 still looks horrible, but hey, what did you expect from a 4x4 texture? The object would still look fine, because it has geometry and not just a texture.</p>
+
+            <p>I like the value of 0.75 the most; incidentally, the value of 1 means to replace the alpha value with the maximum found among the 2x2 pixel quad, and this is exactly the method I used in my original social media posts.</p>
+
+            <h2 id="section-method-3">Method 3: lerping towards cutoff from below</h2>
+
+            <p><a href="https://asawicki.info/articles/alpha_test.php5">The method</a> by Adam Sawicki is a bit cryptic, but if we decipher and rearrange it a bit, it can be written as <code>newAlpha = max(alpha, mix(alpha, 0.5, 2.0 / 3.0))</code>. So, we lerp the alpha value towards 0.5 with some coefficient, and if it is greater than the already computed alpha value, we take this new value instead. It can only be greater than it was before if <code>alpha < 0.5</code>, so effectively what this formula does is lerp the values below the 0.5 threshold towards 0.5, while keeping the values above 0.5 intact.</p>
+
+            <p>Again, let's try a few different values for the lerping coefficient. Say, values from 0.2 to 0.8 (0.0 would be the baseline, while 1.0 would replace all alpha values below 0.5 with 0.5, which makes little sense):</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method3_grass.png" class="image-embed"></center>
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method3_fern.png" class="image-embed"></center>
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method3_flower.png" class="image-embed"></center>
+
+            <p>It sort of works; a value of 0.8 seems reasonable for grass, but it still isn't enough for the flowers.</p>
+
+            <h2 id="section-method-4">Method 4: lerping towards alpha = 1</h2>
+
+            <p>This method wasn't mentioned anywhere, but I thought I'd give it a shot as well &mdash; re-mapping the alpha values simply by lerping them towards 1 with some fixed coefficient: <code>newAlpha = mix(alpha, 1.0, coefficient)</code>. I'll use coefficient values from 0.1 to 0.5:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method4_grass.png" class="image-embed"></center>
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method4_fern.png" class="image-embed"></center>
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method4_flower.png" class="image-embed"></center>
+
+            <p>Something like 0.3 probably works, but it makes the flower texture really blobby & fractured, while also introducing a ton of artifacts due to some very transparent areas becoming erroneously visible.</p>
+
+            <h2 id="section-method-5">Method 5: shifting alpha</h2>
+
+            <p>Another method that wasn't mentioned &mdash; blatantly adding some constant value to the alpha channel when generating mipmaps, like this: <code>newAlpha = alpha + coefficient</code>. I'll use values from 0.05 to 0.20:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method5_grass.png" class="image-embed"></center>
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method5_fern.png" class="image-embed"></center>
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method5_flower.png" class="image-embed"></center>
+
+            <p>Yet again, it more or less works, but tends to make some unwanted parts of the image visible (i.e. non-transparent).</p>
+
+            <h2 id="section-method-6">Method 6: coverage-based alpha remapping</h2>
+
+            <p><a href="http://the-witness.net/news/2010/09/computing-alpha-mipmaps/">This last method</a> by Ignacio Castaño has the advantage of being based on something instead of being a random formula. It computes the coverage (i.e. proportion of pixels with opacity greater than 0.5) of the current mipmap level, then computes the next mipmap level by averaging, then finds a <i>new cutoff value</i> for the new level such that the coverage stays the same, then re-maps alpha values so that the cutoff stays at the 0.5 level. Finding a new cutoff value is done using a binary search.</p>
+
+            <p>This method is rather involved compared to the previous ones; here's the full code I used for cutoff search and re-mapping (<code>source</code> is the previous mipmap level, <code>result</code> is the currently-generated one):</p>
+
+            <pre><code class="language-cpp block">// Compute the coverage of the previous mipmap level
+float source_coverage = 0;
+for (auto const & pixel : source)
+    source_coverage += (pixel.a >= 0.5f ? 1 : 0);
+source_coverage /= (source.width() * source.height());
+
+// Find a new cutoff value using binary search
+math::interval&lt;float&gt; cutoff_search_range{0.f, 1.f};
+for (int i = 0; i < 16; ++i)
+{
+    auto mid = cutoff_search_range.center();
+
+    float new_coverage = 0.f;
+    for (auto const & pixel : result)
+        new_coverage += (pixel.a >= mid ? 1 : 0);
+    new_coverage /= (result.width() * result.height());
+
+    if (new_coverage < source_coverage)
+        cutoff_search_range.max = mid;
+    else
+        cutoff_search_range.min = mid;
+}
+
+// Re-map alpha values to account for the new cutoff
+float cutoff = cutoff_search_range.center();
+for (auto & pixel : result)
+    pixel.a *= (0.5f / cutoff);</code></pre>
+
+            <p>There are no tweakable parameters, so here's what it looks like for all three test textures:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method6_all.png" class="image-embed"></center>
+
+            <p>We can see that it doesn't actually suit my case: by preserving the coverage value, it fills some holes in the texture at the expense of thinner features, thus once again shrinking the overall shape. It has the advantage of <i>guaranteeing</i> that your texture won't disappear, but on these textures the result is pretty similar to simple averaging.</p>
+
+            <h2 id="section-conclusions">Conclusions</h2>
+
+            <p>Here's what we've learnt about these methods:</p>
+
+            <ul>
+                <li>The coverage-based method guarantees that the texture won't disappear, but it tends to shrink the shape</li>
+                <li>The shifting and lerping-to-1 methods are bad, because they make unwanted parts of the texture visible</li>
+                <li>Other methods have more or less similar properties</li>
+                <li>Lerping-towards-max-alpha seems to perform best on the complicated flower texture</li>
+            </ul>
+
+            <p>I guess I'll use the lerp-to-max method with a coefficient of 0.75. Here's what a flower patch looks like with this method, again with a strong mipmap bias applied to amplify the effect:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/flowers_final.png" class="image-embed"></center>
+            <center><i>Those little green bits sticking out of the flower are a mesh problem,<br>not a texture problem, I promise!</i></center>
+
+            <p>The amazing Bart Wronski <a href="https://bsky.app/profile/bartwr.bsky.social/post/3lewus3k5hs2t">promised</a> to write an in-depth post about SDFs and alpha maps from a digital signal processing perspective, so make sure to follow him so that you don't miss his post!</p>
+
+            <p>And for now, I hope you learned something useful, and thanks for reading.</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>

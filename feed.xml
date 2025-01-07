@@ -7,6 +7,13 @@
 		<language>en-us</language>
 
 		<item>
+			<title>Exploring ways to mipmap alpha-tested textures</title>
+			<pubDate>Sub, 5 Jan 2025 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/exploring-ways-to-mipmap-alpha-tested-textures.html</link>
+			<description></description>
+		</item>
+
+		<item>
 			<title>Implementing a tiny CPU rasterizer | Part 3: Interpolating colors</title>
 			<pubDate>Fri, 1 Nov 2024 11:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/implementing-a-tiny-cpu-rasterizer-part-3.html</link>
