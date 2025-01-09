@@ -101,10 +101,11 @@
                 <li><a href="https://asawicki.info/articles/alpha_test.php5">This post</a> by Adam Sawicki talks in great depth about this issue, and suggests using a magic formula <code>max(alpha, alpha / 3.0 + 1.0 / 3.0)</code> to re-map alpha values when generating mipmaps,</li>
                 <li><a href="https://www.irrlicht3d.org/index.php?t=1526">This post</a> by Nikolaus Gebhardt also suggests a magic formula <code>a = mix(alpha, alphaMax, 0.35)</code> to re-map alpha values at mipmap generation, where <code>alphaMax</code> is the maximal alpha value encountered among 2x2 pixels from the previous mipmap level that contribute to the currently computed pixel,</li>
                 <li><a href="https://www.ludicon.com/castano/blog/articles/computing-alpha-mipmaps/">This post</a> by Ignacio Castaño from The Witness also suggests re-mapping alpha values, but in a clever way that preserves the overall <i>coverage</i>, i.e. the percentage of pixels that pass the alpha-test,</li>
+                <li>A lot of people suggested using <a href="https://en.wikipedia.org/wiki/Signed_distance_function">SDF</a>s, and <a href="https://bsky.app/profile/trist.am">Tristam</a> in particular showed <a href="https://bsky.app/profile/trist.am/post/3lf5lgga5tc23">some promising results</a> with it,</li>
                 <li><a href="https://neubias.github.io/training-resources/filter_morphological/index.html">This page</a> describes something called <i>morphological filters</i> whose relation to our problem is a mystery to me.</li>
             </ul>
 
-            <p>So, it seems that all solutions boil down to tweaking alpha values, either using smart heuristics or magic constants, either at mipmap generation step or in the shader that samples the texture.</p>
+            <p>So, it seems that all solutions boil down to tweaking alpha values (either using smart heuristics or magic constants, either at mipmap generation step or in the shader that samples the texture) or using SDFs (at mipmap generation &mdash; no way you'll be computing SDFs at runtime for each sceen fragment).</p>
 
             <p>To me, doing this at mipmap generation makes the most sense (I'm generating them manually anyway!), so that's what I've chosen.</p>
 
@@ -254,6 +255,88 @@ for (auto & pixel : result)
 
             <p>Note that Ignacio <a href="https://mastodon.gamedev.place/@castano/113785693026704816">suggested</a> a few improvements to this method for my case later, which I didn't have time to try yet.</p>
 
+            <h2 id="section-side-note-generating-sdf">Side note: generating SDFs</h2>
+
+            <p>The last few methods will be using SDFs, which we first need to generate somehow. There are a number of methods for that:</p>
+
+            <ul>
+                <li>The <a href="https://en.wikipedia.org/wiki/Jump_flooding_algorithm">jump flooding</a> method seems to be the most popular choice, and it can be nicely implemented on the GPU (which I don't really care about since I'm generating mipmaps on CPU right now). However, this method is inherently inexact, though deviations from a ground-truth solution are typically unnoticeable for real-world data.</li>
+                <li>The <a href="https://en.m.wikipedia.org/wiki/Fast_marching_method">fast marching</a> method is a variant of Dijkstra's algorithm which effectively computes a numeric solution to a differential equation satisfied by the SDF. It can be implemented efficiently with priority queues (just like Dijkstra), but is also only approximate.</li>
+                <li><a href="https://tkmikyon.medium.com/computing-the-signed-distance-field-a1fa9ba2fc7d">This post</a> (sorry for a Medium link) describes a variant of fast marching that computes exact <i>distance vectors</i> as opposed to raw distances. It looks like the most promising option, but it also suffers from some edge cases when the closest boundary point is not unique.</li>
+            </ul>
+
+            <p>Quite naturally, I rolled my own implementation based on <a href="https://en.wikipedia.org/wiki/K-d_tree">k-d trees</a> (which obviously was just an excuse to <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/cg/include/psemek/cg/kdtree.hpp">write a k-d tree</a>). The way it works is like this:</p>
+
+            <ul>
+                <li>I have the original image, and I compute an alpha-tested mask out of it (i.e. output <code>(alpha < 128) ? 0 : 255</code>)</li>
+                <li>The target object boundary (that we're computing SDF for) is the boundary between black and white pixels</li>
+                <li>For each pixel center, I want to find the closest point on the boundary; it will always be either a pixel corner or the midpoint between two neighbouring pixel centers</li>
+                <li>I compute all such corners and midpoints and put them into a k-d tree</li>
+                <li>For each pixel center, I use the k-d tree to efficiently find the closest point on the boundary, which gives me the desired distance value</li>
+            </ul>
+
+            <p>A bonus point is that all the points have either integer or half-integer coordinates, so the algorithm (and the k-d tree) can run on purely integer arithmetic (you'd want to use squared distances instead of raw distances for that; the final SDF value is still a floating-point, of course).</p>
+
+            <p>Another side note: the usual convention is that SDF is positive outside and negative inside, but in image processing the reverse convention makes more sense (e.g. this way the SDF roughly means the same as the alpha channel), and I'll use that convention as well.</p>
+
+            <h2 id="section-method-7">Method 7: downsampling SDFs</h2>
+
+            <p>The first idea is to simply replace the original image's alpha channel with the computed SDF, and then downsample it with basic averaging, in the hopes that SDFs will downsample better and keep the overall shape. Unfortunately, it doesn't work that well:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method7_all.png" class="image-embed"></center>
+
+            <p>It seems to work pretty much the same as if we were doing simple averaging on the alpha channel. It kinda makes sense: if, say, your image is 25% filled, than 75% of SDF values will be negative (outside), and averaging them gives you a single "outside" pixel.</p>
+
+            <p>Here are the generated and downsampled SDFs, if you're curious:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method7_all_sdf.png" class="image-embed"></center>
+
+            <h2 id="section-method-8">Method 8: max-downsampling SDFs</h2>
+
+            <p>A different idea is to max-downsample the SDF values (i.e. taking maximum of 4 SDF values from the previous mipmap level), instead of averaging them. This works <i>stunningly</i> well:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method8_all.png" class="image-embed"></center>
+
+            <p>The 5-th mipmap level is a bit thicker than I'd want, but hey, remember that it's a 4x4 texture at this point. All the other mipmap levels looks great, even for the naughty flower texture.</p>
+
+            <p>It kinda makes sence as well: if we want to roughly preserve the shape, we probably want the closest distance (i.e. maximal SDF value), not the average distance (which can turn out to be negative way to often).</p>
+
+            <p>However, this method introduces two new problems. First, replacing the original texture alpha with the computed SDF is a bad idea, because it leads to jagged edges:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method8_jagged_grass.png" class="image-embed"></center>
+
+            <p>This happens because of how I compute the SDF by turning it into a binary mask first. This could be solved by a more sophisticated algorithm that doesn't throw away the invaluable data of the alpha channel, but instead runs a marching squares-like algorithm on it to determine the boundary shape, and then runs SDF on edges of this shape (instead of on individual points).</p>
+
+            <p>However, I've found that a simpler solution works well enough: just preserve the original alpha channel for mipmap level 0, and use downsampled SDF for all higher levels. Once the SDF is downsampled once, it's not that jagged anymore, and looks much nicer and smoother.</p>
+
+            <p>The second problem is that this method introduces color leaking from transparent pixels of the image, the same problem we already fixed by computing premultiplied colors. Replacing alpha with SDF breaks that and introduces non-zero alpha values for previously transparent pixels. Here's what it looks like:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method8_all_leaks.png" class="image-embed"></center>
+
+            <h2 id="section-method-9">Method 9: averaging premultiplied colors, then max-downsampling SDF</h2>
+
+            <p>So, to fix the color leaking problems, what I decided to do is first compute the mipmaps using usual averaging, and only then replace the alpha channels (starting from level 1) with max-downsampled SDF. Sounds like quite a burdern, but it works perfectly:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method9_all.png" class="image-embed"></center>
+
+            <p>There are still minor color leaks due to bilinear interpolation, but they are tiny and not really visible.</p>
+
+            <p><i>Unfortunately</i> (how many times did I say "unfortunately" in this post?), it breaks some other textures in this project, which are really small atlases for several related materials at once, like this one for an oak tree:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method9_oak_mipmaps_sdf.png" class="image-embed"></center>
+
+            <p>And here's what it looks like in-game with a mipmap LOD bias:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method9_oak_sdf.png" class="image-embed"></center>
+
+            <p>The different textures' SDFs leak into each other (because they are treated as a single image) and produce wrong results.</p>
+
+            <p>In truth, this problem exists even without all this SDF hackery, it's just way less pronounced:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/method9_oak.png" class="image-embed"></center>
+
+            <p>And honestly I should fix that regardless of the mipmap generation method I'll choose. I used such combined textures before because I had a restriction of having a single material per mesh. I've removed this restriction already, and probably it's about time to split these textures into separate images.</p>
+
             <h2 id="section-conclusions">Conclusions</h2>
 
             <p>Here's what we've learnt about these methods:</p>
@@ -261,14 +344,22 @@ for (auto & pixel : result)
             <ul>
                 <li>The coverage-based method guarantees that the texture won't disappear, but it tends to shrink the shape</li>
                 <li>The shifting and lerping-to-1 methods are bad, because they make unwanted parts of the texture visible</li>
-                <li>Other methods have more or less similar properties</li>
-                <li>Lerping-towards-max-alpha seems to perform best on the complicated flower texture</li>
+                <li>Other alpha-remapping methods have more or less similar properties</li>
+                <li>Downsampling SDF tends to shrink the shape as well</li>
+                <li>Max-downsampling SDF works great, but introduces color leaking</li>
+                <li>Downsampling premultiplied images and then replacing their alpha with downsampled SDF seems to be the best option</li>
             </ul>
 
-            <p>I guess I'll use the lerp-to-max method with a coefficient of 0.75. Here's what a flower patch looks like with this method, again with a strong mipmap bias applied to amplify the effect:</p>
+            <p>I wanted to use the lerp-to-max method with a coefficient of 0.75, but experimenting with SDFs convinved me that it's a better option. Here's what a flower patch looks like with this method, again with a strong mipmap bias applied to amplify the effect:</p>
 
             <center><img src="/blog/media/mipmap-alpha-tested-textures/flowers_final.png" class="image-embed"></center>
             <center><i>Those little green bits sticking out of the flower are a mesh problem,<br>not a texture problem, I promise!</i></center>
+
+            <p>And here's how a full scene looks like:</p>
+
+            <center><img src="/blog/media/mipmap-alpha-tested-textures/grass_field_final.png" class="image-embed"></center>
+
+            <p>Notice how the grass patches are crisp and detailed up close, and become somewhat blobby at a distance, preventing some naughty aliacing while roughly preserving the overall outline. That's exactly what I wanted.</p>
 
             <p>The amazing Bart Wronski <a href="https://bsky.app/profile/bartwr.bsky.social/post/3lewus3k5hs2t">promised</a> to write an in-depth post about SDFs and alpha maps from a digital signal processing perspective, so make sure to follow him so that you don't miss his post!</p>
 
