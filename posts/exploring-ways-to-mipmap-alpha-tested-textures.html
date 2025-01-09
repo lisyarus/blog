@@ -299,7 +299,7 @@ for (auto & pixel : result)
 
             <p>The 5-th mipmap level is a bit thicker than I'd want, but hey, remember that it's a 4x4 texture at this point. All the other mipmap levels looks great, even for the naughty flower texture.</p>
 
-            <p>It kinda makes sence as well: if we want to roughly preserve the shape, we probably want the closest distance (i.e. maximal SDF value), not the average distance (which can turn out to be negative way to often).</p>
+            <p>It kinda makes sence as well: if we want to roughly preserve the shape, we probably want the closest distance (i.e. maximal SDF value), not the average distance (which can turn out to be negative way too often).</p>
 
             <p>However, this method introduces two new problems. First, replacing the original texture alpha with the computed SDF is a bad idea, because it leads to jagged edges:</p>
 
