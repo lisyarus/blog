@@ -98,7 +98,7 @@
 
             <ul>
                 <li><a href="https://bgolus.medium.com/anti-aliased-alpha-test-the-esoteric-alpha-to-coverage-8b177335ae4f">This post</a> by Ben Golus mentions the issue in the end, and suggests simply multiplying the alpha in the shader by <code>1.0 + lod * 0.25</code></li>
-                <li><a href="https://asawicki.info/articles/alpha_test.php5">This post</a> by Adam Sawicki talks in great depth about this issue, and suggests using a magic formula <code>max(alpha, alpha / 3.0 + 1.0 / 3.0)</code> to re-map alpha values when generating mipmaps,</li>
+                <li><a href="https://asawicki.info/articles/alpha_test.php5">This post</a> by Łukasz Izdebski talks in great depth about this issue, and suggests using a magic formula <code>max(alpha, alpha / 3.0 + 1.0 / 3.0)</code> to re-map alpha values when generating mipmaps,</li>
                 <li><a href="https://www.irrlicht3d.org/index.php?t=1526">This post</a> by Nikolaus Gebhardt also suggests a magic formula <code>a = mix(alpha, alphaMax, 0.35)</code> to re-map alpha values at mipmap generation, where <code>alphaMax</code> is the maximal alpha value encountered among 2x2 pixels from the previous mipmap level that contribute to the currently computed pixel,</li>
                 <li><a href="https://www.ludicon.com/castano/blog/articles/computing-alpha-mipmaps/">This post</a> by Ignacio Castaño from The Witness also suggests re-mapping alpha values, but in a clever way that preserves the overall <i>coverage</i>, i.e. the percentage of pixels that pass the alpha-test,</li>
                 <li>A lot of people suggested using <a href="https://en.wikipedia.org/wiki/Signed_distance_function">SDF</a>s, and <a href="https://bsky.app/profile/trist.am">Tristam</a> in particular showed <a href="https://bsky.app/profile/trist.am/post/3lf5lgga5tc23">some promising results</a> with it,</li>
@@ -183,7 +183,7 @@
 
             <h2 id="section-method-3">Method 3: lerping towards cutoff from below</h2>
 
-            <p><a href="https://asawicki.info/articles/alpha_test.php5">The method</a> by Adam Sawicki is a bit cryptic, but if we decipher and rearrange it a bit, it can be written as <code>newAlpha = max(alpha, mix(alpha, 0.5, 2.0 / 3.0))</code>. So, we lerp the alpha value towards 0.5 with some coefficient, and if it is greater than the already computed alpha value, we take this new value instead. It can only be greater than it was before if <code>alpha < 0.5</code>, so effectively what this formula does is lerp the values below the 0.5 threshold towards 0.5, while keeping the values above 0.5 intact.</p>
+            <p><a href="https://asawicki.info/articles/alpha_test.php5">The method</a> by Łukasz Izdebski is a bit cryptic, but if we decipher and rearrange it a bit, it can be written as <code>newAlpha = max(alpha, mix(alpha, 0.5, 2.0 / 3.0))</code>. So, we lerp the alpha value towards 0.5 with some coefficient, and if it is greater than the already computed alpha value, we take this new value instead. It can only be greater than it was before if <code>alpha < 0.5</code>, so effectively what this formula does is lerp the values below the 0.5 threshold towards 0.5, while keeping the values above 0.5 intact.</p>
 
             <p>Again, let's try a few different values for the lerping coefficient. Say, values from 0.2 to 0.8 (0.0 would be the baseline, while 1.0 would replace all alpha values below 0.5 with 0.5, which makes little sense):</p>
 
