@@ -1,0 +1,516 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta property="og:type" content="article" />
+        <meta property="og:title" content="Simulating water over terrain">
+        <meta property="og:site_name" content="lisyarus blog">
+        <meta property="og:image" content="/blog/media/simulating-water-over-terrain/cover.png" />
+        <meta property="og:image:height" content="240" />
+        <meta property="og:image:width" content="520" />
+        <title>Simulating water over terrain | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Simulating water over terrain</div></center><br/>
+            <center><span class="post-date">2025 Feb 4</span></center><br/>
+
+            <p><i>If you don't want a long an boring introduction, skip directly to the <a href="#section-virtual-pipes-method">virtual pipes method description</a>.<br/>I will get a little bit sad if you do this, though x)</i></p>
+
+            <p>I'm somewhat obsessed with terrain generation, grid-based games, simulations, and stuff like that. And this stuff often involves <i>water</i>, &mdash; or at least it seems natural for water to be there.</p>
+
+            <p>Say, you're generating a map for a strategy game, and you don't want the map borders to just be filled with inpenetrable void (like in old-school RTS games). Wouldn't it be nice for the border to be filled with water, like in this map from one of my abandoned projects:</p>
+
+            <center><img src="/blog/media/simulating-water-over-terrain/island-map.png" class="image-embed"></center>
+
+            <p>This provides a nice natural border, and maybe allows you to introduce some more water-related mechanics like sailing, fishing, trading, and sea warfare. Here's a 3D view of a similar island from the same project, for no particular purpose:</p>
+
+            <center><img src="/blog/media/simulating-water-over-terrain/island-sunset-view.jpeg" class="image-embed"></center>
+
+            <p>Or, say, you're making a peaceful village/town simulation game and you want your town to have a river for drinking, fishing, transportation, or even pure aesthetics. Or maybe you want a river just as a divider between areas, like in <a href="https://store.steampowered.com/app/2403100/Costa_Verde_Transport_Department">my first released game</a>:</p>
+
+            <center><img src="/blog/media/simulating-water-over-terrain/costa-verde-river.jpeg" class="image-embed"></center>
+
+            <p>I hope I've convinved you: having water <i>is really nice</i>. (Not that it wasn't obvious anyway).</p>
+
+            <p>But water has problems.</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-problems-with-water">Problems with water</h2>
+
+            <p>Most games don't allow terrain modification, which is reasonable &mdash; not every game needs it. Even those that do can often get away with some simplistic approach: I can easily imagine being able to fill up a hill in a game like Civilization (though it would probably break a lot of stuff gameplay-wise), and it doesn't interact with water in any way.</p>
+
+            <p><a href="https://www.youtube.com/playlist?list=PLSGI94QoFYJwGaieAkqw5_qfoupdppxHN">My game</a>, however, <i>does</i> need terrain modification:</p>
+
+            <center><video muted loop controls class="video-embed"><source src="/blog/media/simulating-water-over-terrain/digging.mp4" type="video/mp4"></video></center>
+
+            <p>Why? Well, uhm, because my design docs say so! I promise, it was somewhere on that page... or that one...</p>
+
+            <p>Seriously, though, there are indeed a couple of reasons in my case:</p>
+
+            <ul>
+                <li>Some resourses in my game are literally taken from the ground, like dirt, sand, and clay, and it just makes sense that when you dig them up, the ground gets removed (otherwise we'd get an infinite source, which is not ideal)</li>
+                <li>Similarly, for stuff like stones & metal ores I'd prefer for them to get excavated from the ground when mining (instead of having a shiny "gold ore" boulder lying on the ground, as many games do), and it makes sense that the mined ground gets removed as well</li>
+                <li>My game doesn't allow constructing buildings on slopes, so it's important to be able to level the terrain before building something on it, like in The Sims</li>
+                <li>I want to give the player a ton of tools for creative expression, and terrain modification is one of them</li>
+                <li>Let's be honest, <a href="https://www.windowscentral.com/gaming/minecraft/minecraft-crosses-300-million-copies-sold-as-it-prepares-to-celebrate-its-15th-anniversary">everybody loves</a> terrain modification</li>
+            </ul>
+
+            <p>So, OK, that does this have to do with water? Say, you have a lake, or even a puddle, and you've dug up its border and opened a free passage for the water to flow out. What does the water do?</p>
+
+            <p>There are a number of simple options:</p>
+
+            <ul>
+                <li>Water doesn't go anywhere, and stays where it was initially generated (of course, this just feels boring and dumb)</li>
+                <li>Water doesn't flow; instead, everything below a certain height level is considered water, like in Sapiens</li>
+                <li>Water also exists below some level, but you can't even dig that far, or maybe you can only dig one level down to remove hills/mountains, like in RimWorld</li>
+                <li>Water flows using some extremely simplistic model, like in Minecraft</li>
+                <li>Water flows using some nice but still simplistic cellular-automata-ish model, like in Dwarf Fortress</li>
+            </ul>
+
+            <p>Among these solutions, not one feels satisfactory to me. They are good fallbacks to consider if I fail to find a better option, but as a main water model they are just too...boring. Dwarf Fortress comes closer than others, but still, their model is too blocky yet also designed for 3D, which I don't really need (see the next section).</p>
+
+            <p>For years (yep, literally) I was passively searching for a model that would work for my needs. I researched a ton of literature on fluid simulations, particularly in climate & oceans/rivers simulations, and got really scared because most of the models used there are insanely complicated, while their applicability to my case was always blurry since the scientific community usually doesn't cover game design. One time I even managed to compute something like the expected currents flowing around an island, by solving a mass conservation equation for the liquid flow, i.e. something like \(\nabla (\text{mass}\cdot\text{velocity})=0\):</p>
+
+            <center><img src="/blog/media/simulating-water-over-terrain/island-currents.jpeg" class="image-embed"></center>
+
+            <p>It's already something, but I need a dynamic model, not a static assignment of currents. <i>(It can still be useful for some funny climate map generation, I guess.)</i> By the way, it is theoretically easy to turn a dynamic model into a static one: just add equations like \(\frac{dX}{dt}=0\) for all your state variables \(X\), saying that you have a <i>steady state</i> (i.e. a solution that's perfectly stable and doesn't change with time, like a slowly flowing river).</p>
+
+            <p>I could just give up, of course. After all, it's important to remember that, in the end, I'm not making some reality simulator, &mdash; I'm <i>making a game</i>, and I'm free to bend the rules of it any way I see fit. However, I also couldn't shake off the feeling that some clever combination of simple formulas should work for my case. And I was right!</p>
+
+            <p><i>By the way, if reading this section made you scream "TIMBERBOOOORN" seven times, guess what: they <a href="https://www.gamedeveloper.com/design/deep-dive-timberborn-s-water-mechanics">use exactly the same model</a> as I'm going to describe.</i></p>
+
+            <p><i>Also, if you know other models that you think would suit my case &mdash; tell me! I'd love to hear about them!</i></p>
+
+            <h2 id="section-setup">The setup</h2>
+
+            <p>I've said the phrase "my case" four times already, but what exactly do I mean? Here's the list of features I want my water simulation to have:</p>
+
+            <ul>
+                <li>The simulation should probably work on a grid, preferably on the same grid I'm using for the terrain</li>
+                <li>The average scale of the simulation should be around 1 meter or so, &mdash; I don't care about tiny splashes of water, while a kilometer-wide simulation is too coarse for something like a city builder game (I can easily add fake higher-frequency visual details on the rendering side without having to simulate them)</li>
+                <li>I'm fine with assuming that water is a height field over the terrain, i.e. it doesn't flow vertically and it doesn't have gaps in vertical cross-sections, because my game's terrain is itself a height field, and because this basically reduces the problem to 2D</li>
+                <li>Water should be able to flow (duh)</li>
+                <li>Water shouldn't magically disappear due to simulation errors (this happens with some models I tried before)</li>
+                <li>The simulation should be controllably stable</li>
+                <li>The simulation should be fast enough, ideally the cost of a single simulation step should be linear in the simulation size (i.e. a few for-loops over the simulation domain)</li>
+            </ul>
+
+            <p>As you can guess, I've found such a model, and this is what this article is about. But first,</p>
+
+            <h2 id="section-non-solutions">Non-solutions</h2>
+
+            <p>Let me describe a couple of popular options that <i>do not</i> suit my scenario.</p>
+
+            <p>Smoothed Particle Hydrodynamics</b> is an <a href="https://www.youtube.com/watch?v=rSKMYc1CQHE">insanely popular</a> way to do fluid simulations which produces impressive results. However, this method also solves <i>a completely different problem</i>! It gives you realistic, highly detailed and beautiful simulations, which is not what I want. Remember the "average scale" thing I said earlier? Having 1 meter-sized water particles doesn't really work, &mdash; they'll look like water-filled balloons, &mdash; but having smaller particles hits performance too much. I don't need a high-detailed simulation, I want a fast and reasonable one!</p>
+
+            <p>Jos Stam's <a href="https://pages.cs.wisc.edu/~chaol/data/cs777/stam-stable_fluids.pdf">Stable Fluids</a> is probably the most well-known fluid simulation work known in computer graphics, which <i>also solves a different problem</i>. It works with a full volume of fluid, rather than with a free surface like I need. Think of a closed tank filled with water, as opposed to water over terrain. It is also far from fast: some steps of the simulation require iteratively solving a sparse linear system, which is doable but still expensive.</p>
+
+            <p>In fact, I've implemented Stable Fluids once, and it's a really fun and impressive model, it's just a model for a different thing <i>(it solves the full Navier-Stokes instead of the shallow water equations that we actually need)</i>:</p>
+
+            <center><video muted loop controls class="video-embed"><source src="/blog/media/simulating-water-over-terrain/stable-fluids.mp4" type="video/mp4"></video></center>
+
+            <h2 id="section-shallow-water-equations">Shallow water equations</h2>
+
+            <p>Now, whenever we talk about seeking a <i>mathematical model</i> of something, it usually means we need some <i>equations</i> to solve. Generally, fluid motion is described by the <a href="https://en.wikipedia.org/wiki/Navier%E2%80%93Stokes_equations">Navier-Stokes equations</a>, or by the simpler <a href="https://en.wikipedia.org/wiki/Euler_equations_(fluid_dynamics)">Euler equations</a>. However, these equations also don't talk about a free water surface, but instead about a volume completely filled with fluid.</p>
+
+            <p>If we look at the variables these equations work with, we see fluid velocity, pressure, density, thermodynamic work, stress tensor, and some other things, and you'd need a good full course in fluid dynamics to figure out which of these are known, which are unknowns, and which can be derived from others (after lazily researching this for years I still don't know the answer, btw). Notice that there's nothing like "amount of water" here. We do have mass density, but all equations <i>divide</i> by it, so we can't really have zero density or a boundary between fluid and air. <i>(This can actually be done using stuff like the <a href="https://en.wikipedia.org/wiki/Particle-in-cell">particle-in-cell</a> and <a href="http://plaza.ufl.edu/ebrackear/">marker-and-cell</a> methods, if I'm not mistaken.)</i></p>
+
+            <p>Even in the simplest form, these equations involve pressure \(p\), which is unknown and changes with time, but there's no equation for <i>how exactly</i> it evolves! I.e. there's no \(\frac{dp}{dt}=\dots\) equation. Instead, the time evolution of the pressure field is implicitly built into the other equtaions. This is closely related to the <i>projection step</i> in the Stable Fluids solver.</p>
+
+            <p>What we need is to take something like Navier-Stokes, assume that we have a layer of water on top of some terrain (commonly called the <i>bed</i> in this case), and do some sort of averaging out along the vertical direction, so that we're left with purely 2D equations describing how water moves. That's exactly what the <a href="https://en.wikipedia.org/wiki/Shallow_water_equations">shallow water equations</a> are about!</p>
+
+            <p>The "shallow" part means that we assume the typical vertical size of a water column to be much smaller than our typical horizontal scales. This is usually more or less true in things like modelling climate or river floods: the water heights (say, meters or tens of meters for a river) is much smaller than horizontal distances we're interested in (kilometers).</p>
+
+            <p>These equations are what is typically used in a lot of "water over terrain" situations in science, and they are what we're going to solve as well. I won't put the equations themselves here &mdash; you can find them <a href="https://en.wikipedia.org/wiki/Shallow_water_equations">on wikipedia</a>, and that's not what this post is about. Instead, I'll describe the solution method directly, and try to make some sense of it.</p>
+
+            <h2 id="section-staggered-grids">Staggered grids</h2>
+
+            <p>One thing we need to talk about before describing the full solution is the grid. Usually when numerically solving differential equations, we discretize the simulation area into a grid (say, a grid of squares), and store the values of our field (velocity, pressure, stuff like that) per grid cell or per grid vertex.</p>
+
+            <p>For example, when solving the <a href="https://en.wikipedia.org/wiki/Wave_equation">wave equation</a> (which works better for sound waves and EM waves rather than water waves), we store the wave height <code>u(i,j)</code>  and it's time derivative <code>du(i,j)</code> per each cell, and then the update code is</p>
+
+            <pre><code class="language-cpp block">du(i,j) += (u(i+1,j)+u(i,j+1)+u(i-1,j)+u(i,j-1)-4*u(i,j)) * dt/dx/dx;
+u(i,j) += du(i,j) * dt;</code></pre>
+
+            <p>It may be a bit cryptic, but the main idea is that both quantities are stored on the same grid. This leads to nice finite-difference equations, is simple to code, and generally makes sense.</p>
+
+            <p>Such grids are called <i>collocated</i>, which I always read as co-located: both quantities are <i>located</i> on the same grid. And such grids suck for fluid dynamics!</p>
+
+            <p>One reason is that they make finite difference methods confusing. In the wave equation we have the second derivative, which can be computed in a nice and symmetric way as</p>
+
+            <pre><code class="language-cpp block">(f(x+1) + f(x-1) - 2*f(x)) / (dx * dx)</code></pre>
+
+            <p>But fluid dynamics feature first derivatives, in stuff like "the acceleration of fluid is proportional to the difference between how much water is on the left and the right". So, how do you compute this with finite differencies? <code>(f(x+1) - f(x)) / dx</code> makes the simulation biased to the right, may ignore some directional effects, and generally leads to instabilities. <code>(f(x) - f(x-1)) / dx</code> has the same problems. <code>(f(x+1) - f(x-1)) / (2*dx)</code> is nicely symmetric but ignores the value at the current cell <code>f(x)</code>, which also leads to instabilities. In general, naive discretization of fluid dynamics equations is typically extremely unstable, and everything just oscillates in a stupid way instead of solving the equation.</p>
+
+            <p>Another way to see that this grid is to consider this situation: assume that we store the water height and the water velocity vector in each cell. Now consider a cell that has incoming water flows both from left and right, and the water flows out to top and bottom cells. Here's an illustration:</p>
+
+            <center><img src="/blog/media/simulating-water-over-terrain/collocated-zero-velocity.png" class="image-embed"></center>
+            <center><i>Image based on illustrations on <a href="https://tum-pbs.github.io/PhiFlow/Staggered_Grids.html">this site</a>.</i></center>
+
+            <p>The total velocity in this cell is zero! This is nonsense, since the water is clearly flowing quite a lot here.</p>
+
+            <p>Things like these led people to reconsider their grid methods, and invent something called <a href="https://tum-pbs.github.io/PhiFlow/Staggered_Grids.html"><i>staggered grids</i></a>. There are many variants of these, but the typical one used for fluid simulation works like this: we store, say, water height/density/etc in square cells, but we store the velocity in <i>edges between cells</i>. Vertical edges (i.e. edges between horizontal neighbours) store the horizontal velocity, and vice versa. Here's an image:</p>
+
+            <center><img src="/blog/media/simulating-water-over-terrain/staggered-grid.png" class="image-embed"></center>
+            <center><i>Image from <a href="https://tum-pbs.github.io/PhiFlow/Staggered_Grids.html">this site</a>.</i></center>
+
+            <p>Blue arrows indicate the stored values, one per each edge between cells. Notice that the boundary edges are also here: these correspond to the boundary conditions of your simulation (we'll get to these a bit later).</p>
+
+            <p>So, if we want an \(N\times N\) square grid as our simulation area, we'd have to store</p>
+
+            <ul>
+                <li>\(N\times N\) array for, say, water height</li>
+                <li>\((N+1)\times N\) array for X velocity</li>
+                <li>\(N\times (N+1)\) array for Y velocity</li>
+            </ul>
+
+            <p>This might feel unusual, but the sooner you accept it, the better your fluid simulations will get :)</p>
+
+            <h2 id="section-virtual-pipes-method">Virtual pipes method</h2>
+
+            <p>At last, we've arrived to the actual method I'm using for simulating water over terrain. This method is called <i>virtual pipes</i>, because it is derived by assuming that the water cells are connected by imaginary pipes of some radius. I used <a href="https://diglib.eg.org/server/api/core/bitstreams/47f5228c-6f1c-4afb-ab80-b98c44575bc8/content">these</a> <a href="https://inria.hal.science/inria-00402079/document">two</a> papers as a reference for this method. Notice that the first paper also consideres multi-level water columns and vertical connections, while the second paper is primarily about hydraulic erosion; I didn't really do any of these since that's not my goal.</p>
+
+            <p>First, for simplicity sake, let's ignore the terrain part, it will be trivial to add later. We'll store, just like in the previous section, three values on a staggered grid:</p>
+
+            <ul>
+                <li>\(N\times N\) <code>water</code> array for the height of water surface in this cell</li>
+                <li>\((N+1)\times N\) <code>flowX</code> array for the total water <i>flow</i> between horizontally adjacent cells</li>
+                <li>\(N\times (N+1)\) <code>flowY</code> array for the total water <i>flow</i> between vertically adjacent cells</li>
+            </ul>
+
+            <p><code>flowX(i,j)</code> is the horizontal flow (also calles <i>flux</i>) between cells <code>water(i-1,j)</code> and <code>water(i,j)</code>, unless it is a boundary edge (<code>i == 0</code> or <code>i == N</code>), and similarly for <code>flowY</code>.</p>
+
+            <p><i>By the way, in what follows I'll use the notation <code>array(i,j)</code> to mean the <code>i,j</code>-th element of an array. In my actual C++ code the 2D arrays have an overloaded <code>operator()</code> to provide read-write element access, since multi-dimensional <code>operator[]</code> is only available since C++23.</i></p>
+
+            <p>Notice how we'll store the <i>flow</i>, not the <i>velocity</i>. To make sense of a flow, imagine you've put a magic curtain between two adjacent cells which can measure how much water goes through it. The water stream going through this curtain has a certain cross-section area, and it moves with some velocity. If you multiply this two values, you get water volume per unit of time, which is exactly what we'll store.</p>
+
+            <p>Flow tends to behave better than velocity when you have no water. For two adjacent empty cells, the flow between them is obviously zero, since there's no water to move. However, velocity is something like flow divided by water cross-section, i.e. zero divided by zero, which is always a problematic thing. You could say that in this case the velocity is obviously zero, but it's more subtle than that: what if both the water and the flow are very small, but non-zero? We'd quickly get into the territory of floating-point problems and discontinuities, and we'd have to figure out some thresholds such that below this water level threshold velocity is considered zero. All this is really messy, and working with flows instead of velocities just solves all these issues elegantly.</p>
+
+            <p>Enough talking, here are the three steps involved in the method:</p>
+
+            <ol>
+                <li><a href="#section-flow-acceleration">Flow acceleration</a></li>
+                <li><a href="#section-outflow-scaling">Outflow scaling</a></li>
+                <li><a href="#section-water-column-updating">Water column updating</a></li>
+            </ol>
+
+            <p>Let's work them through one by one.</p>
+
+            <h2 id="section-flow-acceleration">Flow acceleration</h2>
+
+            <p>If you have two neighbouring water cells, and their water heights is different, basic reasoning tells us that water will flow from the larger to the smaller column. That's exactly what flow acceleration does: we take all <i>interior</i> (i.e. non-boundary) edges, and accelerate the flow in them based on the difference in water levels in corresponding water cells. We do this for the X flows:</p>
+
+            <pre><code class="language-cpp block">for (int y = 0; y < N; ++y)
+    for (int x = 1; x < N; ++x)
+        flowX(x,y) += (water(x-1,y) - water(x,y)) * g * dt * A / dx;</code></pre>
+
+            <p>and similarly for Y:</p>
+
+            <pre><code class="language-cpp block">for (int y = 1; y < N; ++y)
+    for (int x = 0; x < N; ++x)
+        flowY(x,y) += (water(x,y-1) - water(x,y)) * g * dt * A / dy;</code></pre>
+
+            <p>Here, <code>dx</code> and <code>dy</code> are the horizontal and vertical sizes of our sells (the lengths of the corresponding "pipes"), <code>dt</code> is the simulation time step (I'll talk about it later), <code>g</code> is the gravity, and <code>A</code> is the cross-section area of the virtual pipe. The <a href="https://diglib.eg.org/server/api/core/bitstreams/47f5228c-6f1c-4afb-ab80-b98c44575bc8/content">paper</a> takes <code>A=dx*dx</code>, while I took <code>A=1</code>. In general, <code>A</code> and <code>g</code> are only used in this step, and always as a product, so for our simple needs we can just ignore <code>A</code> and pretend that it is merged with <code>g</code>.</p>
+
+            <p>Usually, we also add <i>friction</i> to this step. Friction simply scales down the flow on each iteration, typically making the simulation converge to a static stable state. The paper recommends using a factor of <code>pow(friction,dt)</code> to make it <code>dt</code>-independent (which is closely related to <a href="/blog/posts/exponential-smoothing.html">exponential smoothing</a> I've explained in another article). Thus, the simulation code becomes</p>
+
+            <pre><code class="language-cpp block">for (int y = 0; y < N; ++y)
+    for (int x = 1; x < N; ++x)
+        flowX(x,y) = flowX(x,y) * pow(friction,dt)
+                   + (water(x-1,y) - water(x,y)) * g * dt / dx;</code></pre>
+
+            <p>and similarly for Y:</p>
+
+            <pre><code class="language-cpp block">for (int y = 1; y < N; ++y)
+    for (int x = 0; x < N; ++x)
+        flowY(x,y) = flowY(x,y) * pow(friction,dt)
+                   + (water(x,y-1) - water(x,y)) * g * dt / dy;</code></pre>
+
+            <p><code>friction</code> is typically between 0 and 1. <code>friction=0</code> means maximal friction, i.e. the flow from the previous simulation step is completely annihilated. <code>friction=1</code> means no friction at all. Because of this I'm actually using the formula <code>pow(1-friction,dt)</code> to make the <code>friction</code> value more intuitive. Of course, we should precompute the friction factor <code>pow(1-friction, dt)</code> at the start of simulation step, instead of computing it for each cell.</p>
+
+            <p>The time step <code>dt</code> is a bit tricky. Obviously, the larger it is, the faster the simulation goes. However, large values of <code>dt</code> also lead to instabilities. In general, there is a famous <a href="https://en.wikipedia.org/wiki/Courant%E2%80%93Friedrichs%E2%80%93Lewy_condition">Courant-Friedrichs-Lewy condition (CFL)</a> common to all fluid simulations. It states that, roughly speaking, the quotient <code>dx/dt</code> must not be less than the maximum speed of the fluid. In practice that means that we have to decrease <code>dt</code> (thus increasing the value of <code>dx/dt</code>) until the simulation becomes stable. I've used values around <code>0.001</code> and <code>0.01</code>.</p>
+
+            <p>So, this step essentially acelerates the water flow, kinda like \(\frac{dv}{dt} = a = \frac{F}{m}\) from Newton's laws.</p>
+
+            <h2 id="section-water-column-updating">Water column updating</h2>
+
+            <p>Yep, we'll first look at the third step of the simulation, because it will be important for understanding the second step.</p>
+
+            <p>This step is probably the simplest. For each water cell, we simply add or remove water according to the horizontal and vertical flows adjacent to this cell:</p>
+
+            <pre><code class="language-cpp block">for (int y = 0; y < N; ++y)
+    for (int x = 0; x < N; ++x)
+        water(x,y) += (
+                  flowX(x,  y) + flowY(x,y  )
+                - flowX(x+1,y) - flowY(x,y+1)
+            ) * dt/dx/dy;</code></pre>
+
+            <p><code>flowX(x,y)</code> and <code>flowY(x,y)</code> flow <i>towards</i> our <code>water(x,y)</code> cell, so we <i>add</i> them. The flows <code>flowX(x+1,y)</code> and <code>flowY(x,y+1)</code> flow <i>out of</i> our cell, thus we <i>subtract</i> them.</p>
+
+            <p>This step just moves the water between the cells, according to the computed flows. The \(\frac{dx}{dt} = v\) part of Newton's laws, if you like.</p>
+
+            <h2 id="section-outflow-scaling">Outflow scaling</h2>
+
+            <p>This second step is probably the trickiest. See, we might have a problem on step 3: if the outgoing flow is large enough, the amount of water in a cell can <i>become negative</i>! This is bad, since there's no such thing as a negative amount of water (as opposed to e.g. EM waves).</p>
+
+            <p>Fortunately, there is a simple solution called <i>outflow scaling</i>. We look at the flows adjacent to some water cell, and only consider the <i>outgoing</i> flows, i.e. flows that <i>remove</i> water from this cell, not <i>add</i> water. We take the total outgoing flow by summing these flows, and compare it to the actual amount of water in this cell. If we figure out that on the 3rd step we'll try to remove more water than the cell actually has, we simply <i>scale</i> the outgoing flows down, so that the water amount stays positive (or zero). Here's the code:</p>
+
+            <pre><code class="language-cpp block">for (int y = 0; y < N; ++y) {
+    for (int x = 0; x < N; ++x) {
+        float total_outflow = 0.f;
+        total_outflow += max(0.f, -flowX(x,y));
+        total_outflow += max(0.f, -flowY(x,y));
+        total_outflow += max(0.f, flowX(x+1,y));
+        total_outflow += max(0.f, flowY(x,y+1));
+
+        float max_outflow = water(x, y) * dx*dy/dt;
+
+        if (total_outflow > 0.f) {
+            float scale = min(1.f, max_outflow / total_outflow);
+
+            if (flowX(x,y) < 0.f) flowX(x,y) *= scale;
+            if (flowY(x,y) < 0.f) flowX(x,y) *= scale;
+            if (flowX(x+1,y) > 0.f) flowX(x+1,y) *= scale;
+            if (flowX(x,y+1) > 0.f) flowX(x,y+1) *= scale;
+        }
+    }
+}</code></pre>
+
+            <p>It's a bit messy due to having to filter only outgoing flows, but it gets the job done.</p>
+
+            <h2 id="section-terrain-elevation">Terrain elevation</h2>
+
+            <p>Now, we want water moving over <i>terrain</i>, but where's the terrain in these equations? Adding terrain is actually extremely easy. Imagine two neighbouring water cells with equal water column heights: they don't try to move into each other, because the water level is the same. Now let's imagine that the left cell has some non-zero terrain elevation below it. This moves the water <i>surface</i> height up, and now this cell's <i>surface</i> is higher than the right cell, and the water starts to move.</p>
+
+            <p>That is to say, when accelerating the flows, we simply need to replace the water <i>column</i> height by the water <i>surface</i> height, which is just terrain height plus column height.</p>
+
+            <p>If <code>terrain(x,y)</code> is the terrain elevation at a cell, then all we need is to update acceleration computations:</p>
+
+            <pre><code class="language-cpp block">for (int y = 0; y < N; ++y)
+    for (int x = 1; x < N; ++x)
+        flowX(x,y) = flowX(x,y) * pow(friction,dt)
+                   + (
+                      water(x-1,y) + terrain(x-1,y)
+                    - water(x,y) - terrain(x,y)
+                   ) * g * dt / dx;</code></pre>
+
+            <p>and similarly for Y:</p>
+
+            <pre><code class="language-cpp block">for (int y = 1; y < N; ++y)
+    for (int x = 0; x < N; ++x)
+        flowY(x,y) = flowY(x,y) * pow(friction,dt)
+                   + (
+                      water(x,y-1) + terrain(x,y-1)
+                    - water(x,y) - terrain(x,y)
+                   ) * g * dt / dy;</code></pre>
+
+            <h2 id="section-boundary-conditions">Boundary conditions</h2>
+
+            <p>When solving partial differential equations (which is what we're secretely doing here!), it's always important to consider what happens <i>at the boundary</i> of our simulation. For the virtual pipes method, the boundary conditions are implicitly defined by the boundary flow values, i.e.</p>
+
+            <ul>
+                <li>Left boundary: <code>flowX(0,y)</code></li>
+                <li>Right boundary: <code>flowX(N,y)</code></li>
+                <li>Bottom boundary: <code>flowY(x,0)</code></li>
+                <li>Top boundary: <code>flowY(N,0)</code></li>
+            </ul>
+
+            <p>We can set these to whatever we want:</p>
+
+            <ul>
+                <li>Setting them to 0 makes them act like walls: water waves will simply collide with them</li>
+                <li>Setting them to inflow (positive for left/bottom, negative for right/top) will make them add water to the simulation</li>
+                <li>Setting them to outflow (negative for left/bottom, positive for right/top) will make them remove water from the simulation</li>
+            </ul>
+
+            <p>For stuff like water over terrain, outflow boundary conditions seem reasonable (water on the edge of the map will simply disappear through the edge). If some parts of the boundary cross a river, we'd probably want this parts to be an inflow instead, so that the river actually, y'know, has flowing water in it.</p>
+
+            <p>It is important to set these values at the start of each simulation step, because outflow scaling can change them (and your outflow boundary can turn into a wall boundary).</p>
+
+            <h2 id="section-viscosity">Viscosity</h2>
+
+            <p>The <a href="https://diglib.eg.org/server/api/core/bitstreams/47f5228c-6f1c-4afb-ab80-b98c44575bc8/content">paper</a> also adds viscosity to the simulation, simply scaling the flows by some factor that depends on the water height (thus, it is different from friction). The idea is that smaller water layers have trouble moving around due to various internal forces, but larger water layers can move freely. This turns into simply multiplying the flows by \(\frac{H^2}{H^2+3\cdot \Delta t\cdot \nu}\), where \(H\) is the water level of the cell where the flow originates (e.g. left cell for positive X-flow, and right cell for a negative X-flow), and \(\nu\) is the viscosity constant.</p>
+
+            <p>Here's the code:</p>
+
+            <pre><code class="language-cpp block">for (int y = 0; y < N; ++y) {
+    for (int x = 1; x < N; ++x) {
+        float H = (flowX(x,y) > 0.f) ? water(x-1,y) : water(x,y);
+        H *= H;
+
+        if (H > 0.f)
+            flowX(x,y) *= H/(H + 3*dt*viscosity);
+    }
+}</code></pre>
+
+            <p>And similarly for Y:</p>
+
+            <pre><code class="language-cpp block">for (int y = 1; y < N; ++y) {
+    for (int x = 0; x < N; ++x) {
+        float H = (flowY(x,y) > 0.f) ? water(x,y-1) : water(x,y);
+        H *= H;
+
+        if (H > 0.f)
+            flowY(x,y) *= H/(H + 3*dt*viscosity);
+    }
+}</code></pre>
+
+            <p>I imagine this could be useful for something like magma flow, but I didn't use it for water. The effects of viscosity are important on small scales (the paper applies it to blood flow inside organs), but on large terrain scales viscosity has almost no effect.</p>
+
+            <h2 id="section-full-simulation-code">Full simulation code</h2>
+
+            <p>So, here's the full simulation code that I used:</p>
+
+            <pre><code class="language-cpp block">// Init boundary flows
+for (int i = 0; i < N; ++i) {
+    flowX(0,i) = ...; // left boundary
+    flowX(N,i) = ...; // right boundary
+    flowY(i,0) = ...; // bottom boundary
+    flowY(i,N) = ...; // top boundary
+}
+
+// Precompute the friction factor
+float frictionFactor = pow(1-friction,dt);
+
+// Accelerate X-flows
+for (int y = 0; y < N; ++y)
+    for (int x = 1; x < N; ++x)
+        flowX(x,y) = flowX(x,y) * frictionFactor
+                   + (
+                      water(x-1,y) + terrain(x-1,y)
+                    - water(x,y) - terrain(x,y)
+                   ) * g * dt / dx;
+
+// Accelerate Y-flows
+for (int y = 1; y < N; ++y)
+    for (int x = 0; x < N; ++x)
+        flowY(x,y) = flowY(x,y) * frictionFactor
+                   + (
+                      water(x,y-1) + terrain(x,y-1)
+                    - water(x,y) - terrain(x,y)
+                   ) * g * dt / dy;
+
+// Scale outflows to prevent negative water amounts
+for (int y = 0; y < N; ++y) {
+    for (int x = 0; x < N; ++x) {
+        float total_outflow = 0.f;
+        total_outflow += max(0.f, -flowX(x,y));
+        total_outflow += max(0.f, -flowY(x,y));
+        total_outflow += max(0.f, flowX(x+1,y));
+        total_outflow += max(0.f, flowY(x,y+1));
+
+        float max_outflow = water(x, y) * dx*dy/dt;
+
+        if (total_outflow > 0.f) {
+            float scale = min(1.f, max_outflow / total_outflow);
+
+            if (flowX(x,y) < 0.f) flowX(x,y) *= scale;
+            if (flowY(x,y) < 0.f) flowX(x,y) *= scale;
+            if (flowX(x+1,y) > 0.f) flowX(x+1,y) *= scale;
+            if (flowX(x,y+1) > 0.f) flowX(x,y+1) *= scale;
+        }
+    }
+}
+
+// Update water columns
+for (int y = 0; y < N; ++y)
+    for (int x = 0; x < N; ++x)
+        water(x,y) += (
+                  flowX(x,  y) + flowY(x,y  )
+                - flowX(x+1,y) - flowY(x,y+1)
+            ) * dt/dx/dy;</code></pre>
+
+            <p>And that's it! It might look intimidating at first, but as I've tried to explain earlier each step is actually pretty reasonable and intuitive. In the end, the bulk of the simulation is just 4 for-loops over a few 2D arrays with some fairly simple formulas inside.</p>
+
+            <p>You can have a look at full C++ update code <a href="https://bitbucket.org/lisyarus/psemek/src/3655fc9c6f424559179570c640dbdae39352f089/examples/water_2d.cpp#lines-155">here</a>, though there's quite a bit of other stuff going on.</p>
+
+            <p>Here's what it looks like:</p>
+
+            <center><video muted loop controls class="video-embed"><source src="/blog/media/simulating-water-over-terrain/water.mp4" type="video/mp4"></video></center>
+            <center><i>Footage from my <a href="https://github.com/lisyarus/webgpu-shallow-water">WebGPU water simulator</a> that I released several days ago.</i></center>
+
+            <p><i>(The particles in the video are for visualization only, they don't take part in the simulation itself.)</i></p>
+
+            <p>Once you've found good parameter values (for <code>dt</code> and <code>g</code>), this thing seems to be stable as heck, while still satisfying all my requirements and generally looking more or less like water. Hooray!</p>
+
+            <h2 id="section-model-shortcomings">Model shortcomings</h2>
+
+            <p>Of course, this model isn't perfect. One of the most obvious problems is that it doesn't have <i>inertia</i> and <i>velocity diffusion</i>. A fast water stream entering a lake won't propagate further inside the lake, but will instead spread out in all directions, ignoring all accumulated inertia. Two parallel water streams going in opposite directions can exist and not interact with each other (provided the water levels are equal).</p>
+
+            <p>It also tends to create these waves when the water first enters some area, which looks a bit weird, but I guess this is acceptable:</p>
+
+            <center><video muted loop controls class="video-embed"><source src="/blog/media/simulating-water-over-terrain/spill-waves.mp4" type="video/mp4"></video></center>
+
+            <h2 id="section-triangular-grids">Bonus: hex/triangular grids</h2>
+
+            <p>My game actually uses a regular triangular grid, not a square one, because...reasons. In fact, Boris The Brave has <a href="https://www.boristhebrave.com/2021/05/23/triangle-grids/">neatly summarized</a> all the advantages of such grids, and I'll refer you to his article.</p>
+
+            <p>Triangle grids can be seen as duals to hexagonal grids: just connect the centers of adjacent hexagons with lines, and they'll form a regular triangular grid. If we look at <a href="https://www.redblobgames.com/">Red Blob Games</a>' <a href="https://www.redblobgames.com/grids/hexagons/">amazing article</a> on hexagonal grids, what I'm using is basically the axial coordinate system on a dual to a pointy-top hex orientation.</p>
+
+            <p>What's cool is that we can store such grid in <i>usual 2D arrays</i> (just skewed a bit), and refer to vertices of such grid using <code>X,Y</code> coordinates:</p>
+
+            <center><img src="/blog/media/simulating-water-over-terrain/triangular-grid.png" class="image-embed"></center>
+            <center><i>Image credit to <a href="https://tex.stackexchange.com/a/562366">user cis</a> on tex.stackexchange</i></center>
+
+            <p>So, to simulate water on such a grid, I'll store water column height at grid vertices, which will make it easy to render the water surface (it's just a triangulation, much like the terrain itself).</p>
+
+            <p>The flows are a bit more complicated. There are flows in the X direction, flows in the Y direction, and flows in the...Z direction? Let's call it like that. Here's an illustration:</p>
+
+            <center><img src="/blog/media/simulating-water-over-terrain/hex-grid-flows.jpg" class="image-embed"></center>
+            <center><i>You have to excuse my drawing skills, I didn't have the time for a proper vector drawing</i></center>
+
+            <p>So, for each vertex, there are:</p>
+
+            <ul>
+                <li>X-flow coming from the left</li>
+                <li>X-flow going to the right</li>
+                <li>Y-flow coming from bottom-left</li>
+                <li>Y-flow going to top-right</li>
+                <li>Z-flow coming from bottom-right</li>
+                <li>Z-flow going to top-left</li>
+            </ul>
+
+            <p>For an \(N\times N\) grid of vertices, we have:</p>
+
+            <ul>
+                <li>\((N+1)\times N\) array of X-flows</li>
+                <li>\(N\times (N+1)\) array of Y-flows</li>
+                <li>\((N+1)\times (N+1)\) array of Z-flows, with the bottom-left and top-right values being unused</li>
+            </ul>
+
+            <p>This way,</p>
+
+            <ul>
+                <li><code>flowX(x,y)</code> is the flow from <code>(x-1,y)</code> to <code>(x,y)</code></li>
+                <li><code>flowY(x,y)</code> is the flow from <code>(x,y-1)</code> to <code>(x,y)</code></li>
+                <li><code>flowZ(x,y)</code> is the flow from <code>(x,y-1)</code> to <code>(x-1,y)</code></li>
+            </ul>
+
+            <p>Not much changes from the square grid case, we just need to incorporate the Z-flow into 1) boundary conditions, 2) acceleration, 3) outflow scaling, and 4) water updating. The hardest part here is not to mess up the indexing :)</p>
+
+            <p>You can find the C++ code for such a simulation <a href="https://bitbucket.org/lisyarus/psemek/src/3655fc9c6f424559179570c640dbdae39352f089/examples/water_2d_hex.cpp#lines-115">here</a>. It works pretty well, and is hopefully a bit more isotropic than the square grid case :)</p>
+
+            <center><video muted loop controls class="video-embed"><source src="/blog/media/simulating-water-over-terrain/hex-grid-water.mp4" type="video/mp4"></video></center>
+
+            <p>I've yet to implement all this in my game, though, &mdash; there are many, many more important things to do. But I'm quite determined that my game will have at least some form of basic water simulation now, which sounds super exciting. Imagine digging trenches to automatically water large farms, or diverting a river so that it floods a nearby village? The possibilities are endless. And for now, thanks for reading.</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
