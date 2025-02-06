@@ -7,6 +7,13 @@
 		<language>en-us</language>
 
 		<item>
+			<title>Simulating water over terrain</title>
+			<pubDate>Tue, 4 Feb 2025 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/simulating-water-over-terrain.html</link>
+			<description></description>
+		</item>
+
+		<item>
 			<title>Exploring ways to mipmap alpha-tested textures</title>
 			<pubDate>Sub, 5 Jan 2025 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/exploring-ways-to-mipmap-alpha-tested-textures.html</link>
