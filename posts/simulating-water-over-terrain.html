@@ -125,6 +125,8 @@
 
             <h2 id="section-shallow-water-equations">Shallow water equations</h2>
 
+            <p><i>Beware: I'm not a physicist, and this section might be full of complete nonsense.</i></p>
+
             <p>Now, whenever we talk about seeking a <i>mathematical model</i> of something, it usually means we need some <i>equations</i> to solve. Generally, fluid motion is described by the <a href="https://en.wikipedia.org/wiki/Navier%E2%80%93Stokes_equations">Navier-Stokes equations</a>, or by the simpler <a href="https://en.wikipedia.org/wiki/Euler_equations_(fluid_dynamics)">Euler equations</a>. However, these equations also don't talk about a free water surface, but instead about a volume completely filled with fluid.</p>
 
             <p>If we look at the variables these equations work with, we see fluid velocity, pressure, density, thermodynamic work, stress tensor, and some other things, and you'd need a good full course in fluid dynamics to figure out which of these are known, which are unknowns, and which can be derived from others (after lazily researching this for years I still don't know the answer, btw). Notice that there's nothing like "amount of water" here. We do have mass density, but all equations <i>divide</i> by it, so we can't really have zero density or a boundary between fluid and air. <i>(This can actually be done using stuff like the <a href="https://en.wikipedia.org/wiki/Particle-in-cell">particle-in-cell</a> and <a href="http://plaza.ufl.edu/ebrackear/">marker-and-cell</a> methods, if I'm not mistaken.)</i></p>
@@ -156,7 +158,7 @@ u(i,j) += du(i,j) * dt;</code></pre>
 
             <p>But fluid dynamics feature first derivatives, in stuff like "the acceleration of fluid is proportional to the difference between how much water is on the left and the right". So, how do you compute this with finite differencies? <code>(f(x+1) - f(x)) / dx</code> makes the simulation biased to the right, may ignore some directional effects, and generally leads to instabilities. <code>(f(x) - f(x-1)) / dx</code> has the same problems. <code>(f(x+1) - f(x-1)) / (2*dx)</code> is nicely symmetric but ignores the value at the current cell <code>f(x)</code>, which also leads to instabilities. In general, naive discretization of fluid dynamics equations is typically extremely unstable, and everything just oscillates in a stupid way instead of solving the equation.</p>
 
-            <p>Another way to see that this grid is to consider this situation: assume that we store the water height and the water velocity vector in each cell. Now consider a cell that has incoming water flows both from left and right, and the water flows out to top and bottom cells. Here's an illustration:</p>
+            <p>Another way to see that this grid is not ideal is to consider this situation: assume that we store the water height and the water velocity vector in each cell. Now consider a cell that has incoming water flows both from left and right, and the water flows out to top and bottom cells. Here's an illustration:</p>
 
             <center><img src="/blog/media/simulating-water-over-terrain/collocated-zero-velocity.png" class="image-embed"></center>
             <center><i>Image based on illustrations on <a href="https://tum-pbs.github.io/PhiFlow/Staggered_Grids.html">this site</a>.</i></center>
