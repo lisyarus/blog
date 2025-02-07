@@ -1,4 +1,4 @@
-let rssLinkHTML = '<span class="header-rss-link"><a href="https://lisyarus.github.io/blog/feed.xml">RSS feed</a></span>';
+let rssLinkHTML = '<link rel="alternate" type="application/rss+xml" title="RSS Feed for lisyarus blog" href="/blog/feed.xml" /><span class="header-rss-link"><a href="/blog/feed.xml">RSS feed</a></span>';
 
 let headerHTML = `
 <a href="/blog" class="blog-link">lisyarus blog</a>
