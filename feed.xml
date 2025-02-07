@@ -11,6 +11,7 @@
 			<title>Simulating water over terrain</title>
 			<pubDate>04 Feb 2025 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/simulating-water-over-terrain.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/simulating-water-over-terrain.html</guid>
 			<description></description>
 		</item>
 
@@ -18,6 +19,7 @@
 			<title>Exploring ways to mipmap alpha-tested textures</title>
 			<pubDate>05 Jan 2025 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/exploring-ways-to-mipmap-alpha-tested-textures.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/exploring-ways-to-mipmap-alpha-tested-textures.html</guid>
 			<description></description>
 		</item>
 
@@ -25,6 +27,7 @@
 			<title>Implementing a tiny CPU rasterizer | Part 3: Interpolating colors</title>
 			<pubDate>01 Nov 2024 11:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/implementing-a-tiny-cpu-rasterizer-part-3.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/implementing-a-tiny-cpu-rasterizer-part-3.html</guid>
 			<description></description>
 		</item>
 
@@ -32,6 +35,7 @@
 			<title>Implementing a tiny CPU rasterizer | Part 2: Drawing a triangle</title>
 			<pubDate>31 Oct 2024 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/implementing-a-tiny-cpu-rasterizer-part-2.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/implementing-a-tiny-cpu-rasterizer-part-2.html</guid>
 			<description></description>
 		</item>
 
@@ -39,6 +43,7 @@
 			<title>Implementing a tiny CPU rasterizer | Part 1: Clearing the screen</title>
 			<pubDate>30 Oct 2024 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/implementing-a-tiny-cpu-rasterizer-part-1.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/implementing-a-tiny-cpu-rasterizer-part-1.html</guid>
 			<description></description>
 		</item>
 
@@ -46,6 +51,7 @@
 			<title>(Yet another) Introduction to quaternions</title>
 			<pubDate>26 Oct 2024 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/introduction-to-quaternions.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/introduction-to-quaternions.html</guid>
 			<description></description>
 		</item>
 
@@ -53,6 +59,7 @@
 			<title>Transforming colors with matrices</title>
 			<pubDate>10 Oct 2024 12:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/transforming-colors-with-matrices.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/transforming-colors-with-matrices.html</guid>
 			<description></description>
 		</item>
 
@@ -60,6 +67,7 @@
 			<title>Demystifying multiple importance sampling</title>
 			<pubDate>25 Apr 2024 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/multiple-importance-sampling.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/multiple-importance-sampling.html</guid>
 			<description></description>
 		</item>
 
@@ -67,6 +75,7 @@
 			<title>3D shape matching with quaternions</title>
 			<pubDate>26 Dec 2023 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/3d-shape-matching-with-quaternions.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/3d-shape-matching-with-quaternions.html</guid>
 			<description></description>
 		</item>
 
@@ -74,6 +83,7 @@
 			<title>Computing forces in a system of beams, properly</title>
 			<pubDate>29 Oct 2023 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/structural-mechanics-2.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/structural-mechanics-2.html</guid>
 			<description></description>
 		</item>
 
@@ -81,6 +91,7 @@
 			<title>Computing forces in a system of beams</title>
 			<pubDate>15 Oct 2023 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/structural-mechanics.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/structural-mechanics.html</guid>
 			<description></description>
 		</item>
 
@@ -88,6 +99,7 @@
 			<title>So, you want to make a game engine</title>
 			<pubDate>15 Sep 2023 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/so-you-want-to-make-a-game-engine.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/so-you-want-to-make-a-game-engine.html</guid>
 			<description></description>
 		</item>
 
@@ -95,6 +107,7 @@
 			<title>Quaternion derivatives</title>
 			<pubDate>13 Sep 2023 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/quaternion-derivatives.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/quaternion-derivatives.html</guid>
 			<description></description>
 		</item>
 
@@ -102,6 +115,7 @@
 			<title>Complex numbers, Wirtinger derivatives and 2D inverse kinematics</title>
 			<pubDate>03 Aug 2023 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/complex-derivatives.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/complex-derivatives.html</guid>
 			<description></description>
 		</item>
 
@@ -109,6 +123,7 @@
 			<title>Porting my C++ game engine to Android</title>
 			<pubDate>19 Jul 2023 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/porting-for-android.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/porting-for-android.html</guid>
 			<description></description>
 		</item>
 
@@ -116,6 +131,7 @@
 			<title>Skeletal animation in glTF</title>
 			<pubDate>03 Jul 2023 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/gltf-animation.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/gltf-animation.html</guid>
 			<description></description>
 		</item>
 
@@ -123,6 +139,7 @@
 			<title>Uniqueness of matrix inverses</title>
 			<pubDate>21 Jun 2023 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/matrix-inverses.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/matrix-inverses.html</guid>
 			<description></description>
 		</item>
 
@@ -130,6 +147,7 @@
 			<title>Making a 2D soft-body physics engine</title>
 			<pubDate>10 May 2023 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/soft-body-physics.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/soft-body-physics.html</guid>
 			<description></description>
 		</item>
 
@@ -137,6 +155,7 @@
 			<title>How not to design a UI library</title>
 			<pubDate>11 Mar 2023 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/how-not-to-ui.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/how-not-to-ui.html</guid>
 			<description></description>
 		</item>
 
@@ -144,6 +163,7 @@
 			<title>Two-pass Gaussian blur coeffifients generator</title>
 			<pubDate>24 Feb 2023 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/blur-coefficients-generator.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/blur-coefficients-generator.html</guid>
 			<description></description>
 		</item>
 
@@ -151,6 +171,7 @@
 			<title>My favourite animation trick: exponential smoothing</title>
 			<pubDate>21 Feb 2023 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/exponential-smoothing.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/exponential-smoothing.html</guid>
 			<description></description>
 		</item>
 
@@ -158,6 +179,7 @@
 			<title>Super simple generic animation controller in C++</title>
 			<pubDate>17 Feb 2023 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/animation-controller.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/animation-controller.html</guid>
 			<description></description>
 		</item>
 
@@ -165,6 +187,7 @@
 			<title>Building a quadtree in 22 lines of code</title>
 			<pubDate>21 Dec 2022 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/building-a-quadtree.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/building-a-quadtree.html</guid>
 			<description></description>
 		</item>
 
@@ -172,6 +195,7 @@
 			<title>The quest for perfect collisions</title>
 			<pubDate>25 Oct 2022 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/perfect-collisions.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/perfect-collisions.html</guid>
 			<description></description>
 		</item>
 
@@ -179,6 +203,7 @@
 			<title>C++ audio mixing library design</title>
 			<pubDate>15 Oct 2022 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/audio-mixing.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/audio-mixing.html</guid>
 			<description></description>
 		</item>
 
@@ -186,6 +211,7 @@
 			<title>C++ behavior trees library design</title>
 			<pubDate>22 Aug 2022 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/behavior-trees.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/behavior-trees.html</guid>
 			<description></description>
 		</item>
 
@@ -193,6 +219,7 @@
 			<title>A stupidly simple spatial data structure</title>
 			<pubDate>16 Aug 2022 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/expanding-nd-array.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/expanding-nd-array.html</guid>
 			<description></description>
 		</item>
 
@@ -200,6 +227,7 @@
 			<title>A simple texture atlas packing algorithm</title>
 			<pubDate>06 Aug 2022 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/texture-packing.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/texture-packing.html</guid>
 			<description></description>
 		</item>
 
@@ -207,6 +235,7 @@
 			<title>A better point light attenuation function</title>
 			<pubDate>30 Jul 2022 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/point-light-attenuation.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/point-light-attenuation.html</guid>
 			<description></description>
 		</item>
 
@@ -214,6 +243,7 @@
 			<title>Compute shaders in graphics: Gaussian blur</title>
 			<pubDate>21 Apr 2022 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/compute-blur.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/compute-blur.html</guid>
 			<description></description>
 		</item>
 
