@@ -201,6 +201,41 @@
                 \mathrm{Var}\left[\frac{f(X)}{p(X)}\right] = I^2 \cdot \mathbb E\left[\frac{\varepsilon(X^*)^2}{1+\varepsilon(X^*)}\right] = I^2\int\limits_\Omega p^*(x)\frac{\varepsilon(x)^2}{1+\varepsilon(x)}dx
             \]
 
+            <h2 id="section-numerical-experiments">Numerical experiments</h2>
+
+            <p>Let's try these estimates with an actual, albeit artificial, example. I'll compute the integral \(\int\limits_0^\pi \sin x\,dx\) with the Monte-Carlo method using two distributions: the uniform distribution \(U(0,\pi)\), and a distribution that looks like a quadratic function symmetric around \(x=\frac{\pi}{2}\) and going to zero at the endpoints \(x=0,x=\pi\). See <a href="/blog/posts/multiple-importance-sampling.html">my other article</a> for exact PDF and CDF formulas for that second distribution.</p>
+
+            <p>Here's how their probability densities look like, compared to the ideal distribution:</p>
+
+            <center><img src="/blog/media/estimating-variance-reduction-in-importance-sampling/plot_density.png" class="image-embed"></center>
+
+            <p>And here's the congervence plot, i.e. the value of the Monte-Carlo estimate after N samples:</p>
+
+            <center><img src="/blog/media/estimating-variance-reduction-in-importance-sampling/plot_convergence.png" class="image-embed"></center>
+
+            <p>Both seem to converge to the true value, with the quadratic one converging much faster, as expected &mdash; after all, its probability is really close to the ideal distribution.</p>
+
+            <p>The real deal is comparing the <i>variance</i> of the estimated value with our formulas. I'm using the standard <a href="https://en.wikipedia.org/wiki/Unbiased_estimation_of_standard_deviation">unbiased sample variance estimator</a> to compute the variance from a number of observations, and compare it to the single-sample error predicted by the exact formula we've derived, for the uniform distribution:</p>
+
+            <center><img src="/blog/media/estimating-variance-reduction-in-importance-sampling/plot_error_p1.png" class="image-embed"></center>
+
+            <p>and for the quadratic one:</p>
+
+            <center><img src="/blog/media/estimating-variance-reduction-in-importance-sampling/plot_error_p2.png" class="image-embed"></center>
+
+            <p>As expected, the observed error converges to the predicted one, with the quadratic distribution giving an order of magnitude smaller error. Hurray!</p>
+
+            <p>Specifically, after 1000 samples I got this values:</p>
+
+            <ul>
+                <li>The <i>predicted</i> single-sample error for <i>uniform</i> distribution is: 0.9668499904773105</li>
+                <li>The <i>observed</i> single-sample error for <i>uniform</i> distribution is: 0.9707962784775023</li>
+                <li>The <i>predicted</i> single-sample error for <i>quadratic</i> distribution is: 0.09888969900733573</li>
+                <li>The <i>observed</i> single-sample error for <i>quadratic</i> distribution is: 0.10036578889793105</li>
+            </ul>
+
+            <p>Not bad! This is just a single run, though; different runs produce different random results. You can try it yourself &mdash; the python script for generating these plots is <a href="/blog/scripts/importance-sampling-variance-reduction-plots.py">available in this blog's repository</a>.</p>
+
             <h2 id="section-discussion">Discussion</h2>
 
             <p>The first, approximate, formula for the variance is rather straightforward: the closer you are to the ideal distribution, the smaller the noise. The second, exact, formula is a bit more tricky.</p>
