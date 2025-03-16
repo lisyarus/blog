@@ -97,9 +97,9 @@
                 \frac{f(x)}{I\cdot p(x)} = 1 \Longrightarrow p(x) = \frac{f(x)}{I}
             \]
 
-            <p>I will call this the <i>ideal</i> probability distribution \(p^*(x)\). With this distribution, the variance of a single sample is <i>zero</i>! Meaning that we get the correct answer with just one sample. Sounds suspicious, doesn't it?</p>
+            <p>I will call this the <i>ideal</i> probability distribution \(p^*(x)\), and I'll denote the samples from this distribution as \(X^*\). With this distribution, the variance of a single sample is <i>zero</i>! Meaning that we get the correct answer with just one sample. Sounds suspicious, doesn't it?</p>
 
-            <p>Look closer: to use this in Monte-Carlo integration, we need to compute the probability \(p^*(X)\) of a sample, which equals \(\frac{f(X)}{I}\). Given that we assumed that we know how to compute \(f(X)\), it means that we also need to know the value of \(I\) to compute this probability. But the value of \(I\) is exactly what we are trying to compute in the first place!</p>
+            <p>Look closer: to use this in Monte-Carlo integration, we need to compute the probability \(p^*(X^*)\) of a sample, which equals \(\frac{f(X^*)}{I}\). Given that we assumed that we know how to compute \(f(X^*)\), it means that we also need to know the value of \(I\) to compute this probability. But the value of \(I\) is exactly what we are trying to compute in the first place!</p>
 
             <p>So, the ideal distribution is kinda useless, since it requires knowing the desired integral in the first place. However, it's not completely useless! It still hints us that if our distribution \(p(x)\) is at least somewhat close to \(p^*(x)\), the value of \(\frac{f(x)}{I\cdot p(x)} - 1\) should still be close to zero, and we still should get <i>some</i> variance reduction.</p>
 
@@ -160,16 +160,16 @@
                  \mathrm{Var}\left[\frac{f(X)}{p(X)}\right] \approx I^2 \int\limits_\Omega p^*(x) \varepsilon(x)^2dx
             \]
 
-            <p>which can be interpreted as the expected value of \(\varepsilon(x)^2\) with respect to probability distribution \(p^*(x)\), which I'll denote as \(\mathbb E^*\left[\varepsilon(X)^2\right]\). The value</p>
+            <p>which can be interpreted as the expected value of \(\varepsilon(x)^2\) with respect to probability distribution \(p^*(x)\), which I'll denote as \(\mathbb E\left[\varepsilon(X^*)^2\right]\). The value</p>
 
             \[
                 \int\limits_\Omega p^*(x) \varepsilon(x) dx = 0
             \]
 
-            <p>can be interpreted in the same vein as the expected value \(\mathbb E^*\left[\varepsilon(X)\right]\) of \(\varepsilon(x)\) wrt the probability \(p^*(x)\). Because it is zero, we can derive</p>
+            <p>can be interpreted in the same vein as the expected value \(\mathbb E\left[\varepsilon(X^*)\right]\) of \(\varepsilon(x)\) wrt the probability \(p^*(x)\). Because it is zero, we can derive</p>
 
             \[
-                \mathrm{Var}\left[\frac{f(X)}{p(X)}\right] \approx I^2 \cdot \mathbb E^*\left[\varepsilon(X)^2\right] = I^2 \cdot \mathrm{Var}^*\left[\varepsilon(X)\right]
+                \mathrm{Var}\left[\frac{f(X)}{p(X)}\right] \approx I^2 \cdot \mathbb E\left[\varepsilon(X^*)^2\right] = I^2 \cdot \mathrm{Var}\left[\varepsilon(X^*)\right]
             \]
 
             <p>Thus, the variance of our Monte-Carlo estimator is approximately equal to \(I^2\) times the variance of the relative difference between our chosen probability distribution and the ideal one. That is, the more our samples differ from the ideal distribution, the more noise we get! This is something known in raytracing literature, but here we've derived an actual formula.</p>
@@ -183,12 +183,12 @@
             <p>We can still try to rewrite \(\frac{1}{1+\varepsilon}-1\) using the power series, drop the \(-\varepsilon\) term (because the integral of \(p^*(x)\varepsilon(x)\) is zero) which I'll denote with an arrow \(\rightarrow\), and then recognize the same power series once again:</p>
 
             \[
-                \frac{1}{1+\varepsilon(x)}-1 \quad\rightarrow\quad (1-\varepsilon(x)+\varepsilon(x)^2-\varepsilon(x)^3+\varepsilon(x)^4-\dots) - 1 = \\
-                = \varepsilon(x)^2-\varepsilon(x)^3+\varepsilon(x)^4-\dots = \varepsilon(x)^2\cdot(1-\varepsilon(x)+\varepsilon(x)^2-\dots) = \\
+                \frac{1}{1+\varepsilon(x)}-1 = (1-\varepsilon(x)+\varepsilon(x)^2-\varepsilon(x)^3+\varepsilon(x)^4-\dots) - 1 \quad\rightarrow \\
+                \rightarrow\quad \varepsilon(x)^2-\varepsilon(x)^3+\varepsilon(x)^4-\dots = \varepsilon(x)^2\cdot(1-\varepsilon(x)+\varepsilon(x)^2-\dots) = \\
                 = \frac{\varepsilon(x)^2}{1+\varepsilon(x)}
             \]
 
-            <p>However, this only works when \(|\varepsilon(x)|<1\). It turns out that we don't need the power series expansion to derive this formula: just add \(\varepsilon(x)\) to the original and combine the fractions:</p>
+            <p>However, the power series only works when \(|\varepsilon(x)|<1\). It turns out that we don't need the power series expansion to derive this formula: just add \(\varepsilon(x)\) to the original and combine the fractions:</p>
 
             \[
                 \frac{1}{1+\varepsilon(x)}-1 \quad\rightarrow\quad \frac{1}{1+\varepsilon(x)} - 1 + \varepsilon(x) = \frac{1}{1+\varepsilon(x)} - \frac{(1-\varepsilon(x))(1+\varepsilon(x))}{1+\varepsilon(x)} = \\
@@ -198,7 +198,7 @@
             <p>So, here's a better, non-approximate formula: the variance of the Monte-Carlo estimator depends on the relative difference \(\varepsilon(x)\) between the chosen and the ideal sample distributions as</p>
 
             \[
-                \mathrm{Var}\left[\frac{f(X)}{p(X)}\right] = I^2 \cdot \mathbb E^*\left[\frac{\varepsilon(x)^2}{1+\varepsilon(x)}\right] = I^2\int\limits_\Omega p^*(x)\frac{\varepsilon(x)^2}{1+\varepsilon(x)}dx
+                \mathrm{Var}\left[\frac{f(X)}{p(X)}\right] = I^2 \cdot \mathbb E\left[\frac{\varepsilon(X^*)^2}{1+\varepsilon(X^*)}\right] = I^2\int\limits_\Omega p^*(x)\frac{\varepsilon(x)^2}{1+\varepsilon(x)}dx
             \]
 
             <h2 id="section-discussion">Discussion</h2>
