@@ -437,6 +437,12 @@
 
             <p>This is why a mix of direct light sampling and, say, cosine-weighted sampling works: even though one of the distributions fails to produce some important samples, we're good as long as <i>at least one</i> distribution can produce this sample.</p>
 
+            <p>I should note that if all our distributions satisfy \( f(x) > 0 \,\Rightarrow \, p_i(x) > 0 \), i.e. each distribution works on its own, then we actually <i>can</i> select a random strategy using some normalized weights \(w_i\), generate a sample using the chosen distribution \(p_i(x)\), and use the estimator \(\frac{f(X)}{p_i(X)}\) which ignores all other strategies. In this case, the expected value is just the integral we're trying to compute:</p>
+
+            \[
+                \mathbb E\left[\sum w_i \frac{f(X)}{p_i(X)}\right] = \sum w_i \mathbb E\left[\frac{f(X)}{p_i(X)}\right] = \sum w_i \cdot I = I
+            \]
+
             <h2 id="section-mis-lights">Light sampling with MIS</h2>
 
             <p>There's a catch when using direct light sampling inside multiple importance sampling. Typically, when you have many lights (e.g. light-emitting triangles), you might select one of them at random, pick a random point on its surface, and set your direction sample to point in the direction of this point. However, for MIS to work, we need to compute the probability of generating a direction sample using <i>all</i> our distributions. This means that we need to compute the probability of generating this sample by <i>every</i> light source!</p>
