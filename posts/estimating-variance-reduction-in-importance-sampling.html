@@ -219,6 +219,8 @@
 
             <p><i>These claims seem to demand deriving their own numerical estimates, though...</i></p>
 
+            <p><b>Update:</b> <a href="https://fosstodon.org/@artificialmind/114172042380382413">Philip Trettner noticed</a> that this might explain why strong light sources produce butterflies when using e.g. cosine-hemisphere sampling as \(p(x)\): in this case \(p^*(x)\) is orders of magnitude larger than \(p(x)\) in the direction pointing to the light source, so \(\frac{p(x)}{p^*(x)} = 1+\varepsilon(x)\) is close to zero, thus \(\varepsilon(x) \approx -1\), and \(\frac{\varepsilon(x)^2}{1+\varepsilon(x)} \approx \frac{1}{1+\varepsilon(x)}\) where \(1+\varepsilon(x)\) is something close to zero, so the whole error value is extremely large.</p>
+
             <div id="end-section"></div>
             <div id="blog-footer"></div>
         </div>
