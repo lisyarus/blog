@@ -430,26 +430,16 @@ for (int boneID = 0; boneID < boneCount; ++boneID) {
 
             <p>But there's a catch. Notice how if a certain animation doesn't specify the transformation for a particular bone (i.e. assumes it's an identity transformation), we still need to somehow apply the local-to-parent coordinate transform (which would otherwise be implicit in the animation data). However, if we don't have an animation for a particular bone, how do we get this local-to-parent transform?</p>
 
-            <p>The solution is rather simple, actually. Recall that the inverse bind matrix transforms the vertices from model CS to bone local CS. Thus, the inverse of the inverse bind matrix (also known as &mdash; drum roll &mdash; the bind matrix) transforms from the bone local CS to model CS. So, given a vertex in bone local CS, we can apply the bind matrix to transform to model CS, then apply the inverse bind matrix of the parent to transform to parent local CS. The combined transform maps from the bone local CS to parent local CS, which is exactly what we need!</p>
+            <p>In terms of the glTF format, all an animation does is <i>replace the original node transformations</i>. Thus, if an animation doesn't supply a transformation for a particular bone (i.e. a particular glTF node), we just take the original transformation matrix for this node (in this case it is guaranteed to be decomposable into translation+rotation+scaling triple).</p>
 
-            <p>So, for a bone that lacks a corresponding transform in the animation data, we need to precompute the local-to-parent transformation manually:</p>
-
-            <pre><code class="language-cpp block">for (int boneID = 0; boneID < boneCount; ++boneID) {
-    if (int parentID = parent[boneID]; parentID != -1)
-        localToParent[boneID] = inverseBind[parentID]
-            * inverse(inverseBind[boneID]);
-    else
-        localToParent[boneID] = identityMatrix();
-}</code></pre>
-
-            <p>and apply it as an (empty) animation for such bones:</p>
+            <p>So, for bones that lacks a corresponding transform in the animation data we need to do something like</p>
 
             <pre><code class="language-cpp block">
 for (int boneID = 0; boneID < boneCount; ++boneID) {
     if (hasAnimationFor(boneID))
         transform[boneID] = animationFor(boneID);
     else
-        transform[boneID] = localToParent(boneID);
+        transform[boneID] = originalNode[boneID].transformMatrix;
 }
 
 // combine with parents
