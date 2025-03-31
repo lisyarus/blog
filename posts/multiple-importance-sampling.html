@@ -491,9 +491,28 @@
 
             <p>doesn't even look like a Monte-Carlo estimator &ndash; it has some extra terms in it!</p>
 
-            <p>The explanation is rather simple: Veach consideres a <i>more general scenario</i>, where you decide on the number of samples for each stratagy <i>beforehand</i>, and then use this formula for the integral.</p>
+            <p>The explanation is rather simple: Veach consideres a <i>more general scenario</i>, where you decide on the number of samples for each stratagy <i>beforehand</i>, and then use this formula for the integral. This doesn't really work for typical path tracing, where we want to only shoot 1 recursive ray for more predictable performance (and because more rays with high depth is useless compared to more rays with low depth).</p>
 
-            <p>If we take the weights \( w_i \) acording to the <i>balance heuristic</i> described in the same section of the thesis, and use the <i>one-sample estimator</i> described in section 9.2.4 <i>"One-sample model"</i>, we arrive at the very sample formula for multiple importance sampling that we derived earlier in this article.</p>
+            <p>However, in section 9.2.4 <i>"One-sample model"</i> he discusses a simpler approach that does work for path tracing. Given \(N\) strategies (i.e. direction probability distributions) \(p_i\), we select one of them with probability \(c_i\) (so that \(\sum c_i=1\)), generate a sample \(X \sim p_i\) using this distribution, and use the estimator</p>
+
+            \[ \frac{f(X)}{c_ip_i(X)}w_i(X) \]
+
+            <p>for some weight functions \(w_i(x)\). This looks suspicious because it doesn't include the dependence on distributions other than \(p_i\), but for the method to work the weights \(w_i\) have to satisfy a few extra conditions that effectively force them to incorporate other distributions anyway. Specifically:</p>
+
+            \[ \forall x \quad p_i(x) = 0 \Rightarrow w_i(x) = 0 \]
+            \[ \forall x \quad \sum w_i(x) = 1 \]
+
+            <p>Notice that it implies that at each point \(x\) at least one distribution \(p_i(x)\) is non-zero, otherwise the sum of weights at this point would be zero.</p>
+
+            <p>Veach also describes a <i>balance heuristic</i> for selecting the weights:</p>
+
+            \[ w_i(x) = \frac{c_ip_i(x)}{\sum c_kp_k(x)} \]
+
+            <p>which he proves to be optimal for this single-sample case (theorem 9.4). If we plug this into the estimator formula, we get</p>
+
+            \[ \frac{f(X)}{c_ip_i(X)}\cdot \frac{c_ip_i(X)}{\sum c_kp_k(X)} = \frac{f(X)}{\sum c_kp_k(X)} \]
+
+            <p>which is just a usual Monte-Carlo estimator with a mixture probability \(\sum c_kp_k(x)\) which we used throughout this article.</p>
 
             <h2 id="section-end">End section</h2>
 
