@@ -64,7 +64,7 @@
                 <li>For any two particle types A and B, the force experienced by A from B consists of two parts: the <i>interaction force</i>, and the <i>collision force</i>.</li>
                 <li>Interaction force can be either attractive or repulsive.</li>
                 <li>Collision force is always repulsive.</li>
-                <li>Both forces are specified by a radius and a strength factor. Positive strength means attraction, negative strength means repulstion. (For collision force it is always repulsion).</li>
+                <li>Both forces are specified by a radius and a strength factor. Positive strength means attraction, negative strength means repulsion. (For collision force it is always repulsion).</li>
                 <li>Collision force radius is always smaller than interaction force radius (i.e. collision is close-range, interaction is far-range).</li>
                 <li>Collision force strength is always larger than interaction force strength.</li>
                 <li>Both forces decrease linearly with distance, upon reaching the radius value, at which they are zero.</li>
@@ -98,7 +98,7 @@
 
             <p>As you can see, for the collision + attraction case, there's a local minimum at some distance, where the force is equal to zero. This would be the "sweet spot" for particles, i.e. they'll tend to maintain this distance if possible.</p>
 
-            <p>Notice that the force (and thus also the energy) doesn't go to infinity when distance is close to zero, like it does in a typical \(\frac{1}{r}\) potential from gravity or electromagnetism. This means that our collision force has finite strength, and can be overcome by sufficiently strong other forces, or if the collision raduis is small enough. E.g. on this screenshot multiple particles merged into one:</p>
+            <p>Notice that the force (and thus also the energy) doesn't go to infinity when distance is close to zero, like it does in a typical \(\frac{1}{r}\) potential from gravity or electromagnetism. This means that our collision force has finite strength, and can be overcome by sufficiently strong other forces, or if the collision radius is small enough. E.g. on this screenshot multiple particles merged into one:</p>
 
             <center><img src="/blog/media/particle-life/merged.png" class="image-embed"></center>
 
@@ -543,9 +543,9 @@ fn fragmentGlow(in : VertexOut) -> @location(0) vec4f
             <center><img src="/blog/media/particle-life/glow.png" class="image-embed"></center>
             <center><i>Glowing effect, exaggerated for the sake of demonstration.</i></center>
 
-            <p>All this is rendered using basic additive blending (<i>not</i> the usual over blending!) into an HDR <code>rgba16float</code> texture, then composited onto the screen (actually, onto an HTML canvas) using ACES tone-mapping and some blue-noise dithering to hide banding resuling from dark colors on the edge of the glow. I experimented with different blending methods & tone-mapping curves, and this combination produced the best visuals for my taste.</p>
+            <p>All this is rendered using basic additive blending (<i>not</i> the usual over blending!) into an HDR <code>rgba16float</code> texture, then composited onto the screen (actually, onto an HTML canvas) using ACES tone-mapping and some blue-noise dithering to hide banding resulting from dark colors on the edge of the glow. I experimented with different blending methods & tone-mapping curves, and this combination produced the best visuals for my taste.</p>
 
-            <p>However, rendering perfect circles stops working when particles get too small, e.g. less than 1 pixel: the circle gets severely undersampled, the computed alpha values are pretty much random, and the whole image is just a big flickering mess. To counter that, I have a separate shader which replaces the circles when particle radius gets smaler than 1 pixel. It also renders squares, but the vertex shader makes sure the squares are exactly 2x2 pixels in size:</p>
+            <p>However, rendering perfect circles stops working when particles get too small, e.g. less than 1 pixel: the circle gets severely undersampled, the computed alpha values are pretty much random, and the whole image is just a big flickering mess. To counter that, I have a separate shader which replaces the circles when particle radius gets smaller than 1 pixel. It also renders squares, but the vertex shader makes sure the squares are exactly 2x2 pixels in size:</p>
 
             </p><pre><code class="language-rust block">@vertex
 fn vertexPoint(@builtin(vertex_index) id : u32) -> VertexOut
