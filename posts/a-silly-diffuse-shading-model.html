@@ -1,0 +1,114 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta property="og:type" content="article" />
+        <meta property="og:title" content="A silly diffuse shading model">
+        <meta property="og:site_name" content="lisyarus blog">
+        <meta property="og:image" content="/blog/media/a-silly-diffuse-shading-model/cover.png" />
+        <meta property="og:image:height" content="240" />
+        <meta property="og:image:width" content="520" />
+        <title>A silly diffuse shading model | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">A silly diffuse shading model</div></center><br/>
+            <center><span class="post-date">2025 Dec 31</span></center><br/>
+
+            <p><i>Happy New Year for those who celebrate!</i></p><p><i>Happy Arbitrarily Chosen Point in Earth's Orbit for those how don't!</i></p>
+
+            <p>We all know that the proper lighting factor (i.e. proportion of reflected incoming light) for a completely diffuse (aka Lambertian) surface is \(\max(0, L\cdot N)\). Here, \(L\) is the direction to the light source, \(N\) is the surface normal, and \(\cdot\) is the dot product. The dot product essentially comes from pure geometry (the same amount of light in a light beam cross-section being spread across larger surface area), while the \(\max\) is there to make sure that the parts of the surface facing away from light don't receive any light at all.</p>
+
+            <p>Is it a great, physically reasonable model (although real materials <a href="https://en.wikipedia.org/wiki/Oren%E2%80%93Nayar_reflectance_model">don't exactly look like that</a>), and serves as a basis for many other shading models (typically via microfacet theory for modern PBR materials). However, sometimes we don't care about such things; sometimes we've just started a new project or a rendering tech demo and we just want to throw some good one-liner shading model. We don't have a texture or even don't intend to, we just want something reasonable to look at.</p>
+
+            <p>And here the diffuse model sucks! The \(\max(0, \dots)\) part makes half of the model (the one not facing the light) completely flat-colored (e.g. just black if you don't have ambient light), making you unable to see any geometry.</p>
+
+            <center><img src="/blog/media/a-silly-diffuse-shading-model/dragon-diffuse.png" class="image-embed"><br><i>Notice the black parts!</i></center>
+
+            <p><i>Btw, all screenshots in this post have light intensity of 1, have gamma-correction, and no other post-processing (i.e. no tone-mapping).</i></p>
+
+            <p>Can we do better?</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-typical-solutions">Typical solutions</h2>
+
+            <p>Now, of course it's not a new problem. In typical scenes this effect isn't seen because we have many different lights (so the black part is much smaller), we have textures (so with some ambient light there is still variation in the color), we have some form of ambient occlusion (which further provides visual clues about the geometry), etc, etc.</p>
+
+            <p>All these solutions are, however, not one-liners like the <code>max(0, dot(L, N))</code> thing, and range in complexity from rather simple (e.g. hard-coding two or three lights in the shader) to academic-level state-of-the-art (like GTAO and similar algorithms). For something like a test project we would definitely prefer a one-liner!</p>
+
+            <h2 id="section-a-silly-solution">A silly solution</h2>
+
+            <p>One simple way to fix this is to just re-map the dot product values from \([-1, 1]\) to \([0, 1]\) with a linear function. This results in a formula</p>
+
+            \[ 0.5 + 0.5 \cdot (L\cdot N) = \frac{1 + L\cdot N}{2} \]
+
+            <p>Here's what it looks like:</p>
+
+            <center><img src="/blog/media/a-silly-diffuse-shading-model/dragon-fake-diffuse-1.png" class="image-embed"></center>
+
+            <p>It's much better, and there are no completely black spots, but the image is much brighter than it should be. It makes sense &mdash; after all, we changed the formula! Comparing the plots of intensity as a function of the dot product makes it especially apparent:</p>
+
+            <center><img src="/blog/media/a-silly-diffuse-shading-model/plot-1.png" class="image-embed"><br><i>Red is correct formula, blue is tweaked formula</i></center>
+
+            <p>It's not exactly physical, but it probably can be put on rigorous grounds if we replace a single directional light source with a suitable environment map, e.g. one that has light in one hemisphere and doesn't have it in the other hemisphere (though I didn't check the math). That's what I've been doing for ages, but maybe we can do <i>even better</i>?</p>
+
+            <h2 id="section-a-sillier-solution">A sillier solution</h2>
+
+            <p>Behold:</p>
+
+            \[ \left(0.5 + 0.5 \cdot (L\cdot N)\right)^2 = \left(\frac{1 + L\cdot N}{2}\right)^2 \]
+
+            <p>Yep, I just squared the formula from the previous section! Here's what it looks like:</p>
+
+            <center><img src="/blog/media/a-silly-diffuse-shading-model/dragon-fake-diffuse-2.png" class="image-embed"></center>
+
+            <p>It's much closer to the true image in well-lit areas, yet still has nice shading gradients where the surface isn't facing the light. It's not exactly physical either, though we might hand-wavingly say that it approximates subsurface scattering of some sort. And here's the plot:</p>
+
+            <center><img src="/blog/media/a-silly-diffuse-shading-model/plot-2.png" class="image-embed"><br><i>Red is correct formula, orange is new formula</i></center>
+
+            <p>It's clearly some sort of an approximation of the true formula! How come?</p>
+
+            <h2 id="section-hermite-problems">Hermite problems</h2>
+
+            <p>If you look closely at the last plot above, you'll notice that</p>
+
+            <ul>
+                <li>Both functions have the same values at \(-1\) and \(1\)</li>
+                <li>Both functions have the same slope (i.e. derivative) at \(-1\) and \(1\)</li>
+            </ul>
+
+            <p>What if we turn things upside down and instead ask for a function that matches the values and derivatives of \(f(x) = \max(0, x)\) at \(x=\pm 1\)?</p>
+
+            <p>Guess what, mathematicians know exactly how to do this! This is called <a href="https://en.wikipedia.org/wiki/Hermite_interpolation"><i>Hermite interpolation</i></a>, and is solvable with an exact formula! If you specify \(N+1\) values and derivatives at various points, Hermite interpolation gives you the *unique* polynomial of order \(\leq N\) which has these values and derivatives.</p>
+
+            <p>In our case we have \(N=3\) (we have two values + two derivatives, thus \(N+1=4\)), so we expect at most a cubic polynomial. In this special case it turns out that the solution is not cubic, but quadratic, and is exactly \(\left(\frac{1+x}{2}\right)^2\). So this shading model is even optimal in some sense!</p>
+
+            <p><i>Hermite interpolation is also fun from algebraic perspective &mdash; it's actually an instance of the <a href="https://en.wikipedia.org/wiki/Chinese_remainder_theorem">Chinese remainder theorem</a> (for polynomial rings), which in modern form is neither Chinese nor about remainders.</i></p>
+
+            <h2 id="section-thats-it">That's it</h2>
+
+            <p>I actually developed (well, more like randomly made up) this shading model while working on clouds in my game &mdash; they use exactly this formula, and I'm more than happy with how it looks:</p>
+
+            <center><img src="/blog/media/a-silly-diffuse-shading-model/clouds.png" class="image-embed"></center>
+
+            <p>That's it, and thanks for reading!</p>
+
+            <div id="end-section">End section</div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
