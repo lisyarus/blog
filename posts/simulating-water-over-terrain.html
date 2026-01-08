@@ -285,9 +285,9 @@ u(i,j) += du(i,j) * dt;</code></pre>
             float scale = min(1.f, max_outflow / total_outflow);
 
             if (flowX(x,y) < 0.f) flowX(x,y) *= scale;
-            if (flowY(x,y) < 0.f) flowX(x,y) *= scale;
+            if (flowY(x,y) < 0.f) flowY(x,y) *= scale;
             if (flowX(x+1,y) > 0.f) flowX(x+1,y) *= scale;
-            if (flowX(x,y+1) > 0.f) flowX(x,y+1) *= scale;
+            if (flowY(x,y+1) > 0.f) flowY(x,y+1) *= scale;
         }
     }
 }</code></pre>
