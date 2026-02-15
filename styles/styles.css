@@ -173,6 +173,14 @@ a.white-link:hover {
 	box-shadow: 0px 0px 10px 0px #0007;
 }
 
+.image-banner {
+	max-width: calc(100% + 40px);
+	margin-top: 16px;
+	margin-bottom: 16px;
+	margin-left: -20px;
+	margin-right: -20px;
+}
+
 code {
 	color: #cc5e91;
 }

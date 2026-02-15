@@ -1,0 +1,207 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta property="og:type" content="article" />
+        <meta property="og:title" content="Village Builder Game">
+        <meta property="og:site_name" content="lisyarus blog">
+        <meta property="og:image" content="/blog/media/village-builder/cover.png" />
+        <meta property="og:image:height" content="240" />
+        <meta property="og:image:width" content="520" />
+        <title>Village Builder Game | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+
+            <center><img src="/blog/media/village-builder/banner.png" class="image-banner"></center>
+
+            <br/><center><div class="page-title">(Untitled) Village Builder Game</div></center><br/>
+
+            <p>This is my current main long-term project: a game where you control a bunch of folks to build a village set in Medieval-ish times on a fantasy continent. Main features:</p>
+
+            <ul>
+                <li>Dwarf Fortress/Rimworld-style <b>indirect control</b> of your citizens</li>
+                <li>Sims-like <b>building mechanics</b> (e.g. walls are thin and occupy grid edges, unlike the meter-thick walls in DF) on a regular <b>triangular grid</b> (which allows for more organic-looking build styles)</li>
+                <li>Procedurally-generated <b>continent</b> with simulated <b>climate</b> creating grasslands, forests, mountains, rivers, deserts, and tundras</li>
+                <lI>Random <b>neighbouring settlements</b> with a diverse <b>economy and trading</b> networks</lI>
+                <li>Huge <b>resource variety</b> (woods, stones, clays, metals, foods, dyes), <b>customization</b> options (building shapes & materials, food preferences, dyed clothing), and opportunities for <b>creative expression</b></li>
+            </ul>
+
+            <p>The project is expected to be released in <b>late 2027</b> (either EA or v1.0, time will tell). A Steam page is expected to appear somewhere in <b>mid 2026</b>.</p>
+
+            <p>If you want to keep up with the updates, the best ways are to follow me on <a href="/blog/contacts.html">social media</a> or watch my <a href="https://www.youtube.com/playlist?list=PLSGI94QoFYJwGaieAkqw5_qfoupdppxHN">YouTube devlogs</a>.</p>
+
+            <p>If you want to learn more, keep on reading :)</p>
+
+            <ul id="contents"></ul>
+
+            <center><img src="/blog/media/village-builder/banner2.png" class="image-banner"></center>
+
+            <h2 id="section-history">A bit of history</h2>
+
+            <p><i>CW: This section is rather long and personal.</i></p>
+
+            <p>The idea of this project dates back to about a decade into the past, to the times when the prospect of making games was in the <i>"would be kinda fun someday huh"</i> category for me. Nevertheless, this didn't stop me from dreaming about the project, but that's about it.</p>
+
+            <h4>It's going nowhere</h4>
+
+            <p>Years later I got more into specializing in real-time graphics while coding random simulation/visualization/procgen projects in my spare time. At some point I somehow tricked myself into thinking that I can make a full-blown game while having not the slightest idea of what that entails. This went on for several years, at which time I made some fun unreleased unfinished projects, including the <a href="https://www.youtube.com/playlist?list=PLSGI94QoFYJxc9kJD28UvAvSNXtAstd1M">Droid Colony Builder</a> and a bunch of projects like <code>villages</code>, <code>villages2</code>, <code>old_villages</code>, and a few other with some secret codenames. These were the precursors to the current project, and I talk about them for a bit in <a href="youtube.com/watch?v=pyoyJ1wtl3M&list=PLSGI94QoFYJwGaieAkqw5_qfoupdppxHN&index=1&pp=iAQBsAgC">my first devlog</a> about the village builder game. All of them finished with the classic <i>"do random stuff without a plan and burn out because it doesn't go anywhere"</i>, which made me realize I need to try something new.</p>
+
+            <h4>Small games</h4>
+
+            <p>Around the same time a dear friend of mine advised me to attend game jams, which I did, <a href="https://lisyarus.itch.io/">quite a lot</a>. I quite enjoyed them, and learned a ton of essential little things about game development, but I also learned one striking thing about myself: <i>I don't want to make small games.</i></p>
+
+            <p>This is probably affected to a high degree by the type of games I've always loved to play &ndash; these were always heavily simulation-based games that contain a huge ton of complex mutually interracting mechanics and feature some procedurally-generated worlds. And while I do enjoy the <i>process</i> of making those small jam games to a certain degree, I quickly realized that this is more of a one-shot dopamine kick than genuine enjoyment, and I'm almost never quite happy with the result.</p>
+
+            <p>Which is all quite bad, because one of the most commonly repeated advice on indie gamedev is to actually <i>make small games</i>. They are more sustainable motivation-wise, easier to make, safer to drop if they don't work out. In general, making a big ambitious project as an indie (especially a solo indie) is a suicide.</p>
+
+            <p>Thankfully, I'm a self-concious grown-up human being, and I can simply ignore all the world's advice if I choose to. I also don't really believe most of the generic advice you hear on the internet :)</p>
+
+            <h4>Costa Verde</h4>
+
+            <p>So, I dediced to make an actual commercial game and publish it on Steam, ideally in a year or so. This is how <a href="https://store.steampowered.com/app/2403100/Costa_Verde_Transport_Department">Costa Verde</a> came into existence.</p>
+
+            <p>Somewhere in January 2023 I participated in <a href="https://ldjam.com/events/ludum-dare/52">Ludum Dare 52</a> with a <a href="https://lisyarus.itch.io/hartifacts">small game about building roads</a> on a hexagonal grid. To my amusement, I finished 6th out of 424 entries in the <i>Fun</i> category, and 35th overall.</p>
+
+            <p>However, I wasn't satisfied with the fact that it was a puzzle game. The truth is, I don't actually like puzzle games. I never did. I spent half of my school years doing maths olympiads; I'm honestly just tired of puzzles.</p>
+
+            <p>I wanted this game to be about traffic simulation &ndash; something not really feasible for a 2-day game jam. This, combined with the vague idea of publishing a game in a year, led to me spending the whole of 2023 making a full-fledged traffic simulation game.</p>
+
+            <p>As it was my first commercial game project, I struggled a lot, pushed through a couple burnouts, made some dumb ad-hoc final adjustments because I never managed to fix the core mechanics, and eventually published the game.</p>
+
+            <p>Needless to say, this was a tremendously valuable learning experience, albeit a harsh one. After the release I felt like I'll never be making games again. Two months later, I already knew which game I'm gonna make next.</p>
+
+            <h4>There's only so much time</h4>
+
+            <p>At some point in 2023 I saw a post somewhere on social media that went something like this. A good game takes some 2-3 years to make, and you'll probably only be able to make games until you're, say, 50 years old, give or take. Subtract your current age, divide by 2-3 year per game, &ndash; that's how many games you'll ever make. Ever. <i>(For me, that is about 8 games.)</i> So, don't spend your time making some random training/testing/side/etc projects or simply projects you don't care about. Instead, just make the ones you actually love.</p>
+
+            <p><i>I've probably paraphrased that rather poorly, and added a lot of my own thoughts, but hey &ndash; this was 3 years ago, and I didn't save the original post.</i></p>
+
+            <p>This resonated with me much stronger than I expected. See, I spent the months after releasing Costa Verde reflecting on my experience, and I realized another sad thing: I've made a game which I <i>don't really care about</i>.</p>
+
+            <p>Traffic simulation, seriously? I mean, it does fit the <i>heavily simulation-based</i> criterion, but there's that. It only has like 2-3 very primitive mechanics which work quite poorly because traffic simulation is, &ndash; who would've thought! &ndash; very hard to model. Among the games I've ever played the only ones that had any traffic simulation are Industry Giant (where it's more about logistics and transport networks) and Cities Skylines (where the answer is always more lanes and more <a href="https://www.youtube.com/watch?v=cPCLFtxpadE">roundabouts</a>).</p>
+
+            <p>It's a mechanic I just randomly picked and stuck with, not an idea I've been nurturing for years. It's quite expected that I didn't really care about it myself, which didn't help at all with developing the game. So, I decided that my next project will be one that I'm really invested in emotionally, so that I can keep working on it for a long time and make an actually good game.</p>
+
+            <p>I promised myself that after releasing Costa Verde in October 2023 I'll rest until the end of the year at the very least. Naturally, I created a new repository on January 1st, 2024.</p>
+
+            <center><img src="/blog/media/village-builder/banner3.png" class="image-banner"></center>
+
+            <h2 id="section-already-done">What's already done</h2>
+
+            <p>So, I started the project in 2024, but it's February 2026 at the moment of writing. Surely I should've finished it already?</p>
+
+            <p>Well, as I've said, the project is rather ambitious, so it takes a fair amount of time. Initially I expected 3 years, but now I think it'll be full 4 years at least. Still, in the two years that already passed, and despite a lot of setbacks due to personal reasons, I did manage to do quite a bunch of stuff.</p>
+
+            <h4>2024</h4>
+
+            <p>I spent 2024 mostly laying out the base systems and figuring out the art style:</p>
+
+            <ul>
+                <li>I implemented my own ECS library, which underlies pretty much every system in this project.</li>
+                <li>I tested whether the regular triangular grid works at all as the foundation for the building mechanic. Turns out that it does, and allows for a lot of fresh and novel shapes. It does take some time to get used to, though.</li>
+                <li>I designed all the core logic related to gathering resources, crafting stuff, constructing buildings, digging terrain, and so on. This part still needs more work and some refactoring, though.</li>
+                <li>I prototyped the UI for all the building construction, which turned out to be a bit tricky due to the unusual structure of the grid.</li>
+                <li>I implemented the villagers' AI based on behavior trees with pathfinding, task selection, eating, sleeping, wandering, etc. The task management needs some refactoring and improvements. I'm using the same behavior tree library that I <a href="/blog/posts/behavior-trees.html">wrote  a post about in 2022</a>.</li>
+                <li>I designed a new immediate-mode auto-layout UI library to accomodate the sheer amount of text & player actions this game needs.</li>
+                <li>I added a bunch of content including 4 different tree types (each producing differently-colored materials), walls, fences, and floors made from wattle, planks, or wooden logs, adobe walls, hay beds, and so on.</li>
+                <li>I settled on a cartoon-ish art style with low color variation density, smooth lighting, and black depth-based outlines. Initially I was planning to do vertex-colored models (i.e. no textures) only with cel shading, in order to simplify the already tedious process of making content for the game. However, it turned out that the no-textures style, while possible, wasn't what I wanted, so eventually I textured almost everything, and it was one of the best decisions I've ever made.</li>
+            </ul>
+
+            <h4>2025</h4>
+
+            <p>To me personally, 2025 feels like it never even happened, but it turns out that I did work on the game after all:</p>
+
+            <ul>
+                <li>I added farming to the game, with turnips & carrots available for growing on tilled soil.</li>
+                <li>I implemented stockpiles, which are the first logistics-related mechanic in the game.</li>
+                <li>I fixed a huge ton of AI bugs and introduced a lot of safety checks and journalling to help me with these.</li>
+                <li>I improved the UI a lot, adding helpful tooltips, icons, colors, progress bars, and so on.</li>
+                <li>I finalized the way roofs & roof meshes will work, which proved to be the trickiest thing related to the triangular grid system.</li>
+                <li>I added a mood mechanic for the villagers, so that there's some incentive for the player to build good houses.</li>
+                <li>I started the <i>Big World Update</i>, which I'll talk about below.</li>
+            </ul>
+
+            <center><img src="/blog/media/village-builder/banner4.png" class="image-banner"></center>
+
+            <h2 id="section-current">Current work</h2>
+
+            <h4>Big World</h4>
+
+            <p>Currently I'm working on what I call the <i>Big World Update</i>. As you've probably guessed from the <i>"procedurally-generated continent"</i> in the beginning of this post, the game is supposed to be set on a rather large world. I'm expecting something like 50 to 100 km to be the typical size of the game's map. So, since autumn 2025 I've been working on this:</p>
+
+            <ul>
+                <li>I re-implemented all the required systems (terrain, camera raycast, etc) to support LOD-based asynchronous generation and rendering.</li>
+                <li>I crafted a procedural world generator based on a bunch of layered noise (and ended up inventing a new noise for the mountains).</li>
+                <li>I designed a generic system for describing entity spawning rules.</li>
+                <li>I switched to a 20.12 fixed-point format for all world coordinates to overcome floating-point precision issues emerging at this scale.</li>
+                <li>I implemented octahedral impostors for the trees, which are the main rendering bottleneck now.</li>
+                <li>I made a nice skybox with vibrant sky colors, shiny sun, moon with correct phases relative to the sun, and procedural clouds.</li>
+                <li>I implemented cascaded shadow maps for the whole world (still needs tweaking, though).</li>
+            </ul>
+
+            <h4>Random content</h4>
+
+            <p>In a recharching phase in the beginning on 2026, I decided to work on a bunch of random content:</p>
+
+            <ul>
+                <li>I added chickens that can lay eggs in nests and sleep on roosts, which required a lot of AI refactoring and generalization which I was planning to execute anyway.</li>
+                <li>I added 4 different bedrock types (granite, limestone, sandstone, basalt) with each producing differently-colored materials.</li>
+                <li>I added the ability to mine stones with pickaxes and use them for building walls, fences, and stone paths.</li>
+            </ul>
+
+            <h4>Water</h4>
+
+            <p>After recharging, I decided to work on one of the most ambitious and important parts of the game &ndash; the water simulation:</p>
+
+            <ul>
+                <li>I prototyped the basic dynamic water simulation algorithm based on the <a href="/blog/posts/simulating-water-over-terrain.html">virtual pipes method</a>.</li>
+                <li>I experimented a lot with the visual style for the water, and settled on some combination of a dynamic low-poly flat-shaded mesh, Fresnel-reflected sky & sun, and depth-based underwater attenuation.</li>
+                <li>I wired together world generation and water rendering, using the same chunk-based LOD system I used for the terrain.</li>
+            </ul>
+
+            <p>And this is where I am right now!</p>
+
+            <center><img src="/blog/media/village-builder/banner5.png" class="image-banner"></center>
+
+            <h2 id="section-future-plans">Future plans</h2>
+
+            <p>Speaking of plans, the first part is finishing the <i>Big World Update</i>. This includes:</p>
+
+            <ul>
+                <li>Splitting water simulation into chunks, tracking active vs steady-state chunks, optimizing it via simd and potentially some time checkerboarding, and integrating it into world generation & rendering.</li>
+                <li>Implementing a climate & dynamic weather systems. My previous attempts at doing physically-based realistic simulation led to way too unpredictable and uncontrollable results, so I'll probably try something simpler based on noise instead.</li>
+                <li>Adding procedurally-generated rivers and lakes. Their placement will be affected by the climate and the terrain, and the result will be handled with the water system.</li>
+                <li>Optimizing statial entity querying, which currently only supports iterating over all entities, which is clearly too slow for such a huge world. This will require a lot of work in the ECS engine internals, which is rather complicated already.</li>
+                <li>Creating a fog-of-war-like system that makes only the surroundings visible to the player and actually simulated. It feels really dumb to put so much work into creating a huge beautiful world just to hide it from the player, so the world will be visible to some extent; I'm still in the planning phase with respect to this feature.</li>
+            </ul>
+
+            <p>Once all this is done, I'd consider the <i>Big World Update</i> finished, which I expect to be done somewhere in May 2026. The next long-term plans are:</p>
+
+            <ul>
+                <li>A demo that showcases roughly the first year of your village's life, with all the most important systems (buildings, crops, seasons, temperatures, cooking) in place. This demo requires climate (temperature, seasons) and water (crop irrigation) to be working already. This won't be a public demo, though, but rather a small build I'll test with a bunch of close friends.</li>
+                <li>Other settlements scattered in the world that the player can trade with. This would require enough content to make trade meaningful, some means of faster transportation to make it feasible (probably horse-driven wagons), and a ton of AI work (for the non-player settlements) and testing to make it fun.</li>
+                <li>A gargantuan amount of content to fill in the rest of the game: trees & stones, plants & crops, wild & domestic animals, pottery, clothing, metalworking, dyes, etc, etc, etc.</li>
+            </ul>
+
+            <p>And then the game will be done, just like that! Honestly, it feels surreal to see the light at the end of this tunnel.</p>
+
+            <p>In the meantime, if you're as excited about this project as I am, go watch my <a href="https://www.youtube.com/playlist?list=PLSGI94QoFYJwGaieAkqw5_qfoupdppxHN">devlogs</a>! And thanks a lot for reading.</p>
+
+            <center><img src="/blog/media/village-builder/banner6.png" class="image-banner"></center>
+
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
