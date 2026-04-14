@@ -1,0 +1,480 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta property="og:type" content="article" />
+        <meta property="og:title" content="It's OK to compare floating-points for equality">
+        <meta property="og:site_name" content="lisyarus blog">
+        <meta property="og:image" content="/blog/media/compare-floating-points/cover.png" />
+        <meta property="og:image:height" content="240" />
+        <meta property="og:image:width" content="520" />
+        <title>It's OK to compare floating-points for equality | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">It's OK to compare floating-points for equality</div></center><br/>
+            <center><span class="post-date">2026 Apr 14</span></center><br/>
+
+            <p><i>NB: The title of this post is an intentional clickbait. Even though I do stand for its statement, a more honest one would be something like: It's NOT OK to compare floating-points using epsilons.</i></p>
+
+            <p>You've probably heard the mantra that you must never compare floating-point numbers for exact equality, and you absolutely must use some kind of epsilon-comparison instead, like</p>
+
+            <pre><code class="language-cpp block">bool approxEqual(float x, float y)
+{
+    return abs(x - y) < 1e-4f;
+}</code></pre>
+
+            <p>Over the 15+ years that I've been writing code, &ndash; which often deals with geometry, graphics, physics, simulations, etc, and thus has to work with floating-points on a daily basis, &ndash; I've encountered only one or two cases where such epsilon-comparison is actually a good solution. Pretty much always there is a better solution that either involves rewriting the code in some way, or simply compares floating-points just like <code>x == y</code>. And pretty much always the epsilon solution was actually one of the <i>worst</i> possible options.</p>
+
+            <p>I'll show a bunch of examples where adding some kind of epsilon might be your first instinct, but actually a much better &ndash; and often much simpler &ndash; solution exists. But first, let's talk about floating-point numbers.</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-floating-points-are-not-a-black-box">Floating-points are not a black box</h2>
+
+            <p>The whole idea of epsilon-comparison seems to come from the general perception of floating-point numbers as some kind of random black-box machine that sometimes produces inexact results because the gods of computing force it to. In reality it is a pretty deterministic (modulo compiler options, CPU flags, etc) and <a href="https://en.wikipedia.org/wiki/IEEE_754">highly standardized</a> system.</p>
+
+            <p>Floating-point numbers are necessarily inexact in that they cannot represent all possible real numbers. In fact, no finite ammount of memory can, because that's how maths works &ndash; there are just <a href="https://en.wikipedia.org/wiki/Cardinality_of_the_continuum">way too many</a> real numbers (or even just rational numbers, fwiw). Given that we probably only want to allocate a fixed (and not just a finite) amount of bits per such a number, we're forced to accept that only a finite set of numbers will be representable (specifically, at most \(2^{bits}\) of them), and for all others we'll have to deal with approximations.</p>
+
+            <p>I don't want this to turn into a lecture on how floating-point numbers are represented, though; I think <a href="https://en.wikipedia.org/wiki/Floating-point_arithmetic">wikipedia</a> does a good enough job. For a more in-depth source, see <a href="https://www.itu.dk/~sestoft/bachelor/IEEE754_article.pdf">this classic</a> by David Goldberg, or <a href="https://www.phys.uconn.edu/~rozman/Courses/P2200_15F/downloads/floating-point-guide-2015-10-15.pdf">this more recent one</a> that follows the same idea. What's more important is that this "inexactness" of floating-point numbers doesn't mean some "uncertainty" or "randomness" in its behavior!</p>
+
+            <p>For example, any single arithmetic operation (e.g. addition, multiplication, etc) on two floating-point numbers is required to produce a floating-point number which is the closest to the actual true answer if we treat the inputs as being exact (there are some rounding rules in case of ties, i.e. when two representable numbers are equally close to the true answer). Notice that, even though the result is approximate, it is still guaranteed to be as close to the truth as possible, and is very much deterministic.</p>
+
+            <p>However, it does mean that our usual mathematical formulas don't always hold for floating-points. For example, even though addition (and multiplication) are guaranteed to be <i>commutative</i> (\(a + b = b + a\)), they aren't necessarily <i>associative</i>: it may happen that \((a+b)+c\neq a+(b+c)\). It's fairly easy to find such examples; <a href="https://godbolt.org/z/jvdo8j4fv">here's one</a> that works for 32-bit floating-points:</p>
+
+            <pre><code class="language-cpp block">// Outputs 0.89999998
+std::cout << std::setprecision(8) << ((0.2f + 0.3f) + 0.4f) << '\n';
+
+// Outputs 0.90000004
+std::cout << std::setprecision(8) << (0.2f + (0.3f + 0.4f)) << '\n';</code></pre>
+
+            <p>Notice that, even though the expressions aren't equal, they are very close (the difference is about 6e-8), and the floating-point standard has some guarantees that we can use to <i>predict</i> how large the difference can be.</p>
+
+            <p>So, what's the problem, then? We know that the result of some computation is only approximate, and we compare it with some expected result approximately, sounds about right.</p>
+
+            <p>Or does it?</p>
+
+            <h2 id="section-problems-with-epsilons">Problems with epsilons</h2>
+
+            <p>I have 3 major problems with those epsilon-comparisons:</p>
+
+            <ol>
+                <li>They are a hacky, temporary solution,</li>
+                <li>They often cascade into extremely hard-to-debug issues, and</li>
+                <li>They often don't solve the initial problem.</li>
+            </ol>
+
+            <p>The second point is probably the toughest. One part of the program treats 2D points as equal if they are separated in <a href="https://en.wikipedia.org/wiki/Taxicab_geometry">Manhattan distance</a> by no more than 1e-4, another part of the program treats points as equal if they are separated in L-inf distance (max of coordinates) by no more than 1e-6, the input points themselves are generated using some other algorithm, and now all the input-output invariants are messed up, and your line rendering is broken but only in this specific scenario, with this specific data, only at night and in full moon. Good luck debugging that.</p>
+
+            <p>A rare wrong case of line rendering isn't that much of an issue, but it can manifest in a ton of other ways, up to crashing the program, and can be really nasty when combined with a lot of other geometric code. I've encountered many such cases, and mismatched epsilon comparisons were an extremely common root cause.</p>
+
+            <p>The problem is that these epsilons are pretty much always simply <i>guessed</i>, and there is no correct way to choose one epsilon out of many. If you have several such comparisons, no combination of epsilons will ensure that everything works correctly.</p>
+
+            <p>Another problem with epsilons is that such comparison isn't <a href="https://en.wikipedia.org/wiki/Transitive_relation">transitive</a>. This might sound like a technical nitpick, but in reality most algorithms assume that things like comparisons are in fact transitive, and these algorithms can simply break (produce nonsense or even crash) if you use a non-transitive comparison with them.</p>
+
+            <p>So, what should we do, then? We need to <i>think</i> about the problem! Shocking, I know. Why are we comparing floating-points in the first place? Maybe we don't trust our algorithms? Maybe we don't trust the data? Maybe we don't trust the CPU? There's no single answer, so let's look at some examples.</p>
+
+            <h2 id="section-grid-based-movement">Case in study: grid-based movement</h2>
+
+            <p>Say, you have a turn-based game where units move on a grid. A unit has some movement points and can do several moves per turn, but for UX sake you only allow executing the next move after the previous one finished.</p>
+
+            <p>Now, you're probably interpolating the unit's position somehow and not just teleporting it to the target grid cell, so you need to check when exactly the move is finished before allowing the player to select the next move target.</p>
+
+            <p>You could just wait for a certain amount of time (and that would be a perfectly good solution in many cases!), but different units have different animations and thus different timings, there are some accessibility settings to reduce animations, etc, so you decide that relying on animation time isn't a good idea.</p>
+
+            <p>Then you realize that the move finishes exactly when the position of the unit coincides with the target cell's center. You write something like</p>
+
+            <pre><code class="language-cpp block">void update() {
+    if (selectedUnit.position != targetCell.center)
+        return;
+
+    // Do the frame update
+}</code></pre>
+
+            <p>and after the move was executed, nothing happens and the game effectively hangs, because the condition <code>selectedUnit.position != targetCell.center</code> is never true. With a typical linear interpolation with easing, the code</p>
+
+            <pre><code class="language-cpp block">vec2f getPosition(float time) {
+    return lerp(start, end, easing(time));
+}</code></pre>
+
+            <p>will produce enough floating-point roundings that the result will never be equal to <code>end</code> when <code>time == 1.f</code>. Heck, in <a href="/blog/posts/exponential-smoothing.html">some interpolation schemes</a> it's not even supposed to be ever true!</p>
+
+            <p>Damn, stupid floating-points! &mdash; you grumble as you add the holy grail of floating-points &mdash; an epsilon-comparison:</p>
+
+            <pre><code class="language-cpp block">void update() {
+    if (distance(selectedUnit.position, targetCell.center) > 1e-4)
+        return;
+
+    // Do the frame update
+}</code></pre>
+
+            <p>This solves the issue, so why is this so bad? For a number of reasons:</p>
+
+            <ul>
+                <li>The specific epsilon of <code>1e-4</code> might break if you decide to choose a different interpolation scheme</li>
+                <li>As always with epsilons, someone reading the code will get confused and suspicious</li>
+                <li>Making the player wait is one of the worst things you can do</li>
+            </ul>
+
+            <p>So, how do we solve this? One option is to use some sort of acceptance radius: once the unit is within, say, <code>0.25</code> of the target cell's center, we stop the animation and allow the player to issue the next commands. Then, we find the actually good value by a lot of testing.</p>
+
+            <p>How is this different from epsilons? It isn't really, except that now it's at least backed by something instead of being a random value. The real problem here is mixing the <i>data model</i> with its <i>presentation</i>. The internal doings of the game's state machine shouldn't care about where some 3D model is located. That's usually harder than it seems (which is roughly why UX is even a thing), but very much doable.</p>
+
+            <p>In this case, the best solution (in my opinion!) is to allow the user to issue commands without waiting for the unit to complete its movement in the first place. Once a user clicks on some grid cell, the rendering gets notified that a movement must take place, while the internal model of the game's state thinks that the unit is already on the next cell.</p>
+
+            <p>There are many ways to implement that, e.g. by queuing the requested animations and playing them one-by-one, or using an <a href="/blog/posts/exponential-smoothing.html">animation/interpolation scheme</a> that is robust against sudden changes in the target value. What's important is that it is very doable, relatively straightforward, and doesn't require epsilons.</p>
+
+            <h2 id="section-spherical-linear-interpolation">Case in study: spherical linear interpolation</h2>
+
+            <p><a href="https://en.wikipedia.org/wiki/Spherical_linear_interpolation">Spherical linear interpolation</a> is a way to interpolate points on a sphere (aka unit vectors) in such a way that the interpolated vector follows a curve with a fixed rotation speed. A simple <code>normalize(lerp(a, b, t))</code> won't cut it &mdash; the resulting vector moves slower near the ends and faster in the middle. Here's a <a href="https://splines.readthedocs.io/en/latest/rotation/slerp.html">cool visualization</a> of slerp. Quite often this function is only implemented for quaternions, but it's useful for any vectors of any dimension (though in case of quaternions it differs a bit because \(q\) and \(-q\) represent the same rotation).</p>
+
+            <p>Quite conveniently, if the input vectors are normalized, it boils down to a pretty straightforward formula:</p>
+
+            <pre><code class="language-cpp block">vec3 slerp(vec3 a, vec3 b, float t) {
+    float angle = acos(dot(a, b));
+    return (sin((1 - t) * angle) * a + sin(t * angle) * b) / sin(angle);
+}</code></pre>
+
+            <p>Now, from time to time this code will produce <code>NaN</code>s, for a couple of reasons:</p>
+
+            <ul>
+                <li>Even if the vectors are normalized, their dot product can produce values outside of the \([-1, 1]\) range, and <code>acos</code> will return <code>NaN</code></li>
+                <li>When the input vectors are very close, <code>angle</code> can become zero, and division of zero by zero will once again produce <code>NaN</code></li>
+            </ul>
+
+            <p>The first problem is easy to deal with: just wrap <code>acos</code> argument in <code>clamp</code>:</p>
+
+            <pre><code class="language-cpp block">vec3 slerp(vec3 a, vec3 b, float t) {
+    float angle = acos(clamp(dot(a, b), -1.f, 1.f));
+    return (sin((1 - t) * angle) * a + sin(t * angle) * b) / sin(angle);
+}</code></pre>
+
+            <p>The second problem is more subtle. Thankfully, when the <code>angle</code> is small enough, spherical linear interpolation turns into usual linear interpolation, so we can detect this case and switch to usual <code>lerp(a, b, t)</code> instead. But how small is small enough?</p>
+
+            <p>It's tempting to just throw some epsilon here, like</p>
+
+            <pre><code class="language-cpp block">vec3 slerp(vec3 a, vec3 b, float t) {
+    float angle = acos(dot(a, b));
+    if (angle < 1e-4) {
+        return lerp(a, b, t);
+    }
+    return (sin((1 - t) * angle) * a + sin(t * angle) * b) / sin(angle);
+}</code></pre>
+
+            <p>However, this makes the code less precise than it could be, even if the resulting vector is still close to what we expect it to be. And, once again, a random epsilon always raises the question of how this exact value was chosen. We can do better!</p>
+
+            <p>Both <a href="https://github.com/g-truc/glm/blob/6f14f4792a0cde5d0cf2c910506724d61cb95834/glm/ext/quaternion_common.inl#L41">glm</a> and <a href="https://github.com/PX4/eigen/blob/7cf1c0179eb0f5499dfc1bffbd229783a7865fe1/Eigen/src/Geometry/Quaternion.h#L726">Eigen</a> use a reasonable check:
+
+            <pre><code class="language-cpp block">vec3 slerp(vec3 a, vec3 b, float t) {
+    float d = dot(a, b);
+    if (d > 1.f - FLT_EPSILON) {
+        return lerp(a, b, t);
+    }
+    float angle = acos(dot(a, b));
+    return (sin((1 - t) * angle) * a + sin(t * angle) * b) / sin(angle);
+}</code></pre>
+
+            <p>Here, <code>FLT_EPSILON</code> is exactly \(2^{-23}\) &mdash; the smallest single-precision floating-point value \(x\) such that \(1 + x \neq x\) (using floating-point addition). Honestly, it doens't feel much better than a random epsilon to me &mdash; throwing <code>FLT_EPSILON</code> doesn't solve our issues unless we've proved that this is the exact threshold that works in our case.</p>
+
+            <p>Let's analyze the code. The main problem is that <code>angle</code> being zero causes <code>NaN</code>'s. The secondary problem is that <code>angle</code> being too small might introduce precision errors.</p>
+
+            <p>Let's think about precision first. <code>angle</code> isn't just an arbitrary number &mdash; it's the result of calling <code>acos</code>, and we're worried about the case when the argument to <code>acos</code> is close to 1. In fact, the <code>angle</code> itself is somewhat irrelevant, as we mostly care anout <code>sin(angle)</code>, not the angle itself.</p>
+
+            <p>Now, \(\sin(\operatorname{acos}(x))\) is just \(\sqrt{1-x^2}\). In our case, <code>x = dot(a, b)</code>. When \(x = 1 - \varepsilon\), we have</p>
+
+            \[ \sin(\operatorname{acos}(x)) = \sqrt{1-x^2} = \sqrt{1-(1-\varepsilon)^2} = \sqrt{2\varepsilon-\varepsilon^2} \approx \sqrt{2\varepsilon} \]
+
+            <p>The \(\varepsilon^2\) term is too small to care about, and \(\sqrt 2\) is just a constant close to 1. The main thing here is \(\sqrt{\varepsilon}\): even if \(\varepsilon\) is something as small as <code>FLT_EPSILON</code>, the <code>sin(angle)</code> term will be something like the square root of it. For small numbers, square root increases the number significantly. For example, while <code>FLT_EPSILON</code> is around <code>1.2e-07</code>, its square root is around <code>3.5e-04</code>, i.e. about 2000 times larger.</p>
+
+            <p>All I'm trying to say here is: in the case we care about, the argument to <code>acos</code> is close to 1, so the difference between possible representable values of the argument to <code>acos</code> is a much more serious source of precision problems compared to the angle itself being close to zero.</p>
+
+            <p><i>Actually, the smallest value less than 1 that is representable in floating-point is not <code>1 - FLT_EPSILON</code>, but <code>1 - FLT_EPSILON / 2.f</code>, which somewhat supports my argument that the <code>FLT_EPSILON</code> constant was chosen somewhat arbitrarily here.</i></p>
+
+            <p>So, unless we want something special, we can ignore that the angle can be small in terms of precision, and focus on obtaining <code>NaN</code>. In this code, provided that the arguments are finite values, the only way to get a <code>NaN</code> is with division by zero, which can occur only when the <code>angle</code> is zero, which can occur only when <code>dot(a, b) >= 1</code>. As we've discussed, the next smallest representable value of <code>dot(a, b)</code> is <code>1 - FLT_EPSILON / 2.f</code>, with the <code>angle</code> being roughly <code>sqrt(FLT_EPSILON)</code>, which is around <code>3.5e-04</code> &mdash; a rather large floating-point value considering that the whole range is about <code>[1e-38 .. 1e38]</code>, so we can be sure that even a half-decent implementation of <code>acos</code> wouldn't return zero in this case.</p>
+
+            <p>Thus, in case <code>dot(a, b) < 1</code>, we're actually fine! The only thing to check is if <code>dot(a, b) == 1</code>, or, combining with the <code>clamp</code> we added earlier, if <code>dot(a, b) >= 1</code>:
+
+            <pre><code class="language-cpp block">vec3 slerp(vec3 a, vec3 b, float t) {
+    float d = dot(a, b);
+    if (d >= 1.f) {
+        return lerp(a, b, t);
+    }
+    float angle = acos(dot(a, b));
+    return (sin((1 - t) * angle) * a + sin(t * angle) * b) / sin(angle);
+}</code></pre>
+
+            <p><i>(Note that I've intentionally left out the case when the dot product is close to \(-1\): in that case, there's no unique solution to the interpolation problem, and it's better dealt with separately.)</i></p>
+
+            <p>Alternatively, we can check <code>sin(angle)</code> directly, though this means we can't save on the expensive <code>acos</code> call in the corner case:</p>
+
+            <pre><code class="language-cpp block">vec3 slerp(vec3 a, vec3 b, float t) {
+    float angle = acos(clamp(dot(a, b), -1.f, 1.f));
+    float s = sin(angle);
+    if (s == 0.f) {
+        return lerp(a, b, t);
+    }
+    return (sin((1 - t) * angle) * a + sin(t * angle) * b) / s;
+}</code></pre>
+
+            <h2 id="section-computing-vector-length">Case in study: computing vector length</h2>
+
+            <p>You wouldn't be surprised if I told you that computing the (Euclidean) length of a vector is a fairly common and useful operation. The implementation is rather straightforward:</p>
+
+            <pre><code class="language-cpp block">float length(vec3 v) {
+    return sqrt(dot(v, v));
+}</code></pre>
+
+            <p>or, if we inline the <code>dot</code> call,</p>
+
+            <pre><code class="language-cpp block">float length(vec3 v) {
+    return sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+}</code></pre>
+
+            <p>You've probably seen this a dozen times, so what's wrong with it? Nothing really, except that for really small vectors (those having length around <code>1e-19</code>) it returns zero, and for larger vectors we get a significant precision loss. Even if the result is a perfectly valid floating-point value, its square (i.e. the expression under the square root) can be too small to be adequately representable in floating-point.</p>
+
+            <p>So what? There are hardly any use cases when such a vector is indistinguishable from zero anyway. However, an invariant saying that only the zero vector has zero length would be extremely convenient, and would simplify writing code in a lot of cases, especially when we want to treat floating-points carefully.</p>
+
+            <p>There's actually a very simple way to do that: compute the maximum <code>M</code> of the absolute values of vector coordinates, then return <code>M * length(v / M)</code>. Thanks to floating-point guarantees, one of the coordinates will be at least 1, so the expression under the square root is at least 1, and at most \(D\) &mdash; the dimension (3 in case of <code>vec3</code>).</p>
+
+            <p>So, the code turns into</p>
+
+            <pre><code class="language-cpp block">float length(vec3 v) {
+    float M = max(abs(v.x), abs(v.y), abs(v.z));
+    vec3 u = v / M;
+    return M * sqrt(u.x * u.x + u.y * u.y + u.z * u.z);
+}</code></pre>
+
+            <p>That's <a href="https://godbolt.org/z/Ef4b1h96r">about twice as many</a> assembly instructions, but unless this happens in a hot loop, I'd say it's worth the extra precision and safety.</p>
+
+            <p>The only problem is that if the vector is zero (yes, literally zero, not just small), this function returns <code>NaN</code>! However, if at least one of the vector's coordinates is non-zero (even if it is a subnormal value), <code>M</code> will be strictly larger than zero, and the algorithm will work correctly (and never with less precision than the naive version). So, the correct fix is literally comparing <code>M</code> to zero:</p>
+
+            <pre><code class="language-cpp block">float length(vec3 v) {
+    float M = max(abs(v.x), abs(v.y), abs(v.z));
+    if (M == 0.f) return 0.f;
+    vec3 u = v / M;
+    return M * sqrt(u.x * u.x + u.y * u.y + u.z * u.z);
+}</code></pre>
+
+            <p>If we'd write <code>if (M < 1e-4)</code> instead, we'd basically destroy the reason this function exists in the first place.</p>
+
+            <h2 id="section-solving-linear-systems">Case in study: solving linear systems</h2>
+
+            <p>You wouldn't be surprised if I told you that solving linear systems of equations is a fairly common and useful operation. Half of physics & engineering problems boil down to solving some linear systems (the other half being eigenvalue equations).</p>
+
+            <p>For a general non-sparse system, there's basically the only standard way to solve it: the Gauss-Jordan elimination. <i>(Actually, we can also use QR decomposition &mdash; afaik it's slower but more numerically stable.)</i> The general algorithm is rather long, but not too complicated &mdash; it's just a bunch of <code>for</code> loops and some arithmetics on the coefficients of the system.</p>
+
+            <p>What's important is that the algorithm can be <a href="https://en.wikipedia.org/wiki/Gaussian_elimination#Numeric_instability">rather unstable</a>: at some point you take top-left entry of the remaining part of the matrix, and divide the whole row with that entry. If it was small, the floating-point errors from cancellation are amplified, and if it is zero, you get <code>NaN</code>'s.</p>
+
+            <p>However, the algorithm becomes stable in practice (the instabilities are extremely rare and typically theoretical) if instead we do something called <i>partial pivoting</i>: find the row with the largest (in absolute value) coefficient in the current column, and use that row instead of the original top row. It complicates the algorithm somewhat, but makes it very much usable in practice.</p>
+
+            <p>The only problem is that we're still dividing, and potentially dividing by something very small or even zero! There isn't some clever way to escape this: a matrix can be <i>singular</i>, in which case maths tells us that there's no solution at all.</p>
+
+            <p>So, first of all our routing should return an <code>optional&lt;vector&gt;</code>, and secondly we need to check for this division:</p>
+
+            <pre><code class="language-cpp block">optional&lt;vector&gt; solve(matrix const& m, vector const& v) {
+    // Gaussian elimitation code...
+
+    for (int i = 0; i < m.columns(); ++i) {
+
+        // Find maximum m[j][i] among all remaining rows
+        float M = 0.f;
+        for (int j = i; j < m.rows(); ++j)
+            M = max(M, abs(m[j][i]));
+
+        if (M < 1e-4)
+            return std::nullopt;
+
+        // Proceed with the algorithm
+    }
+}</code></pre>
+
+            <p>Now, obviously this <code>1e-4</code> comes from nowhere &mdash; a classic epsilon placed simply to make the problem shut up instead of solving it.</p>
+
+            <p>For some systems that are close to being singular, our algorithm will report that it failed, based on a pretty much arbitrary threshold. Even worse, this <code>M</code> value we computed isn't some inherent property of the matrix, but simply an intermediate value we obtained with our algorithm.</p>
+
+            <p>This threshold should absolutely be at least provided by the user themselves (maybe with a default parameter), but that's still rather quiestionable. Proper ways of checking whether a matrix is singular or close to singular is computing its <a href="https://en.wikipedia.org/wiki/Condition_number#Matrices">condition number</a> or inspecting its <a href="https://en.wikipedia.org/wiki/Singular_value">singular values</a>, not setting an arbitrary threshold on an arbitrary intermediate value!</p>
+
+            <p>My point is: it's not our job to figure out how singular the matrix is, it's the user's job. Our job, as implementors of the Gauss-Jordan elimination algorithm, is to provide an answer that is as good as we can get, or report that we failed otherwise. The only way our code can truly fail is by dividing zero by zero &mdash; everything else will give some reasonable answer, even if very imprecise (depending on the matrix).</p>
+
+            <p>So, in my opinion, the correct code would be just</p>
+
+            <pre><code class="language-cpp block">    // ...
+
+    if (M == 0.f)
+        return std::nullopt;
+
+    // ...</code></pre>
+
+            <p><i>To be honest, this still doesn't prevent us from dividing something large by something small and getting infinities, &mdash; but no epsilon protects against that either.</i></p>
+
+            <h2 id="section-ray-box-intersection">Case in study: ray-box intersection</h2>
+
+            <p>Whenever you're making a raytracer (voxel or otherwise), or implementing object picking by mouse, or doing any of a million other things, you'll need a ray-box intersection routine.</p>
+
+            <p>The algorithm itself is pretty straightforward: you compute the time (i.e. the parameter \(t\) along the ray \(o+t\cdot d\)) when the ray enters the box and the time it leaves the box. If the former is less than the latter, that's your intersection. You compute the enter time as the maximum of enter times along each of the coordinates; similarly, the leave time is the minimum along each of the coordinates.</p>
+
+            <p><a href="https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-box-intersection.html">This scratchapixel article</a> explains it quite well. The code looks roughly like this:</p>
+
+            <pre><code class="language-cpp block">void sort(float & x, float & y) {
+    if (x > y) swap(x, y);
+}
+
+pair&lt;float, float&gt; intersect(ray r, box b) {
+    float txmin = (b.min.x - r.origin.x) / r.direction.x;
+    float txmax = (b.max.x - r.origin.x) / r.direction.x;
+    float tymin = (b.min.y - r.origin.y) / r.direction.y;
+    float tymax = (b.max.y - r.origin.y) / r.direction.y;
+    float tzmin = (b.min.z - r.origin.z) / r.direction.z;
+    float tzmax = (b.max.z - r.origin.z) / r.direction.z;
+
+    sort(txmin, txmax);
+    sort(tymin, tymax);
+    sort(tzmin, tzmax);
+
+    float tmax = min(txmax, min(tymax, tzmax));
+    float tmin = max(txmin, min(tymin, tzmin));
+
+    return {tmin, tmax};
+}</code></pre>
+
+            <p><i>NB: if we <a href="https://godbolt.org/z/aGK3oaav9">rewrite</a> <code>sort</code> a bit, we can force it to use <code>minss/maxss</code> SSE instructions, thus making the <code>intersect</code> function branchless.</i></p>
+
+            <p>It's a pretty short, readable function, and in 99.99% of cases it works perfectly. Yet, once in a while you'll end up with a ray that has <code>direction.x</code> equal to zero, thus the divide will give infinities or <code>NaN</code>'s. Oops!</p>
+
+            <p>So, let's add some epsilons, right? No. First of all, what are you going to do if <code>abs(direction.x) < 1e-4</code>? You still need to add some code that finds the intersection properly but doesn't divide by <code>direction.x</code>, and it might just work without epsilons anyway.</p>
+
+            <p>Let's analyze the code! What happens if <code>direction.x == 0</code>? The ray is parallel to the YZ plane, so the real intersection happens there. But we can't just ignore the X coordinate: if the ray starts outside the <code>[b.min.x, b.max.x]</code> interval, there's no intersection, otherwise we need to inspect the Y and Z coordinates.</p>
+
+            <p>What happens exactly when <code>direction.x == 0</code>? When you divide <code>A / direction.x</code>, it returns \(-\infty\) if <code>A < 0</code> and \(\infty\) if <code>A > 0</code>. In our case, <code>A</code> is <code>b.min.x - r.origin.x</code> or <code>b.max.x - r.origin.x</code>. So, if the ray origin <code>r.origin.x</code> is inside the interval <code>[b.min.x, b.max.x]</code>, we'll get <code>txmin == -INF</code> and <code>txmax == INF</code>. If the ray origin is outside of this interval, both <code>txmin</code> and <code>txmax</code> will both be either <code>-INF</code> or <code>INF</code>.</p>
+
+            <p>If there is an intersection and the origin is within the interval, the calculation of <code>tmin</code> will effectively ignore the value of <code>txmin == -INF</code>, because it's always true that <code>max(-INF, x) == x</code>. Similarly, <code>tmax</code> will effectively ignore <code>txmax == INF</code>. In this case, the code will just compute the correct intersection in the YZ plane, as required.</p>
+
+            <p>If, however, the origin is not within the interval, either <code>txmin == txmax == INF</code>, leading to <code>tmin == INF</code> but <code>tmax</code> being some finite value, leading to no intersection (because <code>tmin > tmax</code>), or <code>txmin == txmax == -INF</code>, leading to <code>tmax == -INF</code> but <code>tmin</code> being some finite value, leading to no intersection again.</p>
+
+            <p>All this is to say that our code actually <i>works correctly</i> in case <code>direction.x == 0</code>! No epsilons needed, it already handles the infinities exactly as it should. Or does it?</p>
+
+            <p>We've forgotten that in IEEE754 there are two zeros: a positive <code>+0</code> and a negative <code>-0</code> one. Dividing by the negative zero produces infinity, but also flips the sign! So, we can get a case when <code>txmin == INF</code> and <code>txmax == -INF</code>, leading to no intersection being reported even if there is one.</p>
+
+            <p>Thankfully, our <code>sort(txmin, txmax)</code> call solves this issue, swapping these into the case of <code>txmin == -INF</code> and <code>txmax == INF</code>! So, once again, our code already works correctly in this case.</p>
+
+            <p><i>The Scratch-a-pixel link above also discusses a solution to this problem, which has a whole ton of if's making it not branchless but also able to do an early-out.</i></p>
+
+            <p>Actually, there's one more case we didn't fix yet: if both <code>r.direction.x == 0</code> and <code>r.origin.x == b.min.x</code>, we'll get zero divided by zero, i.e. a <code>NaN</code>. Unfortunately, our code doesn't automatically solve this: <code>NaN</code> compared to anything always returns <code>false</code>, so, depending on how <code>sort</code>, <code>min</code> and <code>max</code> are implemented, we might end up with <code>tmin</code> or <code>tmax</code> being <code>NaN</code>, which effectively means no intersection. This might be OK for your use-case, but I don't know a simple way to fix that if we want this to be reported as a true intersection. We could just check if <code>r.direction.x == 0 && r.origin.x == b.min.x</code> and set <code>tmin = -INF</code> in this case, but the code stops being branchless. This happens extremely rarely in practice, though, so we might just get away with it :)</p>
+
+            <h2 id="section-computing-convex-hull">Case in study: computing convex hull</h2>
+
+            <p>Most 2D convex hull algorithms eventually boil down to checking whether, for three points \(A, B, C\), the last point \(C\) lies to the left of the ray \(AB\). Equivalently, it asks whether when moving from \(A\) to \(B\) and then turning to move from \(B\) to \(C\), you make a left turn or a right turn. This is why this predicate is often called <code>left_turn</code>.</p>
+
+            <p>It boils down to checking the relative orientation of two vectors \(AB\) and \(AC\), and can be computed by a simple determinant:</p>
+
+            <pre><code class="language-cpp block">float det(vec2 a, vec2 b) {
+    return a.x * b.y - a.y * b.x;
+}
+
+bool left_turn(vec2 a, vec2 b, vec2 c) {
+    return det(b - a, c - a) > 0.f;
+}</code></pre>
+
+            <p>It's pretty cool that you can put all your floating-point stuff inside this predicate &mdash; the convex hull algorithm itself doesn't care about the coordinates and can operate just as an abstract algorithm, provided you have this <code>left_turn</code> predicate as some kind of a black box.</p>
+
+            <p>However, it turns out that most of computational geometry algorithms are extremely sensitive to edge cases, and can completely break if such an edge case breaks certain invariants of this algorithm.</p>
+
+            <p>For the <code>left_turn</code> predicate, one such invariant is that it doesn't change when we cycle the points:</p>
+
+            <pre><code class="language-cpp block">left_turn(A,B,C) == left_turn(B,C,A) == left_turn(C,A,B)</code></pre>
+
+            <p>It's pretty easy to find three points <i>almost</i> on the same line that break this invariant. It happens so often that any convex hull algorithm that is supposed to handle at least some 1000 points must take this into account.</p>
+
+            <p>We know the solution, right? &mdash; just slap an epsilon here:</p>
+
+            <pre><code class="language-cpp block">bool left_turn(vec2 a, vec2 b, vec2 c) {
+    return det(b - a, c - a) > 1e-4f;
+}</code></pre>
+
+            <p>Well, of course it doesn't work. Floating-point errors can easily lead to this predicate violating the cyclic invariant above.</p>
+
+            <p>There are many ways of solving this problem:</p>
+
+            <ul>
+                <li>Round the input values to some fixed grid, then work with integers instead</li>
+                <li>Use <a href="https://github.com/boostorg/multiprecision">arbitrary precision</a> rational arithmetic to get the true result</li>
+                <li>Use CPU-rounding-flags-backed <a href="https://www.boost.org/doc/libs/latest/libs/numeric/interval/doc/interval.htm">interval arithmetic</a> to compute the result; resort to arbitrary precision if it fails</li>
+                <li>Knowing exact IEEE754 rounding rules, compute an upper bound on the possible error, compare with the naive result, and return if the error is smaller than the result; otherwise, use any of the more precise methods</li>
+                <li>Use some variation of the <a href="https://en.wikipedia.org/wiki/2Sum">2Sum</a> algorithm to compute the result; use any of the more precise methods if it fails</li>
+            </ul>
+
+            <p>Of all these, the first option (round to a fixed grid) is probably the simplest and the most practical. However, there are cases when you can't do that, and you need to work with the unperturbed input data, and you need more complex methods. In any case, no epsilons will save you &mdash; sooner or later your algorithm will return nonsense, or will simply crash.</p>
+
+            <p><i>Note that, in any case, such a predicate is better thought of as returning three possible values: left, right, and collinear (or -1, 0, and 1, if you're feeling '90s). This is very similar to <a href="https://en.wikipedia.org/wiki/Three-way_comparison">three-way comparison</a>.</i></p>
+
+            <h2 id="section-sanitizing-user-input">Case in study: sanitizing user input</h2>
+
+            <p>The last two cases will be the ones where I think epsilons are actually a good solution!</p>
+
+            <p>Say, you're writing some geometry visualization library, or maybe some cartographic engine of sorts. The user supplies you with a polyline that you can't control. You task is to perform some computations on it, and maybe to render it.</p>
+
+            <p>Now, rendering polylines is a pretty complicated topic; in particular, we typically triangulate the polyline using various types of <a href="https://ivan.sanchezortega.es/development/2023/02/06/reinventing-line-joins.html">joins</a> and caps. And to compute these, we need various things like the normal to a particular line segment, or the angle between two consecutive line segments. And, of course, everything breaks if two consecutive line points are equal or simply too close &mdash; normal & angle calculations go way off, introducing ugly artifacts to our lovely line.</p>
+
+            <p>Now, we could say that consecutive equal points are not allowed, which would be a reasonable requirement for some library or algorithm, but not so much for a user-facing engine/framework. After all, filtering out equal points is easy &mdash; literally a single call to <a href="https://en.cppreference.com/w/cpp/algorithm/unique.html"><code>std::unique</code></a>. But what are we going to do with points that are just too close, but not equal?</p>
+
+            <p>Mathematically, having points too close to each other isn't an issue &mdash; they should lead to some very thin triangles in the output, but they won't break the topology of the resulting mesh. However, in practice we lack the floating-point precision to accurately compute these thin triangles (which is what leads to ugly artifacts). At the same time, this time our goal is not to compute something as precise as we can, but to visualize the data. In practice, nobody will see these thin triangles, simply because they're too thin.</p>
+
+            <p>Which is to say it's OK if we simply don't render them. Meaning it's OK if we dont even generate them. Meaning it's OK if we just filter out the input points that are too close. But how close is too close?</p>
+
+            <p>Once again, slapping an arbitrary epsilon is usually a bad solution, though in this specific case it's probably not bad, but just meh. There are ways to find a good epsilon that fits this specific use case:</p>
+
+            <ul>
+                <li>Knowing your maximal scale/zoom and pixel size, compute the distance which will map to less than half a pixel, and use that as an epsilon for filtering out points</li>
+                <li>Knowing what exactly your algorithm does, and where the imprecision comes from, estimate the minimum separation between points that leads to acceptable floating-point errors, and use it as your epsilon</li>
+                <li>Use a binary search to find a good epsilon by testing it against your dataset of input data</li>
+                <li>Use your decades of floating-point experience to just guess a good epsilon (but don't forget to document this)</li>
+            </ul>
+
+            <p>Unless you chose the last option, I can guarantee you that the correct value won't be <code>1e-4</code> or <code>1e-6</code>.</p>
+
+            <h2 id="section-sanitizing-user-input">Case in study: writing test cases</h2>
+
+            <p>That's probably the most obvious one. If I'm writing a maths library, I want extensive test coverage. Tests will have to check if some function returns the value we expected, meaning it will have to compare the result with some reference value. But due to floating-point errors, the result will almost always differ.</p>
+
+            <p>Now, there are two ways we can do this. Option 1 is to assume exact IEEE754 conformance and write tests using equality comparisons. Even if there's some rounding involved, it must be the same on all conformant hardware (if the CPU flags are set correctly), so you can safely do the equality test. In many cases you can craft input data such that no rounding will be involved altogether!</p>
+
+            <p>In many functions (e.g. vector addition, subtraction, multiplication) you can just use integer coordinates (many of which are exactly representable as floats), or integers divided by a power of 2. For some cases it isn't enough: for example, when computing vector length, even if the coordinates are integers, the result might be an irrational number.</p>
+
+            <p>Even in this case we can cheat a bit and use <a href="https://en.wikipedia.org/wiki/Pythagorean_triple">Pythagorean triples</a> to craft test cases where the length is known to be exactly representable in floating-point, for example</p>
+
+            <pre><code class="language-cpp block">length(vec2(3.f, 4.f)) == 5.f
+length(vec2(5.f, 12.f)) == 13.f
+length(vec2(0.4375f, 1.5f)) == 1.5625f</code></pre>
+
+            <p>This is rather tiresome, as we'll have to craft special increasingly complicated tests for all our code. What's option 2, then?</p>
+
+            <p>Use epsilons! Be sure to use rather small epsilons, e.g. <code>FLT_EPSILON</code> or like, but it's honestly a good solution for this case. For the most part, it's very hard to break a maths library in such a way that epsilon-comparisons won't catch that.</p>
+
+            <p>However, note that if some of your functions provide additional guarantees (like <code>length</code> only being zero for a vector which is exactly zero, or <code>left_turn</code> being invariant under cycling the arguments), it's best to write separate specialized tests for these guarantees.</p>
+
+            <h2 id="section-to-epsilon-or-not-to-epsilon">To epsilon or not to epsilon</h2>
+
+            <p>So, are epsilons good or bad? Usually bad, but sometimes okay. Is all your epsilon-driven code gonna break suddenly, now that you've read this post? Probably not.</p>
+
+            <p>See, in many real-life use-cases all that doesn't matter. If you're writing a general-purpose high-quality maths library, you're obliged to care about this stuff. If you're goofying a toy physics engine for a squishy platformer game, epsilons are probably suit you well. And if they break, you'll just replace <code>1e-4</code> with <code>2e-4</code> and be on your way.</p>
+
+            <p>The real answer to any engineering problem is not to follow a cult or a random internet person, but to think with your own brain. Shocking, I know. Nevertheless, I hope you learnt something!</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
