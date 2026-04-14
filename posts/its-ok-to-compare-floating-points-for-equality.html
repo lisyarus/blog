@@ -46,7 +46,7 @@
 
             <p>The whole idea of epsilon-comparison seems to come from the general perception of floating-point numbers as some kind of random black-box machine that sometimes produces inexact results because the gods of computing force it to. In reality it is a pretty deterministic (modulo compiler options, CPU flags, etc) and <a href="https://en.wikipedia.org/wiki/IEEE_754">highly standardized</a> system.</p>
 
-            <p>Floating-point numbers are necessarily inexact in that they cannot represent all possible real numbers. In fact, no finite ammount of memory can, because that's how maths works &ndash; there are just <a href="https://en.wikipedia.org/wiki/Cardinality_of_the_continuum">way too many</a> real numbers (or even just rational numbers, fwiw). Given that we probably only want to allocate a fixed (and not just a finite) amount of bits per such a number, we're forced to accept that only a finite set of numbers will be representable (specifically, at most \(2^{bits}\) of them), and for all others we'll have to deal with approximations.</p>
+            <p>Floating-point numbers are necessarily inexact in that they cannot represent all possible real numbers. In fact, no finite amount of memory can, because that's how maths works &ndash; there are just <a href="https://en.wikipedia.org/wiki/Cardinality_of_the_continuum">way too many</a> real numbers (or even just rational numbers, fwiw). Given that we probably only want to allocate a fixed (and not just a finite) amount of bits per such a number, we're forced to accept that only a finite set of numbers will be representable (specifically, at most \(2^{bits}\) of them), and for all others we'll have to deal with approximations.</p>
 
             <p>I don't want this to turn into a lecture on how floating-point numbers are represented, though; I think <a href="https://en.wikipedia.org/wiki/Floating-point_arithmetic">wikipedia</a> does a good enough job. For a more in-depth source, see <a href="https://www.itu.dk/~sestoft/bachelor/IEEE754_article.pdf">this classic</a> by David Goldberg, or <a href="https://www.phys.uconn.edu/~rozman/Courses/P2200_15F/downloads/floating-point-guide-2015-10-15.pdf">this more recent one</a> that follows the same idea. What's more important is that this "inexactness" of floating-point numbers doesn't mean some "uncertainty" or "randomness" in its behavior!</p>
 
@@ -281,7 +281,7 @@ std::cout << std::setprecision(8) << (0.2f + (0.3f + 0.4f)) << '\n';</code></pre
 
             <p>The only problem is that we're still dividing, and potentially dividing by something very small or even zero! There isn't some clever way to escape this: a matrix can be <i>singular</i>, in which case maths tells us that there's no solution at all.</p>
 
-            <p>So, first of all our routing should return an <code>optional&lt;vector&gt;</code>, and secondly we need to check for this division:</p>
+            <p>So, first of all our routine should return an <code>optional&lt;vector&gt;</code>, and secondly we need to check for this division:</p>
 
             <pre><code class="language-cpp block">optional&lt;vector&gt; solve(matrix const& m, vector const& v) {
     // Gaussian elimitation code...
@@ -429,7 +429,7 @@ bool left_turn(vec2 a, vec2 b, vec2 c) {
 
             <p>Now, we could say that consecutive equal points are not allowed, which would be a reasonable requirement for some library or algorithm, but not so much for a user-facing engine/framework. After all, filtering out equal points is easy &mdash; literally a single call to <a href="https://en.cppreference.com/w/cpp/algorithm/unique.html"><code>std::unique</code></a>. But what are we going to do with points that are just too close, but not equal?</p>
 
-            <p>Mathematically, having points too close to each other isn't an issue &mdash; they should lead to some very thin triangles in the output, but they won't break the topology of the resulting mesh. However, in practice we lack the floating-point precision to accurately compute these thin triangles (which is what leads to ugly artifacts). At the same time, this time our goal is not to compute something as precise as we can, but to visualize the data. In practice, nobody will see these thin triangles, simply because they're too thin.</p>
+            <p>Mathematically, having points too close to each other isn't an issue &mdash; they should lead to some very thin triangles in the output, but they won't break the topology of the resulting mesh. However, in practice we lack the floating-point precision to accurately compute these thin triangles (which is what leads to ugly artifacts). On the other hand, this time our goal is not to compute something as precise as we can, but to visualize the data. In practice, nobody will see these thin triangles, simply because they're too thin.</p>
 
             <p>Which is to say it's OK if we simply don't render them. Meaning it's OK if we dont even generate them. Meaning it's OK if we just filter out the input points that are too close. But how close is too close?</p>
 
@@ -468,7 +468,7 @@ length(vec2(0.4375f, 1.5f)) == 1.5625f</code></pre>
 
             <p>So, are epsilons good or bad? Usually bad, but sometimes okay. Is all your epsilon-driven code gonna break suddenly, now that you've read this post? Probably not.</p>
 
-            <p>See, in many real-life use-cases all that doesn't matter. If you're writing a general-purpose high-quality maths library, you're obliged to care about this stuff. If you're goofying a toy physics engine for a squishy platformer game, epsilons are probably suit you well. And if they break, you'll just replace <code>1e-4</code> with <code>2e-4</code> and be on your way.</p>
+            <p>Look, in many real-life use-cases all that doesn't matter. If you're writing a general-purpose high-quality maths library, you're obliged to care about this stuff. If you're goofying a toy physics engine for a squishy platformer game, epsilons will probably suit you well. And if they break, just replace <code>1e-4</code> with <code>2e-4</code> and be on your way.</p>
 
             <p>The real answer to any engineering problem is not to follow a cult or a random internet person, but to think with your own brain. Shocking, I know. Nevertheless, I hope you learnt something!</p>
 
