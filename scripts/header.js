@@ -164,3 +164,21 @@ for (let leftImage of document.getElementsByClassName("image-compare-left")) {
         window.addEventListener("touchmove", drag);
     })(leftImage);
 }
+
+function loadAndExecute(url) {
+    const script = document.createElement('script');
+    script.src = url;
+    script.type = 'text/javascript';
+    document.head.appendChild(script);
+}
+
+loadAndExecute("https://www.googletagmanager.com/gtag/js?id=G-EQXWQWNGE4");
+
+window.dataLayer = window.dataLayer || [];
+
+function gtag() {
+    dataLayer.push(arguments);
+}
+
+gtag('js', new Date());
+gtag('config', 'G-EQXWQWNGE4');
