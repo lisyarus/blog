@@ -108,9 +108,9 @@
 
             <p>Honestly, if I were just making a programming language strictly for fun, I'd start with <a href="https://en.wikipedia.org/wiki/System_F">System F</a> and then iterate from there. But, given the above constraints, that's not really an option.</p>
 
-            <p>Let's have a look at what I've come up with.</p>
-
             <h1 id="part-the-language">The language</h1>
+
+            <p>Let's have a look at what I've come up with. It's a weird blend of C++, Rust, Python, Zig, and maybe a few other languages.</p>
 
             <h2 id="section-overview">Overview</h2>
 
@@ -558,11 +558,17 @@ defer for file in array:
 
             <p>It would be cool to support computations on types, once again for metaprogramming. These would be compile-time only, simply because I don't want to invent some runtime encoding scheme for types, and having types in runtime in a statically-typed language has very limited utility anyway.</p>
 
+            <p>This could also be used for something like C++ style concepts, but without the need for any special syntax -- just using compile-time calls. We'd need some way to check type properties, though:</p>
+
+            <pre><code class="language-rust block">func comparable(t: type) -> bool:
+    // Implemented somehow...
+
+func min&lt;t: comparable type&gt;(x: t, y: t) -> t:
+    return if x < y then x else y</code></pre>
+
             <h4>Coroutines</h4>
 
             <p>That's honestly more like dreaming than planning, but adding some Python or JS style <code>async/await</code> wouldn't hurt.</p>
-
-<!-- * Future plans (register allocation, IR optimizations, IR interpreter, producing executables, aliasing rules, struct constructors, polymorphism: templates+overloading/traits, operator overloading, for loops: iterator/range interface, raii/linear types/defer, method call syntax, polymorphic literals, compile time evaluation, type expressions, modules, prelude, strings, standard library, coroutines, debugging symbols) -->
 
             <h2 id="section-plans-library">Library</h2>
 
