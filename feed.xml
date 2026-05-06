@@ -8,7 +8,7 @@
 		<atom:link href="https://lisyarus.github.io/blog/feed.xml" rel="self" type="application/rss+xml" />
 
 		<item>
-			<title>A silly diffuse shading model</title>
+			<title>It's OK to compare floating-points for equality</title>
 			<pubDate>14 Apr 2026 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/its-ok-to-compare-floating-points-for-equality.html</link>
 			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/its-ok-to-compare-floating-points-for-equality.html</guid>
@@ -52,6 +52,30 @@
 			<pubDate>05 Jan 2025 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/exploring-ways-to-mipmap-alpha-tested-textures.html</link>
 			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/exploring-ways-to-mipmap-alpha-tested-textures.html</guid>
+			<description></description>
+		</item>
+
+		<item>
+			<title>Implementing a tiny CPU rasterizer | Part 6: Adding some depth</title>
+			<pubDate>11 Nov 2024 11:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/implementing-a-tiny-cpu-rasterizer-part-6.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/implementing-a-tiny-cpu-rasterizer-part-6.html</guid>
+			<description></description>
+		</item>
+
+		<item>
+			<title>Implementing a tiny CPU rasterizer | Part 5: Fixing issues with 3D</title>
+			<pubDate>08 Nov 2024 11:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/implementing-a-tiny-cpu-rasterizer-part-5.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/implementing-a-tiny-cpu-rasterizer-part-5.html</guid>
+			<description></description>
+		</item>
+
+		<item>
+			<title>Implementing a tiny CPU rasterizer | Part 4: Changing perspective</title>
+			<pubDate>08 Nov 2024 11:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/implementing-a-tiny-cpu-rasterizer-part-4.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/implementing-a-tiny-cpu-rasterizer-part-4.html</guid>
 			<description></description>
 		</item>
 
