@@ -1,0 +1,616 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta property="og:type" content="article" />
+        <meta property="og:title" content="Making your own programming language is easier than you think (but also harder)">
+        <meta property="og:site_name" content="lisyarus blog">
+        <meta property="og:image" content="/blog/media/making-your-own-programming-language/cover.png" />
+        <meta property="og:image:height" content="240" />
+        <meta property="og:image:width" content="520" />
+        <title>Making your own programming language is easier than you think (but also harder) | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Making your own programming language is easier than you think (but also harder)</div></center><br/>
+            <center><span class="post-date">2026 May 6</span></center><br/>
+
+            <p>In mid-December last year I started making my own programming language. It's waaay far from any production quality yet (though I did manage to write a working 1k LOC Monte-Carlo <a href="https://bitbucket.org/lisyarus/pslang/src/79838a1bb316a2aa75bd7718c24fef384e976f52/examples/raytracer.psl">path tracer</a> in it), but the project is on pause right now, so I figured it's a good time to write something about it.</p>
+
+            <p><i>Disclaimer #1: I'm not a professional PL designer or compiler implementor. Even though I do feel like I know what I'm talking about for the most part of this post, I might still end up talking some nonsense.</i></p>
+
+            <p><i>Disclaimer #2: it's not another C/C++/Rust/etc killer, and I doubt it'll ever be actually used to any noticeable extent. I'm just having fun and talking about me having fun.</i></p>
+
+            <p><i>Disclaimer #3: if you have some strong opinions about programming languages, please, keep in mind that I'm not forcing you to use this language, and that it's a bit rude to be telling random people on the internet what they should do. If, on the other hand, you have constructive feedback and suggestions, I'm all ears!</i></p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h1 id="part-introduction">Introduction</h1>
+
+            <h2 id="section-why-now">Why now?</h2>
+
+            <p>I mean, most programmers dream of their own perfect programming language. I've been programming for about 17 years, so why did I decide to make a language at this specific point in time?</p>
+
+            <p>It just so happens that 3 different things converged in my mind.</p>
+
+            <ol>
+                <li>Of course, I always wanted to make my own programming language as well. I made a bunch of silly interpreters for some esoteric languages in the past (<a href="https://esolangs.org/wiki/FALSE">FALSE</a> is probably my favourite), as well as interpreters for various flavours of lambda calculus, but that doesn't scratch the itch of making a <i>real</i> language, one that is at least somewhat production-oriented and doesn't feel like a toy.</li>
+
+                <li>As you might probably know, I'm working on a <a href="/blog/projects/village-builder.html">big game</a> which is highly susceptible to modding, and I've been thinking about how to approach modding since the start of this project. I've analyzed a ton of options, and it just so happens that making a custom programming language is actually <a href="#section-modding">one of the simplest solutions</a>.</li>
+
+                <li>In December 2025, the amazing Matt Godbolt introduced the <a href="https://xania.org/202511/advent-of-compiler-optimisation">Advent of Compiler Optimisations</a>, where he'd post some fun examples of what C++ compilers are capable of, walking through the generated assembly. Apart from this being an excellent series, it really made me want to mess with some assembly once again.</li>
+            </ol>
+
+            <p>Of course, making a non-toy programming language is a gargantuan endeavour, but somehow after looking at assembly for a few weeks, I felt like it shouldn't be <i>that</i> bad.</p>
+
+            <h2 id="section-modding">Modding</h2>
+
+            <p>I want to elaborate on the modding thing. Essentially, I have 3 main concerns with respect to modding:</p>
+
+            <ol>
+                <li>My game is highly simulation-heavy. There are hundreds of thousands of entities simulated via a <a href="https://bitbucket.org/lisyarus/psemek/src/master/libs/ecs/">custom ECS engine</a>. Ideally, I'd want the modding language to be able to just take a bunch of component pointers and iterate over them like you would in a C for loop.</li>
+
+                <li>It's hard to control what's going on in mods, so some level of protection for the player would be nice to have. Ideally, I'd want the modding language to be easily sandboxable &ndash; i.e. I want to be able to disable all IO and similar stuff with a single switch.</li>
+
+                <li>I want modding to be as easy as it can be. Ideally you'd throw a script in a certain folder and there you have it, a mod can be used.</li>
+            </ol>
+
+            <p>It was somewhat a surprise to me that there doesn't seem to exist a solution satisfying these two requirements. Let's go over common possibilities.</p>
+
+            <h4>Lua</h4>
+
+            <p>(or any other JIT-compiled scripting language for that matter). That's a standard choice, but it turns out that it's really hard to sandbox it. Apparently you need to prepend any untrusted Lua code with some kind of prelude that explicitly deletes all known standard library functions that can be used for IO and such. There are even lists of these functions online in the forms of github gists. Even if this probably does work, it doesn't sound like a reliable solution to me.</p>
+
+            <p>Furthermore, Lua is a high-level dynamically-typed language that doesn't know anything about C pointers. Bridging ECS entity iteration into it will either force per-entity native \(\leftrightarrow\) Lua \(\leftrightarrow\) native jumps with nonzero overhead, or constructing a Lua array from the native entities, and then deconstructing it back. Either way, this doesn't sound good.</p>
+
+            <p>Not to mention that standard Lua and LuaJIT have diverged some versions ago, which might make it extremely confusing both for modders and myself.</p>
+
+            <h4>C++</h4>
+
+            <p>There's always the option to make mods "natively". All the iteration problems are gone, but distributing mods becomes a nightmare. If they'd be distributed in binary, I'd have to provide some sort of a dev environment for all platforms, and a centralized storage for binary artifacts. If they would otherwise be distributed as source code, I'd have to bundle a C++ compiler with the game, which are known to be heavy and slow (a basic LLVM installation takes about 10-20 times more disk space than my current version of the game).</p>
+
+            <p>Oh, and sandboxing becomes impossible. If you're loading a native DLL which declares and uses <code>int open();</code>, you're doomed &ndash; there's basically no way to prevent it from accessing the filesystem, network, etc.</p>
+
+            <p>And, &ndash; that goes without saying, &ndash; even though I personally do enjoy writing C++, I'd rather not force the modders to do that.</p>
+
+            <p><i>All this applies to a bunch of other languages like Rust, by the way.</i></p>
+
+            <p>Please not that while I do put modding as one of the goals for the language, I'm still very much unsure whether I'm going to actually use it this way, and I don't want to over-specialize the language to this use case. As I've said, I'm mostly messing around and having fun.</p>
+
+            <h2 id="section-design-goals">Design goals</h2>
+
+            <p>Ok, so what do I want from my programming language? Quite a lot, actually:</p>
+
+            <ul>
+                <li><b>Seamless C interop</b> &ndash; so that bridging between native game code and modding code would be as simple as a function call</li>
+                <li><b>Low level</b> &ndash; which is mostly a consequence of having to handle raw arrays of entities</li>
+                <li><b>Practical and ergonomic</b> &ndash; I want the modders to be able to write code with reasonable ease</li>
+                <li><b>Easy sandboxing</b> &ndash; for reasons outlined earlier</li>
+                <li><b>Small compiler footprint</b> &ndash; I don't want to embed a 1Gb compiler into a 50Mb game</li>
+                <li><b>Fast compilation</b> &ndash; I don't want to force players to wait hours for mod compilation (though this can be partially solved by extensive caching)</li>
+                <li><b>Cross-platform</b> for real &ndash; I'm fine with supporting only a few widespread desktop platforms and making certain assumptions (like being 64-bit or having IEEE754 support)</li>
+                <li><b>Reasonably fast</b> &ndash; which is a relatively low bar compared to most dynamic languages</li>
+                <li><b>Try not to just recreate C++</b> &ndash; I cannot but acknowledge that C++, being my favourite and primary language for years, has had a heavy influence on my views on programming languages; I really want to try to steer away from it when I can <i>(spoiler: I don't think I succeeded much in that)</i></li>
+            </ul>
+
+            <p>Honestly, if I were just making a programming language strictly for fun, I'd start with <a href="https://en.wikipedia.org/wiki/System_F">System F</a> and then iterate from there. But, given the above constraints, that's not really an option.</p>
+
+            <p>Let's have a look at what I've come up with.</p>
+
+            <h1 id="part-the-language">The language</h1>
+
+            <h2 id="section-overview">Overview</h2>
+
+            <p>The working title is <tt>pslang</tt>, from my pet game engine <tt>psemek</tt>. It is an <b>imperative</b>, <b>eager-evaluated</b>, <b>call-by-value</b>, <b>low-level</b> programming language with a <b>static</b>, <b>strict</b> and <b>nominal</b> type system. It looks something like this:</p>
+
+            <pre><code class="language-rust block">func min(x: i32, y: i32) -> i32:
+    return if x < y then x else y
+
+struct vec3i:
+    x: i32
+    y: i32
+    z: i32
+
+func apply(f: i32 -> i32, v: vec3i) -> vec3i:
+    return vec3i(f(v.x), f(v.y), f(v.z))
+
+func as_array(v: vec3i) -> i32[3]:
+    return [v.x, v.y, v.z]</code></pre>
+
+            <p>Let's unpack that.</p>
+
+            <h4>Scoping</h4>
+
+            <p>As you can see, the language uses indentation-based scoping, mostly so that the language feels somewhat like a scripting language and thus looks more friendly to newcomers. Also there's less visual noise thanks to that.</p>
+
+            <p>Right now I'm using tab characters for indentation. Might replace them with spaces later, we'll see.</p>
+
+            <p>Each function, loop body, <code class="language-rust">if</code> body, etc creates a new scope. Functions and structs can be defined inside any scope, and they are only visible within that scope. Note that local functions don't have access to variables in the scope they are defined in: they are not closures, the scoping only affects name resolution.</p>
+
+            <p>The top-level scope (the one not inside any function) is treated just like any other scope, and it contains the file's <i>entry point</i>, i.e. code that runs when the file is loaded/initialized. It's the equivalent of <code class="language-rust">main()</code>, and allows initializing global variables at module import or writing scripts that simply consist of a sequence of commands to run. (Internally, the top-level scope is wrapped into an anonymous function.)</p>
+
+            <h4>Primitive types</h4>
+
+            <p>There are <i>*checks notes*</i> 13 primitive types: <code class="language-rust">bool</code>, 4 signed integer types, 4 unsigned integer types, 3 floating-point types, and <code class="language-rust">unit</code>. The numeric types fit nicely in a table:</p>
+
+            <center><pre><code class="language-rust block">i8  i16  i32  i64
+u8  u16  u32  u64
+    f16  f32  f64</code></pre></center>
+
+            <p>The <code class="language-rust">iNN</code> types are signed integers, the <code class="language-rust">uNN</code> types are unsigned integers, and <code class="language-rust">fNN</code> are floating-point. As you can see, there's no <code class="language-rust">f8</code> type, as it isn't supported by most desktop CPUs and there isn't a consensus about what 8-bit floating-point even means (afaik there are a bunch of competing standards for that).</p>
+
+            <p><code class="language-rust">f16</code> isn't useful for most people, but we use it routinely in graphics (for HDR colors, vertex attributes, etc), and not having it in the host language is always a noticeable inconvenience. Most desktop CPUs these days implement IEEE754 <code class="language-rust">f16</code>, so it doesn't really cost me anything to support this type out of the box.</p>
+
+            <p><i>Some people had very strong opinions that I should exclude unsigned types altogether. Having been using specifically unsigned types in graphics and computations my whole life, I simply cannot fathom how that would even work.</i></p>
+
+            <p>Btw all integer arithmetic is two's complement with overflow, no UB here.</p>
+
+            <p>The <code class="language-rust">unit</code> type is a bit special. It has a single value called <code class="language-rust">unit()</code>, and it is the formal return type of functions not returning anything. If you omit the return type of a function, it automatically returns <code class="language-rust">unit</code>. If you omit a <code class="language-rust">return</code> statement in the end of such function, it automatically inserts it (otherwise it is an error not to return anything from a non-<code class="language-rust">unit</code> function). It can also be used for opaque pointers, though it's better to create empty structs for that.</p>
+
+            <h4>Numeric literals</h4>
+
+            <p>By default, numbers like <code class="language-rust">10</code> mean <code class="language-rust">i32</code>. For other sizes, you can use suffixes like <code class="language-rust">10b</code> (byte), <code class="language-rust">10s</code> (short) or <code class="language-rust">10l</code> (long). For unsigned literals, you add a 'u' suffix: <code class="language-rust">10ub</code> is unsigned byte, <code class="language-rust">10us</code> is unsigned short, <code class="language-rust">10u</code> is unsigned 32-bit, and <code class="language-rust">10ul</code> is unsigned long, i.e. <code class="language-rust">u64</code>.</p>
+
+            <p>Floating-point literals, i.e. those with a decimal separator, mean <code class="language-rust">f32</code> by default. There are suffixes for other sizes as well: <code class="language-rust">10.0h</code> (half) for 16-bit, and <code class="language-rust">10.0d</code> (double) for 64-bit. You can't omit the integer or the fractional part and simply put a dot there, like <code class="language-rust">10.</code> or <code class="language-rust">.5</code> &ndash; you have to spell it in full like <code class="language-rust">10.0</code> and <code class="language-rust">0.5</code>.</p>
+
+            <p>Thus, all numeric literals have an unambiguous type.</p>
+
+            <h4>Arrays</h4>
+
+            <p>Arrays are built-in first-class types. As opposed to C or C++, you can pass arrays to functions (not pointers to arrays, but whole arrays), return them from functions, assign arrays to each other, etc. Array size is always known at compile-time. They mostly behave like structs having a bunch of fields of the same type.</p>
+
+            <p>You declare an array type as <code class="language-rust">i32[5]</code>, and you create an array literal as <code class="language-rust">[1, 2, 3, 4, 5]</code>. Of course, arrays support indexing.</p>
+
+            <p><i>Some people argued for syntax like <code class="language-rust">[5]i32</code>. This introduces ambiguities in cases like <code class="language-rust">[5]i32*</code> &ndash; is this an array of pointers or a pointer to an array? These can be solved by putting all type modifiers to the left instead of to the right, but I don't really see how this is more readable.</i></p>
+
+            <h4>Function types</h4>
+
+            <p>This is basically what C calls function pointers, but with a cleaner syntax. <code class="language-rust">(a, b, c) -> d</code> is a function type, and you can omit the parentheses if there's only one argument <code class="language-rust">a -> b</code>. Internally, these are regular function pointers, not closures (they don't pass data with them).</p>
+
+            <h4>Pointers</h4>
+
+            <p><code class="language-rust">i32*</code> is a pointer type. Pointers are immutable (like <code class="language-cpp">const</code> in C++) by default, a mutable pointer type is declared as <code class="language-rust">i32 mut*</code>.</p>
+
+            <p>Pointers are used mostly like in C: you can take an address of a variable <code class="language-rust">&x</code>, or take a mutable pointer <code class="language-rust">&mut x</code>, you can dereference a pointer like <code class="language-rust">*p</code> or use pointer arithmetic <code class="language-rust">*(p + 10)</code>.</p>
+
+            <h4>Structs</h4>
+
+            <p>Structs are declared using the <code class="language-rust">struct</code> keyword and listing all the fields and their types:</p>
+
+            <pre><code class="language-rust block">struct string_view:
+    size: u64
+    data: u8*</code></pre>
+
+            <p>You create structs using a built-in function-like constructor <code class="language-rust">string_view(10, data)</code>. You access struct field via a dot <code class="language-rust">v.x</code>. If you have a pointer to struct, you can still access its fields with the same dot syntax.</p>
+
+            <p>Notice that struct fields have no mutability specifiers: the fields of a mutable object are mutable, the fields of an immutable object are immutable. Also there are no access specifiers, i.e. fields are always public.</p>
+
+            <p>That's essentially the whole type system!</p>
+
+            <h4>Memory layout</h4>
+
+            <p>All objects have guaranteed memory layout: primitive types have alignment equal to their size (btw, <code class="language-rust">bool</code> takes 1 byte), pointers and function types are always 64-bit (and the same alignment), arrays have the same alignment as their elements, and structs have padding to satisfy alignment requirements. This is mostly to simplify C interop and usage in GPU programming.</p>
+
+            <h4>Empty types</h4>
+
+            <p>There are certain types that I call <i>empty</i>. They are actually not empty, but have a single valid value. These are <code class="language-rust">unit</code> and empty structs (those without any fields). I've decided that these types don't occupy memory at all, their size is literally 0 bytes. Passing it to a function does nothing, declaring such a variable does nothing, having such a field doesn't affect struct size, etc. These can be useful as type-level compile-time tags or stuff like that.</p>
+
+            <p>I haven't decided on reading/writing such objects via pointers. It might be useful in generic code, but it doesn't actually do anything. For now, I've made pointer arithmetic on such types illegal.</p>
+
+            <p>This also means that I don't follow the C++ rule that each object has a unique memory address. We'll see how it goes.</p>
+
+            <h4>Variables</h4>
+
+            <p>Variables are declared like <code class="language-rust">let x = 10</code> if they're immutable, and <code class="language-rust">mut x = 20</code> if they are mutable (the value can be reassigned). Of course, you can't take a mutable pointer to an immutable variable.</p>
+
+            <p>You can explicitly state the variable type like <code class="language-rust">let x: i32 = 10</code>, but you don't have to, as the language is designed in such a way that the type of any expression can be deduced unambigously.</p>
+
+            <p>You do have to initialize any variable with something, though.</p>
+
+            <h4>Functions</h4>
+
+            <p>Functions are declared like <code class="language-rust">func foo(x: A, y: B) -> C:</code> followed by the function body. If the return type is omitted, it is <code class="language-rust">unit</code>.</p>
+
+            <p>All functions adhere to the C ABI native to the platform the code is run on, for C interop (specifically so that functions could be passed as function pointers into C code, as callbacks / ECS systems / etc).</p>
+
+            <h4>Declaration order</h4>
+
+            <p>Within a scope (including the top-level scope), functions and structs can be declared in any order, i.e. I can use a struct or a function which is declared later in code. This is mostly because it is simple to implement and saves me from inventing a syntax for forward declarations (which is necessary for mutually recursive functions or data structures).</p>
+
+            <p>This could make type inference more complicated by turning it into an equation-solving problem. However, because all functions are required to fully spell their argument and return types, this doesn't cause issues &ndash; type inference is still pretty much trivial.</p>
+
+            <h4>Control flow</h4>
+
+            <p>There are typical if-else statements like</p>
+
+            <pre><code class="language-rust block">if x < 10:
+    x += 15
+else if x > 20:
+    x -= 5
+else:
+    x = 0</code></pre>
+
+            <p>and while loops:</p>
+
+            <pre><code class="language-rust block">while x > 0:
+    r *= x
+    x -= 1</code></pre>
+
+            <p>There are no for loops, which I'll talk about a bit later.</p>
+
+            <p>There's also an <code>if</code>-expression, which looks like <code>if A then B else C</code>.</p>
+
+            <h4>Foreign functions</h4>
+
+            <p>You can declare a function as being foreign, like so:</p>
+
+            <pre><code class="language-rust block">foreign func sin(x: f64) -> f64</code></pre>
+
+            <p>This means that this function isn't implemented here, but should be linked to elsewhere (e.g. in a dynamic library like <code>libc</code>). Right now, the interpreter just <code>dlsym</code>'s such functions from the interpreter executable itself.</p>
+
+            <p>This is the primary mechanism for interfacing with the C library and any other third-party library. The raytracer example uses this to compute square roots, write to files, compute timings, and even create threads.</p>
+
+            <h4>Type casting</h4>
+
+            <p>There are no implicit type casts, ever. You can cast types manually using the <code class="language-rust">as</code> operator, like <code class="language-rust">(x as f32)</code>. All numeric types can be cast to each other, all pointer types can be cast to each other (except turning an immutable pointer into a mutable one), and pointer types can be cast to <code class="language-rust">u64</code> and back. Notice that nothing can be cast to or from <code class="language-rust">bool</code>.</p>
+
+            <p>I am considering to add just one implicit cast, though: from a mutable pointer <code class="language-rust">T mut*</code> to an immutable one <code class="language-rust">T*</code>. I'm still not sure about that.</p>
+
+            <h4>Operators</h4>
+
+            <p>Pretty much all the standard operators are here: arithmetics, logical operations, comparisons, etc. One notable thing is that there are <code>&</code> and <code>|</code> as well as <code>&&</code> and <code>||</code>. They all work both for booleans and for integers (bitwise). The difference is that <code>&</code> and <code>|</code> always evaluate both operands, while <code>&&</code> and <code>||</code> are short-circuiting (don't evaluate the second operand if the result is known from the first operand).</p>
+
+            <p>The arithmetic and comparisons only work for a pair of same-type numeric arguments, i.e. no numeric type promotion takes place.</p>
+
+            <p>That's basically all there is in the language right now. It doesn't sound like much, but it already allows one to write real programs with reasonable comfort!</p>
+
+            <h2 id="section-compiler-architecture">Compiler architecture</h2>
+
+            <p>I've split the whole project into a set of libraries:</p>
+
+            <ul>
+                <li><code>types</code> &ndash; the type system definitions</li>
+                <li><code>ast</code> &ndash; abstract syntax tree definitions & utilities</li>
+                <li><code>parser</code> &ndash; the parser</li>
+                <li><code>ir</code> &ndash; intermediate representation</li>
+                <li><code>interpreter</code> &ndash; the interpreter</li>
+                <li><code>jit</code> &ndash; the JIT-compiler</li>
+            </ul>
+
+            <p>The idea is that the interpreter and the compiler are just simple CLI apps using one of these libraries (right now I only have the interpreter in JIT mode, though). If you want to embed the language, you just use the <code>parser</code> + <code>jit</code> libraries.</p>
+
+            <h2 id="section-parser">Parser</h2>
+
+            <p>For the parser, I took the <a href="https://www.gnu.org/software/bison/">Bison</a> parser generator. A few people asked for good Bison tutorials and sadly I don't know of any &ndash; I simply read the docs to get started.</p>
+
+            <p>There is the <a href="https://bitbucket.org/lisyarus/pslang/src/trunk/libs/parser/rules/pslang.l">lexer grammar</a> which specifies individual tokens (keywords, operators, literals, etc), and the <a href="https://bitbucket.org/lisyarus/pslang/src/trunk/libs/parser/rules/pslang.y">parser grammar</a> for the language. The grammar is mostly rather straightforward: a file is a list of statements; a statement can be a function declaration, a control flow operator, a variable declaration, or just an expression; expressions can be a literal, a variable, an operator, a function call, etc, etc.</p>
+
+            <p>I did have to fix shift/reduce conflicts in the grammar a few times (it's when the parser can't decide which rule should be used in a certain context). Bison has a lovely <code>-Wcounterexamples</code> command-line flag to show what exact scenario causes the conflict. I have to confess that I'm not a master at writing LALR(1) grammars, and I usually just googled stuff and poked around to solve these conflicts. Most of the time it meant rewriting a grammar like</p>
+
+            <pre><code class="language-text block">smth
+: A B
+| A C</code></pre>
+
+            <p>into</p>
+
+            <pre><code class="language-text block">smth
+: A x
+
+x
+: B
+| C</code></pre>
+
+            <p>I'm using the <code>lalr1.cc</code> Bison skeleton which generates a C++ parser class. By default, Bison generates a C parser with global variables as the parser's state. This might work for single-shot parsers like in a standalone compiler executable, but it doesn't work for e.g. interpreters or game mods (I might want to parse many files in parallel). Generating a C++ class solves this problem.</p>
+
+            <p>I've inserted the execution of Bison as a build step in the <a href="https://bitbucket.org/lisyarus/pslang/src/trunk/libs/parser/CMakeLists.txt">CMake scripts</a>. It was fairly straightforward, though I didn't manage to put the generated files in a separate directory (I have to include them like <code class="language-cpp">"parser.hpp"</code> and not something like <code class="language-cpp">&lt;pslang/parser/generated/parser.hpp&gt;</code>).</p>
+
+            <p>The output of the parser is a C++ object representing the AST of the parsed file.</p>
+
+            <h2 id="section-indentation">Indentation</h2>
+
+            <p>There's one problem with the parser, and that's my indentations. You see, because of them the grammar isn't actually context-free, because e.g. whether a certain statement belongs to the body of a while loop depends on the number of indentation tokens in front of it!</p>
+
+            <p>To solve this, I do something horrible: each line is parsed as a standalone statement together with a number signifying its indentation level. Then, a <a href="https://bitbucket.org/lisyarus/pslang/src/trunk/libs/parser/source/finalize.cpp">simple linear pass</a> resolves the scoping simply by looking at the indentation levels. It's hacky but it works and it's really fast, so I'm fine with that. Additionally, this pass makes sure that <code>break</code> and <code>continue</code> statements are only inside loops, <code>return</code> statements are only inside functions (the top-level scope isn't considered a function, even if it's compiled as one), that field definitions are only inside structs, etc.</p>
+
+            <h2 id="section-type-checking">Type checking</h2>
+
+            <p>After parsing, there are a few more passes before compilation can take place. The first one simply <a href="https://bitbucket.org/lisyarus/pslang/src/trunk/libs/ast/source/resolve_identifiers.cpp">resolves all identifiers</a>, literally linking the identifier node to the variable/function/struct definition node that this identifier refers to.</p>
+
+            <p>Then, the most important pass takes place &ndash; the one that checks and infers all types. As I've said earlier, type inference is mostly straightforward, as is type checking: it's just a bunch of conditions based on a specific AST node type. E.g. the type of an expression inside an <code>if</code> or <code>while</code> must be <code>bool</code>, the types of two operands to addition must either be both the same numeric type or one integer and one pointer, etc.</p>
+
+            <h2 id="section-interpreter">Interpreter</h2>
+
+            <p>All this is nice and cool, but there's still no way to actually execute the code. That's what the interpreter is for! Or, at least what the first version of the interpreter was for, as currently it is in a very broken state, and I'm planning to rewrite it completely using the IR.</p>
+
+            <p>It's a "tree-walking interpreter" (something I didn't even know has a name!). It executes code by literally visiting all required AST nodes and executing the corresponding C++ constructs. Its main functions are <code>exec()</code> and <code>eval()</code>, which can call each other internally as needed. <code>exec()</code> executes a single statement, while <code>eval()</code> computes the value of a single expression and returns it. Because C++ is statically typed, <code>eval()</code> returns a <code>variant</code> of all possible value types in the language (structs are represented as arrays of name-value pairs, one for each field). The interpreter uses the same <code>variant</code> to store variable values.</p>
+
+            <p>The main purpose of the interpreter is to provide a simple cross-platform way to run any code in the language, and to aid in debugging both the language implementation and the programs written in it (as I can shove much more validation into the interpreter). It's not meant to be fast at all.</p>
+
+            <p>Something this interpreter can't do is execute <code>foreign</code> functions &ndash; I can't just pass them to <code>eval()</code>, they have to be called via the C calling convention, with the number and types of arguments unknown beforehand. I'll probably have to do some vararg magic or use libffi for that.</p>
+
+            <p>The interpreter can dump all its internal state (the names, types, and values of variables) to stdout, which was my main way of debugging the parser and interpreter before I made a proper compiler.</p>
+
+            <h2 id="section-compiler-v1">Compiler, version 1</h2>
+
+            <p>I was on holiday during the first few weeks of January 2026, and I only had my M1 Mac with me, so that's the architecture I decided to write a compiler for. At the moment of writing this post, it's still the only supported arch :)</p>
+
+            <p>This is a JIT-compiler: the result is a memory blob (which is mapped with correct bits to make it executable), and a pointer to the start of each function (including the entry point).</p>
+
+            <p>I know I've said "fairly straightforward" about most parts of the language implementation. Well, the compiler wasn't fairly straightforward, it was actually rather tricky, mostly because of the platform-specific stuff.</p>
+
+            <p>The high-level parts of the compiler were straightforward, though! It's <i>almost</i> a classical stack-based compiler: when computing an expression, just take the arguments from the stack, and put the result back on the stack. Except that to make things faster and a bit simpler, I've decided that my compiler will place the result of an expression in the same way as it would be placed by a function with the same return type using AAPCS64 (the standard C calling convention on Aarch64 Macs).</p>
+
+            <p>This means that e.g. integers and pointers are returned in the <code>x0</code> general-purpose register, floating-points are returned in the <code>v0</code> floating-point register, and structs are returned in a register or on the stack based on their size. This reduces the number of memory access operations, making the compiler output faster code and simplifying function calls. The stack is typically used for intermediate results, e.g. for binary operations. For example, an expression like <code>A + B</code> compiles into</p>
+
+            <pre><code class="language-text block">(eval A)         # the value of A is in x0
+push x0          # the value of A is on stack top
+(eval B)         # the value of B is in x0
+pop x1           # the value of A is in x1
+add x0, x0, x1   # the value of A+B is in x0</code></pre>
+
+            <p>Control flow structures are a bit tricky to compile. They all turn into conditional jumps (e.g. if the value of the expression is zero, jump to skip the <code>if</code> body), but the problem is that with a single-pass compilation we don't know where to jump, since we haven't compiled the <code>if</code>/<code>while</code> body yet. To solve this, I output jump instructions with zero offset, and inject the actual jump offset into them later, when I know the target offset. The same applies to function calls.</p>
+
+            <p>To generate target CPU instructions, I could use some 3rd-party library, but I'm trying to make the compiler as minimal as possible, so I decided to <a href="https://bitbucket.org/lisyarus/pslang/src/trunk/libs/jit/source/arch/aarch64/instruction_builder.cpp">write them all myself</a>. It basically boiled down to digging through the <a href="https://cs140e.sergio.bz/docs/ARMv8-Reference-Manual.pdf">instruction manual</a> and writing down the required bits.</p>
+
+            <h2 id="section-aarch64-specifics">Aarch64 specifics</h2>
+
+            <p>As I've said, the basic compiler is fairly straightforward, but the specifics of the target architecture make it rather tricky.</p>
+
+            <p>First of all, all instructions in Aarch64 are 32-bit. This sounds nice at first (easy to address them, easy to store, easy to handle), but then you try to figure out how to put a 32-bit constant into a register. You need at least 5 bits to select a register (there are 32 of them), some bits to indicate the "put a constant into register" command, and 32 bits for the constant itself. The math doesn't add up &ndash; there's no way to put that into a single 32-bit instruction! Not to mention that you might want a 64-bit constant...</p>
+
+            <p>Instead, you have to either build the constant from 16-bit patches (there's an instruction that loads a 16-bit constant with an offset of 0, 16, 32, or 48 bits), or put the constant into constant memory and load it from there (that's what I do for floating-point constants, by the way).</p>
+
+            <p>There are no push/pop instructions (as opposed to x86), but there are instructions that e.g. write/read some register to/from a memory address computed as some other register plus a potential 9-bit signed address or 12-bit unsigned adress multiplied by 4, and then advances the address register...or something like that. Because all commands are exactly 32 bits, there's a ton of commands that do weird stuff, and you have to constantly pay attention to whether the offsets are signed or unsigned, whether they are premultiplied by some constant, whether the command modifies the address register, etc, etc.</p>
+
+            <p>The stack itself is a bit funny: when reading/writing from it relative to the SP register (stack pointer), the register must always be 16-bit aligned. Since the possible offsets are bound by 12 bits, you have to insert special code for cases when your stack frame is larger than 16Kb or something like that (I haven't implemented that yet).</p>
+
+            <p>The calling convention has some special cases for when structs are passed to/returned from functions in up to 2 general-purpose registers, in floating-point registers, or via pointer to memory, so there's a bunch of code in the compiler that covers specifically that.</p>
+
+            <h2 id="section-ir">IR</h2>
+
+            <p>After writing the basic interpreter & compiler, I figured that I'd want to reuse some code between them, simplify writing compilers for other architectures, and add some optimizations, as the generated code is still far from reasonable (I'm not even saying "optimal").</p>
+
+            <p>The answer is simple: use some sort of an intermediate representation! That's what I did next. My IR is something like <a href="https://en.wikipedia.org/wiki/Static_single-assignment_form">SSA</a> (single static asssignment), except that I do allow re-assigning values to the same nodes and don't use phi-nodes. So it's not actually single assignment. So it's actually not like SSA at all. Oh well.</p>
+
+            <p>The IR is a sequence of <a href="https://bitbucket.org/lisyarus/pslang/src/trunk/libs/ir/include/pslang/ir/node.hpp">nodes</a>, each one being a literal, an operation (with inputs being some previously-defined nodes), a jump (conditional or unconditional), a function call, etc. Nodes that represent values also store the type of that value. Because I allow reassignment, there's a special <code>assign</code> IR instruction that reassigns the value of a previously-defined node.</p>
+
+            <p>Conditional jumps are split into separate <code>jump_if_zero</code> and <code>jump_if_nonzero</code> nodes, since they typically correspond to different CPU instructions (which are faster than negating the value and using the other instruction).</p>
+
+            <p>Because the language supports function pointers, there are separate instructions for calling by a known IR node and calling by an unknown pointer value.</p>
+
+            <p>To simplify further optimizations (which will remove/insert nodes at arbitrary positions), the nodes are stored in a linked list (<code>std::list</code>), and references using list iterators.</p>
+
+            <p>The trickiest problem with IR was how to support structs. I can't have struct-valued literals, so there's a special <code>alloc</code> node that is meant to represent the struct value, and typically compiles into allocating the struct on the stack without initializing its value. Then, the struct itself is built by assigning to individual fields.</p>
+
+            <p>However, structs can contain other structs, so reading a nested field like <code>a.x.y</code> would be represented in the IR as first reading <code>a.x</code> into a new node, and then reading the <code>y</code> field of this node. Assignment to a nested field is even worse: <code>a.x.y = b</code> would be represented as</p>
+
+            <ol>
+                <li>Read <code>t = a.x</code></li>
+                <li>Write <code>t.y = b</code></li>
+                <li>Write <code>a.x = t</code></li>
+            </ol>
+
+            <p>That's really wasteful and hard to optimize, so instead this has special treatement in the IR. There's a <code>copy</code> node that can extract any nested field from a struct, and the <code>assign</code> node allows assigning to any nested field in a struct. Nested fields are represented as an array of indices (e.g. take the field #0, then take its field #2, then take its field #5).</p>
+
+            <h2 id="section-compiler-v2">Compiler, version 2</h2>
+
+            <p>After that, I rewrote the Aarch64 compiler using the IR. It is now split into two parts: AST \(\rightarrow\) IR compiler, and IR \(\rightarrow\) Aarch64 compiler. The former is rather straightforward again, but the latter is a complete mess. Right now it's much worse than the previous stack-based compiler. At function start, it allocates as much stack space as is required for all IR nodes of this function, even though most of them are short-lived intermediate values. It's so bad that I had to split one function in my raytracer into two, simply so that the stack frame would fit into the 12-bit restriction I talked earlier.</p>
+
+            <p>That's pretty expected, though, as this compiler is meant to use a register allocator, and I expect the resulting code to be orders of magnitude better after that.</p>
+
+            <h1 id="part-future-plans">Future plans</h1>
+
+            <p>That's pretty much all what's implemented in the language right now, and it takes just about 10k lines of C++ code. Obviously there's still a long way to go, but I'm happy that it all actually works, and the compiler is pretty small by modern standards!</p>
+
+            <p>There's a ton of stuff I'd like to add to the language, which I'll talk about below.</p>
+
+            <h2 id="section-plans-compiler">Compiler/interpreter</h2>
+
+            <h4>Register allocator</h4>
+
+            <p>As I've already said, the current IR \(\rightarrow\) Aarch64 compiler is awful, and really needs a register allocator. I'm planning to use the standard linear scan allocator, which seems to be a good tradeoff between compilation speed and code quality.</p>
+
+            <h4>IR optimizations</h4>
+
+            <p>The IR allows for a ton of optimizations to be performed. In particular, I'm hoping to add</p>
+
+            <ul>
+                <li>Constant propagation</li>
+                <li>Arithmetic simplification</li>
+                <li>Dead code elimination</li>
+                <li>Inlining</li>
+                <li>Loop unrolling</li>
+            </ul>
+
+            <p>I'm not aiming at outperforming GCC or LLVM, but it would be nice if some simple functions like adding 3D vectors get compiled to as little CPU instructions as possible.</p>
+
+            <h4>IR interpreter</h4>
+
+            <p>I'm planning to rewrite the interpreter by evaluating the IR directly. This should simplify the interpreter considetably.</p>
+
+            <h4>Producing executables</h4>
+
+            <p>Right now, the compiler can only generate JIT-compiled memory blobs to be executed right away. I want to support generating runnable executables as well, in a platform-specific format. This will mostly require digging into the binary specs of the binary formats (ELF, Mach-O, PE). Would be cool to try and generate executables as small as possible, just for some sport.</p>
+
+            <h4>Debugging</h4>
+
+            <p>I've spent a fair amount of time stepping through JIT-produced assembly in lldb and I really want to be able to debug the language properly. This would probably require supporting the DWARF debug info format, which I know pretty much nothing about, so it should prove to be quite an adventure.</p>
+
+            <h2 id="section-plans-language-features">Language features</h2>
+
+            <h4>Struct constructors</h4>
+
+            <p>Right now, structs can only be created by setting all fields like <code>vec3i(1, 2, 3)</code>, or zero-initializing them like <code>vec3i()</code>. I want to support arbitrary constructors, which will work simply by declaring a function with the name equal to the struct name:</p>
+
+            <pre><code class="language-rust block">func vec3i(x: i32, y: i32) -> vec3i:
+    return vec3i(x, y, 0)</code></pre>
+
+            <p>I'm not sure about this, though &ndash; maybe giving unique names to such functions is better.</p>
+
+            <h4>Global variables</h4>
+
+            <p>Right now, globals are simply not supported. I'm planning to add a <code>global</code> keyword that creates a global variable (access to them is still restricted by scoping rules, so you can make function-local global variables like <code>static</code> variables in C).</p>
+
+            <p>Note that top-level variables aren't actually global (unless they use the <code>global</code> keyword), but instead are local to the file's entry point function. This might prove to be confusing to users; I'm still considering options regarding that.</p>
+
+            <p>This will create problems on Mac, which doesn't allow memory mappings that are both writeable and executable at the same time. This means that I'll have to allocate the globals separately from code, map them with different flags, and access globals by runtime-resolved addresses instead of compile-time known offsets.</p>
+
+            <p>However, it seems that you can use <code>mprotect()</code> to change the flags for a <i>part</i> of a mapping, so that's what I'm going to try first.</p>
+
+            <h4>Method call syntax</h4>
+
+            <p>Just to make the code more readable, I want code like <code>x.f(y)</code> to mean <code>f(&x, y)</code> or <code>f(&mut x, y)</code> whenever possible.</p>
+
+            <h4>Polymorphism</h4>
+
+            <p>That's probably the most important potential feature. There are many ways to add polymorphism to a language like that, but the two most promising (in my opinion) are</p>
+
+            <ul>
+                <li>C++ style function overloading + unrestricted function templates + struct templates (without specialization)</li>
+                <li>Haskell / Rust style explicit traits + trait-constrained generic functions and structs</li>
+            </ul>
+
+            <p>C++ style is more powerful, easier to read in simple cases, easier to implement in the compiler, but the error messages can be exceptionally cryptic.</p>
+
+            <p>Explicit traits can be easier to read in some cases (when it's hard to understand which of the used functions come from where in generic code), are harder to implement in the compiler (traits and trait bounds are a whole new system; traits themselves can be generic to support multiple-parameter traits, etc), but are stricter (which can be both good and bad) and they definitely solve the error messages problem.</p>
+
+            <p>I'm still not sure what to choose. I've said that I'm trying not to reinvent C++, but I'm reeeeally leaning towards the first option. Something like</p>
+
+            <pre><code class="language-rust block">struct vec2&lt;t: type&gt;:
+    x: t
+    y: t
+
+func min&lt;t: type&gt;(x: t, y: t) -> t:
+    return if x < y then x else y</code></pre>
+
+            <p>with argument deduction for functions whenever possible.</p>
+
+            <h4>Operator overloading</h4>
+
+            <p>This requires some form of polymorphism to be present. Other than that, it's pretty straightforward: an operator like <code>a + b</code> could call an overloaded function <code>add(a, b)</code> or a method of a trait <code>Add::add</code>, something like that.</p>
+
+            <h4>For loops</h4>
+
+            <p>You can emulate <code>for</code> loops with <code>while</code> loops, so I'm planning to use <code>for</code> loops as collection-based loops (like the range-based loops in C++, loops in Python, etc). This, of course, requires some sort of range/iterator interface, which in turn requires some polymorphism once again.</p>
+
+            <h4>Automatic resource management</h4>
+
+            <p>I do believe that an ergonomic and practical language must provide some ways to help with freeing resources like memory, files, sockets, mutexes, etc. There are many ways to do that, in particular</p>
+
+            <ul>
+                <li>C++ style RAII + move: automatic destructors that are called at the end of object's lifetime + moving data from one object into another</li>
+                <li>Zig style <code>defer</code> keyword that allows automatically executing arbitrary code at the end of scope</li>
+                <li>Linear types, which require an object to be used exactly once (e.g. passed to some deallocation function)</li>
+            </ul>
+
+            <p>The main downside of RAII is that it is implicit, adding hidden instructions and control flow.</p>
+
+            <p><code>defer</code> is explicit, but requires you to insert it manually all the time and doesn't prevent you from forgetting to insert it. Freeing up nested collections is also rather inconvenient, e.g. for an array of files you'd have to close each file before deallocating the array itself:</p>
+
+            <pre><code class="language-rust block">defer free(array)
+defer for file in array:
+    close(file)</code></pre>
+
+            <p>Linear types are a promising idea: they are still explicit (you manually call <code>free/close</code>), but they also force you to "consume" the object using some resource-freeing function. However, they are once again hard to mix with nested collections, e.g. a dynamic array of files.</p>
+
+            <p>I'm not sure which option to choose; I'm hoping to expand on the linear types idea somehow.</p>
+
+            <h4>Polymorphic literals</h4>
+
+            <p>There are a few cases when type inference can fail because some literal can mean several things.</p>
+
+            <p>The first such case that I've faced is the empty array literal. Given an array like <code>[1, 2, 3]</code>, we can check that all elements have the same type, and infer the type of the array from the elements. However, for an empty array <code>[]</code> we can infer the size (zero), but not the type!</p>
+
+            <p>A similar problem comes from the <code>null</code> literal &ndash; it can mean any pointer type. I also want an <code>inf</code> literal, which can mean any floating-point type.</p>
+
+            <p>I see three possible ways to solve this:</p>
+
+            <ul>
+                <li>Haskell-like polymorphic literals &ndash; this requires a huge re-working of the language and its type system, and potentially turns type inference from a straightforward algorithm into an equation solver</li>
+                <li>Special built-in/library types that support implicit conversions (like <code>nullptr_t</code> in C++)</li>
+                <li>Treat them as special literals in AST and add ad-hoc handling in the compiler</li>
+            </ul>
+
+            <p>I'm leaning towards the last option: simply allow e.g. <code>null</code> in places where we know that a pointer of a specific type is expected (initializing a variable with an explicitly specified type, passing an argument to a function, etc). This option is the simplest, but isn't extensible (can't allow constructing custom types from <code>null</code>). Maybe that's not a bad thing, though.</p>
+
+            <h4>Compile-time evaluation</h4>
+
+            <p>This would be a really fun feature for metaprogramming and similar stuff. First, variables can be declared using the <code>const</code> keyword, which means that this is a compile-time variable (so, not really a variable). It can be used in compile-time expressions (e.g. the size of an array type), it cannot be reassigned, and you can't take its address.</p>
+
+            <p>Then, any suitable function can be called in a compile-time expression (if it doesn't access global variables, doesn't have side-effects, etc). Inside the function body, it operates just like a regular function, but is executed during compilation, and the result is a compile-time expression.</p>
+
+            <p>This feature will need some tricks to declare that certain <code>foreign</code> functions are safe to call in compile-time (like math or memory allocation), otherwise the compile-time evaluation will be quite limited.</p>
+
+            <h4>Type computations</h4>
+
+            <p>It would be cool to support computations on types, once again for metaprogramming. These would be compile-time only, simply because I don't want to invent some runtime encoding scheme for types, and having types in runtime in a statically-typed language has very limited utility anyway.</p>
+
+            <h4>Coroutines</h4>
+
+            <p>That's honestly more like dreaming than planning, but adding some Python or JS style <code>async/await</code> wouldn't hurt.</p>
+
+<!-- * Future plans (register allocation, IR optimizations, IR interpreter, producing executables, aliasing rules, struct constructors, polymorphism: templates+overloading/traits, operator overloading, for loops: iterator/range interface, raii/linear types/defer, method call syntax, polymorphic literals, compile time evaluation, type expressions, modules, prelude, strings, standard library, coroutines, debugging symbols) -->
+
+            <h2 id="section-plans-library">Library</h2>
+
+            <h4>Modules</h4>
+
+            <p>Of course, writing everything in the same file is madness, and the language really needs modules. I'm planning for a simple <code>import lib.sublib</code> statement, which can be placed anywhere in code and also adheres to the scoping rules (allowing e.g. function-local imports). Note that, as before, scoping affects visibility only; the actual loading process happens at compilation time, and the entry point of an imported module is executed before your module.</p>
+
+            <p>The library name will directly correspond to the filesystem path (relative to some root paths specified to the compiler/interpreter) leading to this library. It can be a single source file (in which case only that file is imported), or it can be the a whole directory (in which case all the files from that directory are imported in some order). I'd need some syntax to refer to files in the same directory, though &ndash; maybe something like <code>import .another</code>.</p>
+
+            <p>The imported functions / global variables can be used without any prefixes, or they can be prefixed by the library name like <code>io.print(x)</code> in case of an ambiguity.</p>
+
+            <p>The modules' entry points will be executed in a deterministic order (in order of importing + topological sorting of the recursive imports), which should solve the initialization order fiasco typical to C or C++.</p>
+
+            <p>One thing I haven't decided on yet is how multiple-module programs will be laid out in memory. I can put each module in a separate memory patch, and resolve the function calls / global variable accesses at runtime. Alternatively, I can build them up as a single huge memory mapping, and use relative offsets. This should be faster at runtime, but will make it harder to compile several modules in parallel. We'll see.</p>
+
+            <h4>Prelude</h4>
+
+            <p>Once we have modules, we can have some basic utility stuff put into a certain <i>prelude</i> module that is implicitly included in all programs. It could contain stuff like <code>length()</code> function and iterator interface for built-in arrays, a string view type, numeric range like Python's <code>range(n)</code>, etc.</p>
+
+            <h4>String literals</h4>
+
+            <p>There are no string literals in the language yet, simply because I have no idea what they should mean. My plan is to have an immutable <code>string_view</code> type in the prelude, and a string contents would be placed somewhere in executable memory, while the literal itself would turn into a <code>string_view</code> pointing to this memory.</p>
+
+            <h4>Standard library</h4>
+
+            <p>Of course, with great modules comes a great standard library. I'd love for it to contain some subset of the following:</p>
+
+            <ul>
+                <li>Math library (including vectors and matrices)</li>
+                <li>Memory management, at least in the form of <code>alloc/free</code> functions bridged from libc</li>
+                <li>Dynamic arrays</li>
+                <li>Dynamic strings and formatting</li>
+                <li>Hash tables</li>
+                <li>I/O facilities for the console and files</li>
+                <li>Filesystem helpers</li>
+                <li>Timing/clock helpers</li>
+                <li>Networking</li>
+            </ul>
+
+            <h1 id="part-conclusion">Conclusion</h1>
+
+            <p>So, when will I implement all this stuff, and will I ever use the language for modding in my game or for anything else? I have literally no idea. That's an ambitious project, and I don't think it's a good idea to have more than one ongoing ambitious project treated seriously. I'll work on it when I feel like it, and right now my priority is still the game &ndash; after all, you can't mod a game that isn't made yet.</p>
+
+            <p>If you have some fun ideas about anything I've talked about above, don't hesitate to ping me! In any case, thanks for reading.</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
