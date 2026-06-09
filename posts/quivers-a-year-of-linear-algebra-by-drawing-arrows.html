@@ -1,0 +1,311 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta property="og:type" content="article" />
+        <meta property="og:title" content="Quivers: a year of linear algebra by drawing arrows">
+        <meta property="og:site_name" content="lisyarus blog">
+        <meta property="og:image" content="/blog/media/quivers-a-year-of-linear-algebra-by-drawing-arrows/cover.png" />
+        <meta property="og:image:height" content="240" />
+        <meta property="og:image:width" content="520" />
+        <title>Quivers: a year of linear algebra by drawing arrows | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+        <style>
+        .crop-quiver-embed {
+            height: 128px;
+            overflow: hidden;
+        }
+
+        .crop-quiver-embed iframe {
+            margin-top: -24px;
+        }
+
+        iframe {
+            pointer-events: none;
+        }
+        </style>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Quivers: a year of linear algebra by drawing arrows</div></center><br/>
+            <center><span class="post-date">2026 Jun 9</span></center><br/>
+
+            <p><i>Disclaimer: if your first instinct was to think about <a href="https://en.wikipedia.org/wiki/String_diagram">string diagrams</a>, that's not was this post is about. Cool guess, though.</i></p>
+
+            <p>In algebra there's this idea of <i>representations</i> of some object, especially <i>linear representations</i>. It's so important that even chemists typically have the representation theory of finite groups in their curriculum, because those have a profound influence on the structure of atoms and molecules.</p>
+
+            <p>And it just so happens that studying representations of a particular kind of object (namely, <i>quivers</i>) can be seen as a generalization of a typical 1-year university linear algebra course :)</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-representations">Representations</h2>
+
+            <p>First, lets talk about representations a bit more.</p>
+
+            <p>The idea is that some objects are easier to study and understand than others. For example, permutations are easier to work with than elements of a general group, and <a href="https://en.wikipedia.org/wiki/Cayley%27s_theorem">there's a theorem</a> that any group can be <i>represented</i> as a group of some permutations.</p>
+
+            <p>One of the things we understand the best in math are <i>matrices</i> &mdash; they seem to be in the perfect sweet spot between showing up everywhere and also having a deep, rich, and useful theory. It turns out that we can represent many objects as matrices, in which case we call them <i>linear representations</i>, though often the word <i>representation</i> means a <i>linear representation</i> by default.</p>
+
+            <p>As a simple example, consider complex numbers: how can we represent the number \(i\) as a real-valued matrix? Well, \(i\) is defined as being a root of the equation \(i^2=-1\), so we just need to find a matrix that satisfies this equation. Note that we'll need to replace the number \(-1\) with the scalar matrix having \(-1\) on the diagonal (because this matrix effectively acts as the number \(-1\) in the matrix algebra).</p>
+
+            <p>It's not hard to find a matrix which squares to \(-1\):</p>
+
+            \[ \begin{pmatrix}0 & -1 \\ 1 & 0\end{pmatrix}^2 = \begin{pmatrix}-1 & 0 \\ 0 & -1\end{pmatrix} \]
+
+            <p><i>You can notice that it's the matrix of rotation by \(90^\circ\), and that's not a coincidence!</i></p>
+
+            <p>If we also represent real numbers \(a\) as scalar matrices \(\begin{pmatrix}a & 0 \\ 0 & a\end{pmatrix}\), we can represent the complex number \(a+bi\) as a matrix</p>
+
+            \[ a+bi \mapsto \begin{pmatrix}a & -b \\ b & a\end{pmatrix} \]
+
+            <p>and matrices of this form act exacly like complex numbers &mdash; the addition and multiplication formulas are the same, as are all the other properties (the technical term is that the algebra of such matrices is <i>isomorphic</i> to the complex numbers).</p>
+
+            <p><i>In general, representations are easiest to define via category theory. For example, take a group, turn it into a one-object category with elements of this group as morphisms (i.e. categorify the group to obtain a groupoid), and then representations of this group are simply functors from this groupoid into some other category. Functors to \(\operatorname{Set}\) give permutation representations, while functors to \(\operatorname{Vect}_K\) give linear representations.</i></p>
+
+            <h2 id="section-matrices-vs-operators">Matrices vs operators</h2>
+
+            <p>I want to stress one thing which might sound like obvious truth, a boring technicality, or useless garbage, depending on your background. We commonly represent vectors using coordinates, which is especially convenient for direct computations, but an abstract vector isn't the same as a list of coordinates. We can always choose a different basis, and the coordinates of a specific vector will change, but the vector itself won't change &mdash; it represents some specific (albeit abstract) geometric object which doesn't depend on a particular encoding scheme that we've arbitrarily chosen.</p>
+
+            <p>The same goes for matrices and operators. A matrix is just a table with numbers; it only means something geometric once we've selected the basis vectors &mdash; specifically, it means a linear operator acting on these vectors. If we change the basis, the vectors and operators don't change, but the vector coordinates and matrix entries can change.</p>
+
+            <p>How important this is depends entirely on your domain of work. I'm bringing this up because it does matter here: by choosing a basis in a clever way, we can see how some complicated object ends up looking very simple. In fact, keeping track of bases will be very important in what follows.</p>
+
+            <h2 id="section-quivers">Quivers</h2>
+
+            <p>So, what exactly is a quiver? It's a directed graph. That's it, that's the definition.</p>
+
+            <p>OK, there are a dozen different things that people call a <q>directed graph</q>. Does it allow for multiple edges? Does it allow loops? For a quiver, the answers are yes and yes. In other words, there are no restrictions on edges: there can be several edges between two vertices, and edges can start and end in the same vertex. This type of a directed graph is often called a <i>multidigraph</i>.</p>
+
+            <p>Here are a few examples of quivers:</p>
+
+            <center>
+            <div class="crop-quiver-embed">
+            <iframe class="quiver-embed" src="https://q.uiver.app/#q=WzAsMixbMCwwLCJcXGJ1bGxldCJdLFsxLDAsIlxcYnVsbGV0Il0sWzAsMV1d&embed" width="304" height="176" style="border-radius: 8px; border: none;"></iframe>
+            </div>
+            <br>
+            <div class="crop-quiver-embed">
+            <iframe class="quiver-embed" src="https://q.uiver.app/#q=WzAsMyxbMSwwLCJcXGJ1bGxldCJdLFswLDAsIlxcYnVsbGV0Il0sWzIsMCwiXFxidWxsZXQiXSxbMSwwLCIiLDAseyJvZmZzZXQiOi0xfV0sWzAsMSwiIiwxLHsib2Zmc2V0IjotMX1dLFswLDIsIiIsMCx7Im9mZnNldCI6LTF9XSxbMiwwLCIiLDAseyJvZmZzZXQiOi0xfV1d&embed" width="432" height="176" style="border-radius: 8px; border: none;"></iframe>
+            </div>
+            <br>
+            <div class="crop-quiver-embed">
+            <iframe class="quiver-embed" src="https://q.uiver.app/#q=WzAsMyxbMSwwLCJcXGJ1bGxldCJdLFsyLDAsIlxcYnVsbGV0IixbMCwwLDkzLDFdXSxbMCwwLCJcXGJ1bGxldCIsWzAsMCw5MywxXV0sWzAsMCwiIiwwLHsic3R5bGUiOnsiYm9keSI6eyJuYW1lIjoibm9uZSJ9LCJoZWFkIjp7Im5hbWUiOiJub25lIn19fV0sWzAsMCwiIiwwLHsiYW5nbGUiOi00NSwic3R5bGUiOnsiYm9keSI6eyJuYW1lIjoibm9uZSJ9LCJoZWFkIjp7Im5hbWUiOiJub25lIn19fV0sWzAsMCwiIiwwLHsiYW5nbGUiOi05MH1dLFswLDAsIiIsMCx7ImFuZ2xlIjotMTM1LCJzdHlsZSI6eyJib2R5Ijp7Im5hbWUiOiJub25lIn0sImhlYWQiOnsibmFtZSI6Im5vbmUifX19XSxbMCwwLCIiLDAseyJhbmdsZSI6LTE4MCwic3R5bGUiOnsiYm9keSI6eyJuYW1lIjoibm9uZSJ9LCJoZWFkIjp7Im5hbWUiOiJub25lIn19fV0sWzAsMCwiIiwwLHsiYW5nbGUiOjEzNSwic3R5bGUiOnsiYm9keSI6eyJuYW1lIjoibm9uZSJ9LCJoZWFkIjp7Im5hbWUiOiJub25lIn19fV0sWzAsMCwiIiwwLHsiYW5nbGUiOjkwfV1d&embed" width="432" height="176" style="border-radius: 8px; border: none;"></iframe>
+            </div>
+            </center>
+
+            <p><i>These were made with an online tool called &mdash; you wouldn't believe it &mdash; <a href="https://q.uiver.app/">q.uiver.app</a>.</i></p>
+
+            <p>Ok, a quiver is a miltidigraph, i.e. a directed graph with multi-edges and loops allowed. If we already have a name for it, why call them <i>quivers</i>?</p>
+
+            <p>It boils down to the perspective that we're interested in. If you want to find shortest paths, count connected components, check if it is <a href="https://en.wikipedia.org/wiki/Planar_graph">planar</a>, etc, you'd call it a <i>miltidigraph</i>. But if you're interested in <i>representations</i> and in category-theoretic stuff, you'd call them <i>quivers</i>.</p>
+
+            <h2 id="section-quiver-representations">Quiver representations</h2>
+
+            <p>Ok, but what is a representation of a quiver? It's a fairly straightforward thing, actually:</p>
+
+            <ul>
+                <li>For each vertex of the quiver, pick some vector space (e.g. \(\mathbb{R}^n\))</li>
+                <li>For each directed edge of the quiver, pick a linear map between the vector spaces corresponding to the starting/ending vertex of this edge</li>
+            </ul>
+
+            <p>Or, if you're more comfortable with more concrete descriptions,</p>
+
+            <ul>
+                <li>For each vertex of the quiver, pick a nonnegative integer (the dimension of the vector space)</li>
+                <li>For each directed edge of the quiver, pick some \(N\times M\) matrix, where \(M\) is the number at the start of the edge, and \(N\) is the number at the end</li>
+            </ul>
+
+            <p>For an example, let's take the \(\bullet\rightarrow\bullet\) quiver. A representation of this quiver is a pair of vector spaces and a linear map between them, or equivalently (after we choose a basis of the first vector space, and another basis of the second vector space), a representation is just some \(N\times M\) matrix (so, any matrix).</p>
+
+            <p>For another example, take the \(\bullet\style{display: inline-block; transform: rotate(-90deg)}{\circlearrowleft}\) quiver (one vertex, and one looping edge). For this quiver, we select just <i>one</i> vector space, and select an operator from this space to itself. Equivalently (after choosing a basis in this vector space), a representation of this quiver is just an \(N\times N\) matrix (i.e., any square matrix).</p>
+
+            <h2 id="section-classifying-representations">Classifying representations</h2>
+
+            <p>When talking about representations, the first thing one is interested in is classifying all possible representations. We've already did it in some sense in the previous section &mdash; we've determined that for two simple quivers, the representations are all possible matrices, or all possible square matrices. However, that doesn't really tell us much about how these are structured <i>as representations</i>.</p>
+
+            <p>There's one particularly simple operation we can do with representations of the same quiver: just add them. This doesn't have anything to do with usual matrix addition, though, so this operation is usually referred to as the <i>direct sum</i>. If we have two representations, &mdash; let's call them \(A\) and \(B\), &mdash; their direct sum \(A\oplus B\) is constructed like this:</p>
+
+            <ul>
+                <li>For each vertex, the corresponding vector space is the <a href="https://en.wikipedia.org/wiki/Direct_sum_of_modules#Construction_for_two_vector_spaces">direct sum</a> of the vector spaces assigned to this vertex by representations \(A\) and \(B\)</li>
+                <li>For each edge, the corresponding linear map is the <a href="https://en.wikipedia.org/wiki/Direct_sum_of_matrices">direct sum</a> of the linear maps assigned to this edge by representations \(A\) and \(B\)</li>
+            </ul>
+
+            <p>In terms of coordinates,</p>
+
+            <ul>
+                <li>Direct sum of vector spaces corresponds to simply concatenating the coordinate arrays, and</li>
+                <li>Direct sum of linear maps corresponds to forming a block-diagonal matrix like \(\begin{pmatrix}A & 0 \\ 0 & B\end{pmatrix}\)</li>
+            </ul>
+
+            <p>The reason this is useful is that the \(A\) and \(B\) parts of the representation behave independently, so if we can <i>decompose</i> some representation into a sum of two smaller representations, then we can analyze them separately, which is typically much easier than analyzing the original representation as a whole.</p>
+
+            <p>Let's look at an example, with the same \(\bullet\rightarrow\bullet\) quiver. Recall that a representation of this quiver is just a linear map (a matrix) between two vector spaces. Take representation \(A\) to be \(\mathbb{R}^2\rightarrow\mathbb{R}^3\) with the matrix defined as \(\begin{pmatrix}1 & 2 \\ 3 & 4 \\ 5 & 6\end{pmatrix}\), and the representation \(B\) to be \(\mathbb{R}\rightarrow\mathbb{R}^2\) with the matrix \(\begin{pmatrix}-32 \\ -64\end{pmatrix}\). Then, the direct sum representation \(A\oplus B\) maps between vector spaces</p>
+
+            \[ \mathbb{R}^2\oplus\mathbb{R}=\mathbb{R}^3 \quad\longrightarrow\quad \mathbb{R}^3\oplus\mathbb{R}^2=\mathbb{R}^5 \]
+
+            <p>with the matrix</p>
+
+            \[ \begin{pmatrix}1 & 2 & 0 \\ 3 & 4 & 0 \\ 5 & 6 & 0 \\ 0 & 0 & -32 \\ 0 & 0 & -64\end{pmatrix} \]
+
+            <p>A representation that can be <i>decomposed</i> into a direct sum is called, well, <i>decomposable</i>. It's important to note that it doesn't mean that each matrix in the representation is block-diagonal; rather, that there <i>exists</i> a basis of each vector space involved such that the matrix (wrt this basis) will be block-diagonal. Remember the matrix vs operator distinction I stressed earlier? That's where it becomes important.</p>
+
+            <p>A representation that cannot be decomposed in such a way is called <i>indecomposable</i>. That's quite a mouthful, but it wasn't me who invented this term. It's a more or less trivial result that any representation can be decomposed into indecomposable ones: just keep decomposing while you can, and stop when you can't decompose more &mdash; at this point you have a direct sum of indecomposable representations <i>(of course, in infinite dimensions you'd need to invoke Zorn's lemma)</i>.</p>
+
+            <p>So, to classify representations, it's enough to classify indecomposable ones, and that's exactly what we'll do for a bunch of simple-looking quivers.</p>
+
+            <h2 id="section-the-quiver-1">The \(\bullet\) quiver</h2>
+
+            <p>The simplest possible quiver has...nothing. Zero vertices, zero edges. It has exactly one representation &mdash; the one that doesn't really specify any vector spaces or matrices. You might even object that this thing is a quiver at all!</p>
+
+            <p>The next simplest possible quiver has one vertex and no edges. Here it is in its full glory:</p>
+
+            <center>
+            <div class="crop-quiver-embed">
+            <iframe class="quiver-embed" src="https://q.uiver.app/#q=WzAsMSxbMCwwLCJcXGJ1bGxldCJdXQ==&embed" width="176" height="176" style="border-radius: 8px; border: none;"></iframe>
+            </div>
+            </center>
+
+            <p>A representation of this quiver assigns a vector space to the only vertex and that's it, there are no edges to assign linear maps (aka matrices) to. Asking how a representation of this quiver decomposes as a direct sum is essentially asking when a single vector space can be decomposed as a direct sum.</p>
+
+            <p>Now, one of the first things one learns in a linear algebra course is that any vector space can be decomposed as a direct sum of one-dimensional spaces, which is just a fancy way of saying that any vector space has a basis! In terms of coordinates, direct sum of vector spaces corresponds to just concatenating the coordinate lists, so we could reformulate this as the fact that any list of numbers is a concatenation of single-element lists.</p>
+
+            <p>So, this quiver has only a single indecomposable representation, which assigns a 1-dimensional vector space (i.e. \(\mathbb{R}^1\)) to the only vertex of the quiver. Any representation (which is just a vector space) decomposes as a sum of copies of this representation (aka any vector space has a basis). The number of terms in this decomposition is simply the dimension of the vector space</p>
+
+            <p>Thus, the first few lectures of a linear algebra course are secretly about classifying representations of this quiver!</p>
+
+            <h2 id="section-the-quiver-2">The \(\bullet\rightarrow\bullet\) quiver</h2>
+
+            <p>The next quiver we'll look at has two vertices and just one arrow between them:</p>
+
+            <center>
+            <div class="crop-quiver-embed">
+            <iframe class="quiver-embed" src="https://q.uiver.app/#q=WzAsMixbMCwwLCJcXGJ1bGxldCJdLFsxLDAsIlxcYnVsbGV0Il0sWzAsMV1d&embed" width="304" height="176" style="border-radius: 8px; border: none;"></iframe>
+            </div>
+            </center>
+
+            <p>As we've discussed before, a representation of this quiver is just any linear operator (i.e. any matrix), together with the source and destination vector spaces that this operator maps from/to. The question now is: up to a change of basis (both in the source and the destination vector spaces), what is the simplest way of representing a matrix in block-diagonal form?</p>
+
+            <p>Or, in terms of matrices, given our (not necessarily square!) matrix \(A\), can we find invertible square matrices \(P\) and \(Q\) such that \(P^{-1}AQ\) looks as simple as possible?</p>
+
+            <p>Indeed, we can! This is called <a href="https://en.wikipedia.org/wiki/LU_decomposition">\(LU\) decomposition</a> (or better <a href="https://en.wikipedia.org/wiki/LU_decomposition#Lower-diagonal-upper_(LDU)_decomposition">\(LDU\) decomposition</a>), or <a href="https://en.wikipedia.org/wiki/Gaussian_elimination">Gauss elimination</a>, or just the basic method of solving systems of linear equations!</p>
+
+            <p>Specifically, after applying the Gauss method, you've applied invertible transformations for rows/columns of your matrix (which is equivalent to multiplying it from the right/left by invertible square matrices &mdash; that's our change of basis), and you're left with a matrix that looks something like</p>
+
+            \[ \begin{pmatrix} 1 & 0 & 0 & 0 \\ 0 & 1 & 0 & 0 \\ 0 & 0 & 1 & 0 \\ 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & 0 \end{pmatrix} \]
+
+            <p>i.e. the first \(K\) elements of the diagonal are ones, the rest of the diagonal is filled with zeros, and everything else is filled with zeroes as well.</p>
+
+            <p>In terms of basis vectors, this can be interpreted in the following way: we can choose a basis in the source vector space, and a basis in the destination vector space, such that</p>
+
+            <ul>
+                <li>First \(K\) source basis vectors are mapped to the first \(K\) destination basis vectors, corresponding to the upper-left \(K\times K\) corner of this matrix (this number is called the <a href="https://en.wikipedia.org/wiki/Rank_(linear_algebra)"><i>rank</i></a> of a matrix; these destination basis vectors form the <a href="https://en.wikipedia.org/wiki/Image_(mathematics)"><i>image</i></a> of the matrix, also known as the <a href="https://en.wikipedia.org/wiki/Row_and_column_spaces"><i>column space</i></a>)</li>
+                <li>The remaining source basis vectors are mapped to the zero vector in the destination space, they correspond to the zero columns on the right of the matrix (these vectors form the <a href="https://en.wikipedia.org/wiki/Kernel_(linear_algebra)"><i>kernel</i></a> of this operator)</li>
+                <li>The remaining desination vectors cannot be obtained by applying this operator, they correspond to the zero rows on the bottom of the matrix (these vectors form the <a href="https://en.wikipedia.org/wiki/Cokernel"><i>cokernel</i></a> of this matrix)</li>
+            </ul>
+
+            <p>Paraphrasing this in terms of quiver representations, our quiver has exactly 3 indecomposable representations:</p>
+
+            <ul>
+                <li>The \(\mathbb{R}\xrightarrow{1}\mathbb{R}\) representation that maps a 1-dimensional space to a 1-dimensional space via the identity matrix</li>
+                <li>The \(\mathbb{R}\rightarrow 0\) representation that maps all vectors of a 1-dimensional space into the zero vector of a 0-dimensional vector space</li>
+                <li>The \(0\rightarrow\mathbb{R}\) representation that simply embeds a 0-dimensional space into a 1-dimensional space</li>
+            </ul>
+
+            <p><i>NB: the 0-dimensional space is a vector space that contains the zero vector and nothing else. In terms of coordinates, it corresponds to an empty list of coordinates. It's weird, but immensely useful in general context, much like the number 0.</i></p>
+
+            <p>Any representation of this quiver can be decomposed into a sum of copies of these 3 representations: one \(\mathbb{R}\rightarrow\mathbb{R}\) for each \(1\) on the diagonal (after Gauss elimination!), one \(\mathbb{R}\rightarrow 0\) for each zero column, and one \(0\rightarrow\mathbb{R}\) for each zero row.</p>
+
+            <p>So, the representation theory of this quiver boils down to the fact that Gauss elimination can decompose any matrix into a direct sum of these three forms above, which is what a typical linear algebra course secretly covers somewhere in the middle :)</p>
+
+            <p><i>The two quivers we've covered so far are the only ones in this post that have a finite number of indecomposable representations. This can be traced to <a href="https://en.wikipedia.org/wiki/Gabriel%27s_theorem">Gabriel's theorem</a> which states that the only such quivers are those whose underlying graph fits the <a href="https://en.wikipedia.org/wiki/ADE_classification">ADE</a> classification. Specifically, the \(\bullet\) and the \(\bullet\rightarrow\bullet\) quivers correspond to the \(A_1\) and \(A_2\) Dynkin diagrams.</i></p>
+
+            <h2 id="section-the-quiver-3">The \(\bullet\style{display: inline-block; transform: rotate(-90deg)}{\circlearrowleft}\) quiver</h2>
+
+            <p>You might think that a quiver with one vertex must be simpler than with two vertices, but there's a catch: since there's only one vertex, we have only one vector space, and we can only choose one basis! So we actually have less freedom in this case, and the emerging theory is more complicated.</p>
+
+            <p>Here's our quiver:</p>
+
+            <center>
+            <div class="crop-quiver-embed">
+            <iframe class="quiver-embed" src="https://q.uiver.app/#q=WzAsMixbMCwwLCJcXGJ1bGxldCJdLFsxLDAsIlxcYnVsbGV0IixbMCwwLDkzLDFdXSxbMCwwLCIiLDAseyJhbmdsZSI6OTB9XV0=&embed" width="304" height="176" style="border-radius: 8px; border: none;"></iframe>
+            </div>
+            </center>
+
+            <p>Recall that its representations are just square matrices, or operators acting on some vector space. Notice that in this case the source and destination spaces are forced to coincide, meaning we can only choose one basis to drive this matrix into some simpler form. In terms of matrices, we want to find an invertible \(P\) such that</p>
+
+            \[ P^{-1}AP \]
+
+            <p>has the simplest possible form. Notice that, unlike in the previous section, here that's the same matrix \(P\) on both sides!</p>
+
+            <p>This problem is famously solved using eigenvalues and the <a href="https://en.wikipedia.org/wiki/Jordan_normal_form"><i>Jordan normal form</i></a>: any square matrix can be turned into block-diagonal form with blocks that look like</p>
+
+            \[ \begin{pmatrix} \lambda & 1 & 0 & 0 \\ 0 & \lambda & 1 & 0 \\ 0 & 0 & \lambda & 1 \\ 0 & 0 & 0 & \lambda \end{pmatrix} \]
+
+            <p>where \(\lambda\) is an eigenvalue of our matrix.</p>
+
+            <p><i>Note that the eigenvalues can be complex, in which case the matrix and the basis vectors might be complex as well. The situation is a bit more complicated if we disallow this; e.g. we have to incorporate \(2\times 2\) rotation matrices corresponding to the complex eigenvalues.</i>
+
+            <p>For this quiver, the indecomposable representations are classified by the real number \(\lambda\) and a positive integer \(N\): such a representation is an \(N\times N\) Jordan block with \(\lambda\) on the diagonal. In particular, there's an <i>infinite number</i> of indecomposable representations!</p>
+
+            <p>So, once again, the representation theory of this quiver is something that's typically covered by a linear algebra course, probably somewhere in the second semester.</p>
+
+            <h2 id="section-the-quiver-4">The \(\bullet\rightrightarrows\bullet\) quiver</h2>
+
+            <p>Now, this is something that goes beyond a typical linear algebra course. The quiver is</p>
+
+            <center>
+            <div class="crop-quiver-embed">
+            <iframe class="quiver-embed" src="https://q.uiver.app/#q=WzAsMixbMCwwLCJcXGJ1bGxldCJdLFsxLDAsIlxcYnVsbGV0Il0sWzAsMSwiIiwwLHsib2Zmc2V0IjoxfV0sWzAsMSwiIiwyLHsib2Zmc2V0IjotMX1dXQ==&embed" width="304" height="176" style="border-radius: 8px; border: none;"></iframe>
+            </div>
+            </center>
+
+            <p>and its representations are just pairs of matrices between the same two vector spaces. We can choose the basis in the source vector space however we like, and the same goes for the destination space, but now we have <i>two</i> matrices that we want to decompose together, simultaneously. This makes the problem much harder!</p>
+
+            <p>But not <i>wildly</i> harder: the classification is known as the <i>Kronecker Canonical Form</i>. It's a bit involved, you can read <a href="https://www.netlib.org/utk/people/JackDongarra/etemplates/node309.html">here</a> in more detail if you're interested. It typically classifies something called a <i>matrix stencil</i>, which is just a name for a linear matrix-valued polynomial in one variable, i.e. an expression like \(A+Bx\) where \(A\) and \(B\) are matrices (though there's often a minus sign \(A-Bx\) for historical reasons). However, this is more or less equivalent to just classifying pairs of matrices \((A,B)\) under simultaneously changing the source and destination bases, i.e. we want the two matrices</p>
+
+            \[ P^{-1}AQ \quad P^{-1}BQ \]
+
+            <p>to have the simplest possible form.</p>
+
+            <p>Although much less well-known, this stuff shows up routinely in control theory! And once again it can be seen as an instance of representation theory of quivers :)</p>
+
+            <h2 id="section-the-quiver-5">The \(\style{display: inline-block; transform: rotate(90deg)}{\circlearrowright}\bullet\style{display: inline-block; transform: rotate(-90deg)}{\circlearrowright}\) quiver</h2>
+
+            <p>This is the crown jewel of this post. Look at this absolute unit:</p>
+
+            <center>
+            <div class="crop-quiver-embed">
+            <iframe class="quiver-embed" src="https://q.uiver.app/#q=WzAsMyxbMSwwLCJcXGJ1bGxldCJdLFsyLDAsIlxcYnVsbGV0IixbMCwwLDkzLDFdXSxbMCwwLCJcXGJ1bGxldCIsWzAsMCw5MywxXV0sWzAsMCwiIiwwLHsic3R5bGUiOnsiYm9keSI6eyJuYW1lIjoibm9uZSJ9LCJoZWFkIjp7Im5hbWUiOiJub25lIn19fV0sWzAsMCwiIiwwLHsiYW5nbGUiOi00NSwic3R5bGUiOnsiYm9keSI6eyJuYW1lIjoibm9uZSJ9LCJoZWFkIjp7Im5hbWUiOiJub25lIn19fV0sWzAsMCwiIiwwLHsiYW5nbGUiOi05MH1dLFswLDAsIiIsMCx7ImFuZ2xlIjotMTM1LCJzdHlsZSI6eyJib2R5Ijp7Im5hbWUiOiJub25lIn0sImhlYWQiOnsibmFtZSI6Im5vbmUifX19XSxbMCwwLCIiLDAseyJhbmdsZSI6LTE4MCwic3R5bGUiOnsiYm9keSI6eyJuYW1lIjoibm9uZSJ9LCJoZWFkIjp7Im5hbWUiOiJub25lIn19fV0sWzAsMCwiIiwwLHsiYW5nbGUiOjEzNSwic3R5bGUiOnsiYm9keSI6eyJuYW1lIjoibm9uZSJ9LCJoZWFkIjp7Im5hbWUiOiJub25lIn19fV0sWzAsMCwiIiwwLHsiYW5nbGUiOjkwfV1d&embed" width="432" height="176" style="border-radius: 8px; border: none;"></iframe>
+            </div>
+            </center>
+
+            <p>Like in the previous example, we have two matrices \(A\) and \(B\), but they are square, and they map from some vector space to the same space. We can only choose one basis, so we're interested in finding an invertible matrix \(P\) such that</p>
+            
+            \[ P^{-1}AP \quad P^{-1}BP \]
+
+            <p>look as simple as possible.</p>
+
+            <p>This problem, and any problem that boils down to this problem, is called <a href="https://en.wikipedia.org/wiki/Wild_problem#Mathematics"><i>wild</i></a>. It is believed that this problem is hopelessly difficult, to the point that a complete classification is so bizzarely complicated that it's mostly useless. In fact, <a href="https://math.stackexchange.com/a/43284">it has been shown</a> that such a classification would include the classification of <i><b>all possible finite-dimensional algebras</b></i>, which in my opinion is really, really wild.</p>
+
+            <h2 id="section-conclusion">Conclusion</h2>
+
+            <p>So, quiver representations can represent things from the very basics of linear algebra to extremely advanced unsolvable problems. Kinda neat, isn't it? I hope you enjoyed it, too :)</p>
+
+            <p><i>I hate writing <q>conclusion</q> sections. It feels like I'm in 7th grade, writing some boring essay. But it feels weirdly unfinished without it :/</i>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
