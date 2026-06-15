@@ -8,6 +8,14 @@
 		<atom:link href="https://lisyarus.github.io/blog/feed.xml" rel="self" type="application/rss+xml" />
 
 		<item>
+			<title>Can you find a vector not orthogonal to N others?</title>
+			<pubDate>15 Jun 2026 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/can-you-find-a-vector-not-orthogonal-to-n-others.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/can-you-find-a-vector-not-orthogonal-to-n-others.html</guid>
+			<description></description>
+		</item>
+
+		<item>
 			<title>Quivers: a year of linear algebra by drawing arrows</title>
 			<pubDate>09 Jun 2026 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/quivers-a-year-of-linear-algebra-by-drawing-arrows.html</link>
