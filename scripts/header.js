@@ -12,6 +12,9 @@ ${rssLinkHTML}
             <a href="/blog/projects.html" class="header-link">Projects</a>
         </li>
         <li>
+            <a href="/blog/photos.html" class="header-link">Photos</a>
+        </li>
+        <li>
             <a href="/blog/contacts.html" class="header-link">Contacts</a>
         </li>
         <li>
@@ -33,8 +36,7 @@ let footerHTML = `
 <li><a href="https://lisyarus.itch.io" class="footer-link"><img src="/blog/assets/itchio.svg" class="footer-icon"></img></a></li>
 <li><a href="https://stackoverflow.com/users/2315602/lisyarus" class="footer-link"><svg class="footer-icon"><use xlink:href="/blog/assets/minima-social-icons.svg#stackoverflow"></use></svg></a></li>
 <li><a href="https://github.com/lisyarus" class="footer-link"><svg class="footer-icon"><use xlink:href="/blog/assets/minima-social-icons.svg#github"></use></svg></a></li>
-
-</center>
+</ul>
 `;
 
 let endSectionHTML = `
