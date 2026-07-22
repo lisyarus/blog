@@ -190,7 +190,7 @@ std::cout << std::setprecision(8) << (0.2f + (0.3f + 0.4f)) << '\n';</code></pre
 
             <p>Let's analyze the code. The main problem is that <code>angle</code> being zero causes <code>NaN</code>'s. The secondary problem is that <code>angle</code> being too small might introduce precision errors.</p>
 
-            <p>Let's think about precision first. <code>angle</code> isn't just an arbitrary number &mdash; it's the result of calling <code>acos</code>, and we're worried about the case when the argument to <code>acos</code> is close to 1. In fact, the <code>angle</code> itself is somewhat irrelevant, as we mostly care anout <code>sin(angle)</code>, not the angle itself.</p>
+            <p>Let's think about precision first. <code>angle</code> isn't just an arbitrary number &mdash; it's the result of calling <code>acos</code>, and we're worried about the case when the argument to <code>acos</code> is close to 1. In fact, the <code>angle</code> itself is somewhat irrelevant, as we mostly care about <code>sin(angle)</code>, not the angle itself.</p>
 
             <p>Now, \(\sin(\operatorname{acos}(x))\) is just \(\sqrt{1-x^2}\). In our case, <code>x = dot(a, b)</code>. When \(x = 1 - \varepsilon\), we have</p>
 
