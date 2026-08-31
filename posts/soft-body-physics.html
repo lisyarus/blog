@@ -307,7 +307,7 @@ void engine::update(float dt)
         auto vrel = dot(v1 - v0, direction);
         auto damping_factor = exp(- spring_damping * dt);
         auto new_vrel = vrel * damping_factor;
-        auto vrel_delta = new_vrel - vrel;
+        auto vrel_delta = (new_vrel - vrel) * direction;
 
         v0 -= vrel_delta / 2.0;
         v1 += vrel_delta / 2.0;
