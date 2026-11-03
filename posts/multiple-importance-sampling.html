@@ -28,6 +28,8 @@
 
             <p><i>First post of the year. Hooray! This year had a truly terrible start for me.</i></p>
 
+            <p><i>Disclaimer: this post discusses single-sample estimators only. It doesn't apply to multi-sample MIS.</i></p>
+
             <p>If you're into rendering, you probably know that most modern photorealistic rendering is based on <i>path tracing</i>, which in turn is based on <i>Monte-Carlo integration</i>. You also probably know that it introduces a lot of noise in the generated image, and a lot of research is done to <i>reduce</i> this noise, and one of the simple yet importance ways to do that is <i>multiple importance sampling</i>.</p>
 
             <p>However, if you naively implement multiple importance sampling, you get a wrong (typically darker/brighter) image! And if we look into <a href="https://graphics.stanford.edu/papers/veach_thesis/thesis.pdf">Veach'97 PhD thesis</a> that introduced this technique to graphics, we see that it describes something that isn't related to path tracing at all! What's going on?</p>
