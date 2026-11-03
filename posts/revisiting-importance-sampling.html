@@ -1,0 +1,194 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta property="og:type" content="article" />
+        <meta property="og:title" content="Revisiting importance sampling">
+        <meta property="og:site_name" content="lisyarus blog">
+        <meta property="og:image" content="/blog/media/revisiting-importance-sampling/cover.png" />
+        <meta property="og:image:height" content="240" />
+        <meta property="og:image:width" content="520" />
+        <title>Revisiting importance sampling | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Revisiting importance sampling</div></center><br/>
+            <center><span class="post-date">2026 Nov 03</span></center><br/>
+
+            <i>This should really be called something like "Variance bounds for importance sampling sign-changing functions", but that sounds boring as hell.</i>
+
+            <p>I've been preparing for the raytracing course I'll be teaching at spring, which turned out to just an excuse for learning some volumetric path tracing. Anyway, I ended up learning some stuff about Monte-Carlo integration that I didn't think about before, and I figured I'd share that with you.</p>
+
+            <h2>Contents</h2>
+            <ul id="contents"></ul>
+
+            <h2 id="section-importance-sampling">Importance sampling</h2>
+
+            <p>So, we all know what Monte-Carlo integration is. <i>(If you don't, go read <a href="/blog/posts/multiple-importance-sampling.html#section-monte-carlo-integration">my other post</a>.)</i> It is always unbiased (i.e. converges to the desired integral on average, or in the limit of infinitely many samples), but its variance (aka the amount of noise) is highly sensitive to the actual sample distribution being used. As a matter of fact, I've derived this variance in <a href="/blog/posts/estimating-variance-reduction-in-importance-sampling.html">an older post</a> of mine.</p>
+
+            <p>Say, we're estimating the value of the integral \(I = \int\limits_\Omega f(x) dx\) of a function \(f(x)\) over some domain \(\Omega\) (an interval, a 3D volume, a patch of a spherical surface, whatever). We draw samples \(X\) from some probability distribution \(p(x)\) on this domain, and compute the usual Monte-Carlo estimator \(Y = \frac{f(X)}{p(X)}\), and we average over many samples. The variance of this estimator (of a single sample) is</p>
+
+            \[ \operatorname{Var}(Y) = \int\limits_\Omega \frac{f(x)^2}{p(x)}dx - I^2 \]
+
+            <p>As I've said, variance basically means noise, meaning we generally want to reduce the variance as much as we can. But how low can we get?</p>
+
+            <h2 id="section-calculus-of-variations">Calculus of variations</h2>
+
+            <p>We'll have to do some <b><i><span class="rainbow-text">MATH</span></i></b>. Unfortunately, we're trying to minimize some <i>functional</i> (i.e. a function of a function), &ndash; meaning we want to find a function (the probability distribution \(p(x)\)) that makes some function of this function (the variance \(\operatorname{Var}(Y)\)) as small as possible, &ndash; so the math itself is a bit tricky.</p>
+
+            <p>Minimizing a function of a function is similar to minimizing normal functions: we set the derivative to zero and solve the resulting equation. It's hard to talk about derivatives of functionals, though, so we'll do something equivalent but simpler-looking: we replace our unknown function \(p(x)\) with a small correction \(p(x) + \delta(x)\), treat \(\delta(x)\) as an infinitesimal (i.e. infinitely small), and see what happens.</p>
+
+            <p>For normal functions, we typically have \(f(x + \delta) = f(x) + f'(x) \cdot \delta + \dots\), where \(\dots\) combines all terms having \(\delta^2\) and higher orders (because it's infinitely small, its powers are even smaller, so we ignore them). That's exactly what we'll do: plug in \(p(x)+\delta(x)\), expand, and find the term that is multiplied by \(\delta(x)\) &ndash; that's our derivative. By that way, this whole idea is called <a href="https://en.wikipedia.org/wiki/Calculus_of_variations"><i>calculus of variations</i></a>, and it's a pretty useful tool to have up your sleeve.</p>
+
+            <h2 id="section-lagrange-multiplies">Lagrange multiplies</h2>
+
+            <p>We have one more problem, though: \(p(x)\) is a probability distribution, so it has to satisfy the constraint \(\int\limits_\Omega p(x)dx = 1\), i.e. the total probability equals 1. This brings us to the lands of constrained optimization. For that, we'll use the standard method of <a href="https://en.wikipedia.org/wiki/Lagrange_multiplier">Lagrange multipliers</a> combined with our calculus of variations (trust me, you can do this, it works): we take our minimized function, and add some new variable \(\lambda\) multiplied by the constraint that must be satisfied. What we get is the following: we need to find the derivative of</p>
+
+            \[ \int\limits_\Omega \frac{f(x)^2}{p(x)+\delta(x)}dx - I^2 + \lambda \left[\int\limits_\Omega \left(p(x)+\delta(x)\right)dx - 1\right] \]
+
+            <p>with respect to \(\delta(x)\). This is just the formula for the variance from above, plus the thing that comes from our constraint. I'll ignore \(I^2\) since it doesn't depend on \(p(x)\) and thus can't be minimized by changing it, i.e. \(I^2\) is a constant and its functional derivative is zero. Now expand the constraint integral:</p>
+
+            \[ \int\limits_\Omega \left(p(x)+\delta(x)\right)dx - 1 = \int\limits_\Omega p(x)dx + \int\limits_\Omega\delta(x)dx - 1 = 1 + \int\limits_\Omega\delta(x)dx - 1 = \int\limits_\Omega\delta(x)dx \]
+
+            <p>So, because the integral of \(p(x)\) equals 1, the last term in the formula simplifies to</p>
+
+            \[ \lambda \int\limits_\Omega\delta(x)dx \]
+
+            <h2 id="section-expanding-into-infinite-series">Expanding into infinite series</h2>
+
+            <p>Now for the first term. We'll have to apply the <a href="https://en.wikipedia.org/wiki/Geometric_series">identity</a> \(\frac{1}{1+a} = 1 - a + a^2 - a^3 + \dots\) but ignoring the higher-order terms because they are infinitely small:</p>
+
+            \[ \frac{f(x)^2}{p(x)+\delta(x)} = \frac{f(x)^2}{p(x)}\frac{1}{1+\frac{\delta(x)}{p(x)}} = \frac{f(x)^2}{p(x)}\left(1 - \frac{\delta(x)}{p(x)}+\dots\right) = \]
+            \[ = \frac{f(x)^2}{p(x)} - \delta(x) \frac{f(x)^2}{p(x)^2} + \dots \]
+
+            <p>Now bring back the integral:</p>
+
+            \[ \int\limits_\Omega\frac{f(x)^2}{p(x)+\delta(x)}dx = \int\limits_\Omega \frac{f(x)^2}{p(x)}dx - \int\limits_\Omega \delta(x)\frac{f(x)^2}{p(x)^2}dx + \dots \]
+
+            <p>Now, the first term is just the variance of the original distribution \(p(x)\) (ignoring the missing \(I^2\) term, as we've discussed), and the second one is the first-order correction to it. If we want \(p(x)\) to be the distribution that minimizes variance, we want the correction to be zero (similar to how for ordinary smooth functions, the derivative at the minimum is zero). Don't forget the \(\lambda\) term we got from our total probability constraint, and we get</p>
+
+            \[ \int\limits_\Omega \delta(x)\left[- \frac{f(x)^2}{p(x)^2} + \lambda\right]dx = 0 \]
+
+            <h2 id="section-finding-the-minimizing-distribution">Finding the minimizing distribution</h2>
+
+            <p>Now comes the most fun part of calculus of variations: by some general math, if the integral above must be zero for all choices of \(\delta(x)\) (aka the derivative of the functional is zero in all directions), the function in square brackets must be everywhere zero as well. The intuition goes as follows: I can craft a \(\delta(x)\) in such a way that it is zero everywhere except a tiny region around some specific value \(x_0\), and I can shrink this region as small as I want to, and the integral will boil down to basically the value of the integrated function at \(x_0\). Because it's zero at \(x_0\), and \(x_0\) is arbitrary, it is zero everywhere.</p>
+
+            <p>Anyway, what we get is</p>
+
+            \[ \frac{f(x)^2}{p(x)^2} = \lambda \]
+
+            <p>It doesn't matter what \(\lambda\) is; what's important is that it is a constant &ndash; it doesn't depend on \(x\)! So the left side is also a constant, meaning \(p(x)\) is proportional to \(f(x)\)! <a href="https://www.youtube.com/watch?v=IfX1hJS0iGM">Or is it?</a></p>
+
+            <p>There's a sneaky squaring for both \(f(x)\) and \(p(x)\), which hides their signs, and I never said that \(f(x)\) is nonnegative! If we want to be more careful, we should say that \(p(x)\) is proportional to \(\pm f(x)\). But we know that \(p(x)\) is a probability density, so it cannot be negative! Thus \(p(x)\) must be proportional to \(|f(x)|\), and \(\lambda\) is just the normalization factor.</p>
+
+            <p>In fact, now we can compute \(p(x)\) exactly, just by normalizing it:</p>
+
+            \[ p(x) = \frac{|f(x)|}{\int\limits_\Omega |f(x)|dx} = \frac{|f(x)|}{I_+} \]
+
+            <p>where I've introduced the notation \(I_+ = \int\limits_\Omega |f(x)|dx\).</p>
+
+            <p>This is the perfect distribution for Monte-Carlo integration, meaning that it is the distribution having the least variance (aka noise). Strictly speaking, we've only determined that it's a stationary point, so we don't know whether it's a minimum or a maximum. However, we can choose some stupid distribution that is concentrated at some point and almost zero everywhere, and its variance will be as large as we want it to be, so our distribution must be a minimum.</p>
+
+            <h2 id="section-computing-minimal-variance">Computing minimal variance</h2>
+
+            <p>Okay, that's the distribution, but what about the variance itself? Just plug it into the formula for variance we started with:</p>
+
+            \[ \operatorname{Var}(Y) = \int\limits_\Omega \frac{f(x)^2}{p(x)}dx - I^2 = I_+ \int\limits_\Omega \frac{f(x)^2}{|f(x)|}dx - I^2 = \]
+
+            \[ = I_+ \int\limits_\Omega |f(x)|dx - I^2 = I_+^2 - I^2 \]
+
+            <p><i>By the way, we could get the same result immediately by a clever application of the <a href="https://en.wikipedia.org/wiki/Cauchy%E2%80%93Schwarz_inequality">Cauchy-Schwarz inequality</a>:</i></p>
+
+            \[ \int\limits_\Omega \frac{f(x)^2}{p(x)}dx \cdot 1 = \int\limits_\Omega \left(\frac{|f(x)|}{\sqrt{p(x)}}\right)^2dx \cdot \int\limits_\Omega \left(\sqrt{p(x)}\right)^2dx \geq \]
+
+            \[ \geq \left(\int\limits_\Omega |f(x)| dx\right)^2 \]
+
+            <p><i>but I was never good at clever application of inequalities, and it also doesn't give us the minimizing distribution itself, nor does it show that the bound cannot be improved.</i></p>
+
+            <p>That's a pretty cute formula, but we can make it even more cute. See, it's a difference of squares, so we can apply the kindergarten formula \(a^2-b^2=(a+b)(a-b)\) and get</p>
+
+            \[ \left(\int\limits_\Omega |f(x)|dx\right)^2 - \left(\int\limits_\Omega f(x)dx\right)^2 = \]
+
+            \[ = \left[\int\limits_\Omega\left(|f(x)|+f(x)\right)dx\right]\left[\int\limits_\Omega\left(|f(x)|-f(x)\right)dx\right] = \]
+
+            \[ = \left[\int\limits_\Omega 2\max(0, f(x)) dx\right]\left[\int\limits_\Omega 2\max(0, -f(x)) dx\right] = \]
+
+            \[ = 4 \left[\int\limits_{f(x)>0} f(x) dx\right]\left[-\int\limits_{f(x)<0}f(x) dx\right] = 4 I_{>0} I_{<0} \]
+
+            <p>That is, it's just the product of the integral of the positive part of the function, times the integral of the negative part of the function (negated, so that it's still positive), times 4.</p>
+
+            <h2 id="section-analyzing-minimal-variance">Analyzing minimal variance</h2>
+
+            <p>I find this formula to be quite eye-opening. If our integrated function \(f(x)\) always stays nonnegative, the integral of its negative parts is zero \(I_{<0} = 0\), and thus the minimal variance is zero, meaning we can craft better and better sampling strategies \(p(x)\) to minimize variance and get less noise. The same applies if our function is never positive: the integral of positive part is zero \(I_{>0} = 0\), and the minimal variance is zero.</p>
+
+            <p><i>Note that even though in theory we can get the single-sample variance as low as we want, in practice the optimal distribution itself is useless: Monte-Carlo requires evaluating \(\frac{f(x)}{p(x)}\) as the estimator, which for the optimal distribution \(p(x)=\frac{f(x)}{I}\) for a nonnegative function is simply \(\frac{f(x)}{p(x)} = \frac{f(x)}{f(x)/I} = I\). So if we know the optimal distribution, it means we know the integral already, and we don't need no Monte-Carlo.</i></p>
+
+            <p>If, however, our function can be both positive and negative, there is a nonzero bound to how low the variance can get. In the worst case, the function is both positive and negative equally often, and both integrals \(I_{>0}\) and \(I_{<0}\) are sufficiently large, and the minimal possible variance is large as well.</p>
+
+            <p>Why would we even care? Well, in traditional solid surface Monte-Carlo path tracing, the integrated function is the amount of light, typically expressed in units of energy flow per time per surface area per solid angle per wavelength per bald eagle per football field, something like that. Anyway, it's basically energy of the light, and it cannot be negative, so the above doesn't really apply &ndash; the theoretical minimal variance is actually zero.</p>
+
+            <p>However, in volumetric path tracing, instead of computing integrals, we're forced to compute exponentials of integrals like \(\exp\left(-\int f(x)dx\right)\), and because this exponential is just a part of a big formula we want to find a single-sample Monte-Carlo estimator for, we can't just compute the inner integral. One of the things we can do, though, is expand the exponential as a power series, and randomly sample the terms of this series.</p>
+
+            <p>But there's a catch: see that minus sign inside the exponential? I means the resulting power series will have alternating signs, and it will have a nonzero bound on how low its variance can get when doing Monte-Carlo (the <a href="#section-bonus-minimal-variance-for-a-series">derivation for series</a> is much simpler than for arbitrary functions, btw, but the bound is basically the same &ndash; the product of sums of positive and negative terms separately).</p>
+
+            <p>In fact, the variance will be growing exponentially as our integral value shrinks exponentially, so we'll get answers like \(I \approx 0.01 \pm 100\), which is basically just garbage.</p>
+
+            <h2 id="section-sampling sign-changing-functions">Sampling sign-changing functions</h2>
+
+            <p>So, what do we do with functions that can have both signs? There are a few options!</p>
+
+            <p>The first one is quite obvious: compute the integrals of the positive and negative parts separately if you know where they are located. However, we can't simply select each sample to be a positive or negative one randomly &ndash; this is just basic Monte-Carlo with some probability distribution \(p(x)\) in disguise, and the above variance bound applies to it as well. What we need is to, say, allocate a fixed amount of samples for each of the parts (for example, using <a href="https://en.wikipedia.org/wiki/Neyman_allocation">Neyman allocation</a>). This is basically the same as <a href="https://en.wikipedia.org/wiki/Stratified_sampling">stratified sampling</a>, and achieves variance reduction for the same reasons &ndash; by distributing the samples more evenly.</p>
+
+            <p>Another option (that goes under the cryptic name <a href="https://en.wikipedia.org/wiki/Control_variates"><i>control variates</i></a>) is to simply add something to our function! Suppose we know that there's a constant \(M\) such that \(f(x) > -M\) for all \(x\). This means that \(f(x)+M\) is nonnegative, and doesn't suffer from this variance bound! So, instead of computing the integral of \(f(x)\) directly, we compute the integral of \(f(x)+M\) and then subtract the integral of \(M\) (which is supposedly easy to compute):</p>
+
+            \[ \int\limits_\Omega f(x)dx = \int\limits_\Omega (f(x)+M)dx - \int\limits_\Omega Mdx = \int\limits_\Omega (f(x)+M)dx - M\cdot |\Omega| \]
+
+            <p>In fact, that's exactly the usual approach to the problem with exponentials I've mentioned above (well, part of the approach), but explaining that will take another article, which I hope to write soon. Cheers!</p>
+
+            <h2 id="section-bonus-minimal-variance-for-a-series">Bonus: minimal variance for a series</h2>
+
+            <p>Say we want to compute an infinite series \(S = \sum X_k\) by randomly selecting an index \(k\) with probability \(p_k\) and then returning \(Y = \frac{X_k}{p_k}\). The \(X_k\) themselves can be random variables as well, of course. The expected value is</p>
+
+            \[ \mathbb E[Y] = \sum \frac{X_k}{p_k}\cdot p_k = \sum X_k \]
+
+            <p>meaning that's an unbiased estimator of our infinite series. Cool! But what about the variance?</p>
+
+            <p>Do the same as above, but without the scary variational calculus and integral functionals. Take the expected value of the square of our estimator, add the constraint \(\sum p_k = 1\)</p>
+
+            \[ F(p) = \sum \frac{X_k^2}{p_k^2}p_k + \lambda \left(\sum p_k - 1\right) = \sum \frac{X_k^2}{p_k} + \lambda \left(\sum p_k - 1\right) \]
+
+            <p>and differentiate with respect to \(p_k\) for some fixed \(k\):</p>
+
+            \[ \frac{d}{dp_k}F(p) = - \frac{X_k^2}{p_k^2} + \lambda \]
+
+            <p>Because we search for the minimum of \(F(p)\), all the derivatives must be zero, so once again \(p_k\) must be proportional to \(|X_k|\), meaning that after normalization</p>
+
+            \[ p_k = \frac{|X_k|}{\sum |X_k|} \]
+
+            <p>is the optimal distribution with the minimal possible variance. Then we compute the variance itself and get</p>
+
+            \[ \operatorname{Var}(Y) = \sum \frac{X_k^2}{|X_k|} \cdot \sum |X_k| - \left(\sum X_k\right)^2 = \left(\sum |X_k|\right)^2 - \left(\sum X_k\right)^2 \]
+
+            <p>and once again expanding the difference of squares we get</p>
+
+            \[ \operatorname{Var}(Y) = 4 \left(\sum_{X_k>0} X_k\right)\left(-\sum_{X_k<0} X_k\right) \]
+
+            <p>i.e. the product of the sum of all positive terms, times the product of the sum of all negative terms (negated), times 4.</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>
