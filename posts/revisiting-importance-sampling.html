@@ -51,7 +51,7 @@
 
             <p>For normal functions, we typically have \(f(x + \delta) = f(x) + f'(x) \cdot \delta + \dots\), where \(\dots\) combines all terms having \(\delta^2\) and higher orders (because it's infinitely small, its powers are even smaller, so we ignore them). That's exactly what we'll do: plug in \(p(x)+\delta(x)\), expand, and find the term that is multiplied by \(\delta(x)\) &ndash; that's our derivative. By that way, this whole idea is called <a href="https://en.wikipedia.org/wiki/Calculus_of_variations"><i>calculus of variations</i></a>, and it's a pretty useful tool to have up your sleeve.</p>
 
-            <h2 id="section-lagrange-multiplies">Lagrange multiplies</h2>
+            <h2 id="section-lagrange-multipliers">Lagrange multipliers</h2>
 
             <p>We have one more problem, though: \(p(x)\) is a probability distribution, so it has to satisfy the constraint \(\int\limits_\Omega p(x)dx = 1\), i.e. the total probability equals 1. This brings us to the lands of constrained optimization. For that, we'll use the standard method of <a href="https://en.wikipedia.org/wiki/Lagrange_multiplier">Lagrange multipliers</a> combined with our calculus of variations (trust me, you can do this, it works): we take our minimized function, and add some new variable \(\lambda\) multiplied by the constraint that must be satisfied. What we get is the following: we need to find the derivative of</p>
 
