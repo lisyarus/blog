@@ -1,0 +1,349 @@
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta property="og:type" content="article" />
+        <meta property="og:title" content="Ratio tracking, intuitively">
+        <meta property="og:site_name" content="lisyarus blog">
+        <meta property="og:image" content="/blog/media/ratio-tracking-intuitively/cover.png" />
+        <meta property="og:image:height" content="240" />
+        <meta property="og:image:width" content="520" />
+        <title>Ratio tracking, intuitively | lisyarus blog</title>
+        <link rel="stylesheet" href="/blog/styles/styles.css">
+        <link rel="icon" type="image/x-icon" href="/blog/assets/favicon.ico">
+        <link rel="stylesheet" href="/blog/styles/panda-syntax-dark.css">
+        <script src="/blog/scripts/highlight.min.js"></script>
+        <script src="/blog/scripts/cpp.min.js"></script>
+        <script src="/blog/scripts/glsl.min.js"></script>
+        <script type="text/javascript">
+            hljs.highlightAll();
+        </script>
+        <script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+    </head>
+    <body>
+        <div id="page-content">
+            <header id="blog-header"></header>
+            <br/><center><div class="page-title">Ratio tracking, intuitively</div></center><br/>
+            <center><span class="post-date">2026 Nov 19</span></center><br/>
+
+			<p>Recently, I've been <a href="https://lisyarus.github.io/webgpu/clouds">toying around with volumetric path tracing</a>, and along the way I had to learn some new math, which was actually pretty exciting. Today, I want to tell you about some of this math, in a way that feels like we've derived it ourselves from scratch.</p>
+
+			<h2>Contents</h2>
+			<ul id="contents"></ul>
+
+			<h2 id="section-monte-carlo-recap">Monte Carlo recap</h2>
+
+			<p>First, let's recap the usual Monte Carlo method. Say, we want to compute the integral of some function</p>
+
+			\[ I = \int\limits_0^L f(x)dx \]
+
+			<p>We do this by generating \(N\) samples \(X_i\) according to some probability distribution \(p(x)\) that satisfies \(f(x) \neq 0 \Rightarrow p(x) > 0\), compute the <i>single-sample estimators</i> \(\frac{f(X_i)}{p(X_i)}\), and average them out, producing our final estimate</p>
+
+			\[ \frac{1}{N}\sum\limits_i \frac{f(X_i)}{p(X_i)} \]
+
+			<p>The output is random, but <i>on average</i> it equals our desired integral. And, as we get more samples, we get a better estimate &ndash; that is, the <i>variance</i> (the noise) of the estimator goes to zero.</p>
+
+			<p>Now, this is all good, but what if our task is a bit more complicated than just a single integral? What if we want to compute some function of the integral?</p>
+
+			<h2 id="section-integral-squared">Integral, squared</h2>
+
+			<p>Consider the simplest possible way we could make our lives harder (which will turn out to be useful later): what if instead of an integral, we need to compute the <i>square</i> of an integral?</p>
+
+			\[ I^2 = \left(\int\limits_0^L f(x)dx\right)^2 \]
+
+			<p>That sounds silly at first: if you want the integral squared, just compute the integral, then take the square! For example, using the same Monte Carlo method as before:</p>
+
+			\[ \left(\frac{1}{N}\sum\limits_i \frac{f(X_i)}{p(X_i)}\right)^2 \]
+
+            <p>This certainly works, and in fact if your end goal is to compute this squared integral, this is the way to go.</p>
+
+            <p>The problem is when this squared integral is only a part of something bigger. Maybe it is multiplied by some other expression, or maybe it is itself inside another integral? In cases like this, we might want to apply Monte Carlo to the whole expression of which the squared integral might only be a small part.</p>
+
+            <p>For this to work with Monte Carlo, we need an estimate of the squared integral, not the integral itself. I.e. we need some random variable \(Y\) such that its expected value \(\mathbb E[Y]\) equals the squared integral. Basic Monte Carlo cannot do that!</p>
+
+            <p>You might think that we just need to square the samples we generate, &ndash; e.g. instead of returning \(\frac{f(X)}{p(X)}\) we'd return \(\frac{f(X)^2}{p(X)}\), &ndash; but that would compute the integral of a square</p>
+
+            \[ \int\limits_0^L f(x)^2dx \quad{\color{red}\neq}\quad I^2 \]
+
+            <p>and not the squared integral. For all but the simplest choices of \(f(x)\) these <a href="https://knowyourmeme.com/sensitive/memes/we-are-not-the-same">are not the same</a>!</p>
+
+            <p>We can somewhat solve it by e.g. approximating the integral using other methods, like discretization, but that would introduce aliasing (unless we jitter the samples) and bias (i.e. the result will <b>not</b> be equal the the desired integral on average, it will only approximate it). For real-time applications, this might be fine, but for something like path-tracing aiming at generating the true solution of the light transport equations, this is not acceptable.</p>
+
+            <p>So, what do we do? There's a fun trick that relies on the fact that for independent random variables \(Y_1\) and \(Y_2\), the expected value of their product is the product of expected values:</p>
+
+            \[ \mathbb E[Y_1Y_2] = \mathbb E[Y_1]\mathbb E[Y_2] \]
+
+            <p>(in general, these two differ by their <i>covariance</i>).</p>
+
+            <p>So, take both \(Y_1\) and \(Y_2\) to be two <b>independent</b> Monte Carlo estimates of the original integral \(I = \int\limits_0^L f(x)dx\), i.e. generate two independent samples \(X_1\) and \(X_2\), compute \(Y_i = \frac{f(X_i)}{p(X_i)}\), so that \(\mathbb E[Y_i] = I\), and set</p>
+
+            \[ Y = Y_1Y_2 = \frac{f(X_1)f(X_2)}{p(X_1)p(X_2)} \]
+
+            <p>This \(Y\) will be a Monte Carlo estimate of the squared integral, meaning that its expectation value is equal to the squared integral:</p>
+
+            \[ \mathbb E[Y] = \mathbb E[Y_1Y_2] = \mathbb E[Y_1]\mathbb E[Y_2] = I^2 \]
+
+            <p>The \(X_i\) don't even have to use the same distribution \(p(x)\), the important thing is that they are independent.</p>
+
+            <p>More generally, if we want to compute the \(k\)-th power of the integral,</p>
+
+            \[ I^k = \left(\int\limits_0^L f(x)dx\right)^k \]
+
+            <p>you simply generate \(k\) independent samples to estimate the integral itself, and take their product &ndash; this will be a Monte Carlo sample for the \(I^k\). It does force us to take more samples and compute more evaluations of \(f(x)\), but as a reward we get a true Monte Carlo sample for something that is more complicated than just a single integral.</p>
+
+            <h2 id="section-volumetric-light-transport">Volumetric light transport</h2>
+
+            <p>Unfortunately, in volumetric rendering we need something even more complicated than an integral taken to some power. Ignoring scattering (which complicates things even further), a typical volumetric integral looks like</p>
+
+            \[ \int\limits_0^L g(x) \exp\left(-\int\limits_0^x f(t)dt \right)dx \]
+
+            <p>Yep, this is an integral of an exponential of an integral.</p>
+
+            <p><i>Wtf man, <a href="https://www.reddit.com/r/funny/comments/ba58m/game_programmer/#lightbox">I just wanted to make videogames</a>.</i></p>
+
+            <p>This apparent monstrosity of a formula is actually surprisingly easy to interpret: \(g(x)\) is how much light is emitted by the 3D medium at the point \(x\) along the camera ray, and we simply add (i.e. integrate) all the emitted light together. However, this light might be scattered away or absorbed along the path towards the camera by the same medium, so we multiply it be the mysterious exponential factor (called <i>transmittance</i>) which tells us how much light actually survives and reaches the camera.</p>
+
+            <p><i>(The reason transmittance takes the form of an exponential of an integral aren't too complicated, but they are irrelevant to this post.)</i></p>
+
+            <p>If we want to use Monte Carlo to compute this formula, we can generate a random sample \(X\in [0, L]\) using some distribution \(p(x)\), but then we need to compute the exponential, which is generally impossible to do precisely. Thankfully, because we're doing Monte Carlo, we can replace the exponential with some random variable \(Y\) that has this exponential as its expectation value, making the final estimator \(\frac{g(X)\cdot Y}{p(X)}\) converge to the desired integral.</p>
+
+            <p>All we need to do is find such a random variable \(Y\), and the method to do that is called</p>
+
+            <h2 id="section-ratio-tracking">Ratio tracking</h2>
+
+            <p>As you might've guessed by this point, ratio tracking is precisely that: a method of Monte Carlo estimating an exponential of an integral. In other words, it's a method for constructing a random variable with its expectation value equal to an exponential of an integral.</p>
+
+            <p>Our target formula will be of the form</p>
+
+            \[ T = \exp\left(-\int\limits_0^L f(x)dx\right) = \exp(-I) \]
+
+            <p>and we'll construct a random variable \(Y\) such that</p>
+
+            \[ \mathbb E[Y] = \exp(-I) = T \]
+
+            <p>I want to note that in most applications it happens that \(f(x)\geq 0\), so that the integral is also \(I \geq 0\), the exponentiated expression is \(-I \leq 0\), and thus the exponent itself \(T\) is always in the \([0, 1]\) range. We'll see why this is important in the next section. From now on, we'll assume that \(f(x) \geq 0\).</p>
+
+            <p><i>\(f(x)\) is usually something like the probability of a ray hitting some particle or being absorbed by some particle, thus it is nonnegative. Technically, \(f(x)\) is defined per unit distance in the limit of infinitely small distances.</i></p>
+
+            <p>So, how does this method work? Instead of simply presenting it to you, I'll try to motivate its construction in such a way that it feels like we've derived it ourselves (which we technically will).</p>
+			
+            <h2 id="section-step-1-infinite-series">Step 1: Infinite series</h2>
+
+            <p>We don't know how to estimate the exponential directly, but we do know how to turn in into an infinite series of simpler expressions:</p>
+
+            \[ T = \exp(-I) = \sum\limits_{k=0}^\infty (-1)^k\frac{I^k}{k!} \]
+
+            <p>Now, how do we Monte Carlo a sum of several values? We have essentially two main methods:</p>
+
+            <ol>
+                <li>Estimate each term of the sum separately \(Y_k\), and return the sum \(Y=\sum Y_k\) as the total estimate, or</li>
+                <li>Pick a random term \(k\) of the sum with probability \(p_k\), estimate it as \(Y_k\), and return \(Y=\frac{Y_k}{p_k}\) as the total estimate.</li>
+            </ol>
+
+            <p>The first method generally has lower variance, but it gets less attractive as the number of terms in the sum grows. In our case we have an infinite number of terms, thus this method isn't really applicable at all (you'd need an infinite for loop just to produce a single estimate of the whole sum).</p>
+
+            <p>Thus, we have to use the second method. Which is actually really, really bad news. You see, our series is alternating in signs (because of the \((-1)^k\) factor), and in the <a href="/blog/posts/revisiting-importance-sampling.html#section-bonus-minimal-variance-for-a-series">previous post</a> we've derived that when estimating sign-alternating series like these, we have really big problems with variance (aka noise). Specifically, when computing an infinite sum \(\sum A_k\) using this method, the lowest variance we can get is</p>
+
+            <p>\left(\sum |A_k|\right)^2 - \left(\sum A_k\right)^2</p>
+
+            <p>Applying this to our series for \(T=\exp(-I)\), we get</p>
+
+            \[ \left(\sum \left|(-1)^k\frac{I^k}{k!}\right|\right)^2 - \left(\sum (-1)^k\frac{I^k}{k!}\right)^2 = \exp(2I) - \exp(-2I) \]
+
+            <p>(Here, the absolute value killed the \((-1)^k\) factor, and I've moved squaring inside the exponential as a factor of 2.)</p>
+
+            <p>Now, if \(I\) is close to zero, this minimal variance is roughly equal to</p>
+
+            \[ \exp(2I) - \exp(-2I) \approx (1+2I) - (1-2I) = 4I \]
+
+            <p>meaning that the typical error (the standard deviation) would be something like \(2\sqrt I\), which for small \(I\) is much larger than \(I\) itself. For example, we would estimate the value of \(T\) as \(0.01\pm 0.2\), which is borderline useless.</p>
+
+            <p>Now, for large \(I\), things are even worse. In this case the \(\exp(-2I)\) term is negligible, and the variance is approximately \(\exp(2I)\), thus the standard deviation is about \(\exp(I)\), which is equal to \(\frac{1}{T}\). This time, we would estimate \(T\) as \(0.01\pm 100\), which is far beyond being staggeringly useless.</p>
+
+            <p>So, we either have to give up entirely, or proceed to</p>
+            
+            <h2 id="section-step-2-control-variates-aka-the-majorant">Step 2: Control variates, aka the majorant</h2>
+
+            <p>The main problem is that we're exponentiating something negative. There's a stupidly simple way of turning this into a problem of exponentiating something positive! Find any value \(A\) which is guaranteed to be not less than \(I\), then \(A-I\geq 0\), and \(\exp(A-I)\) is an exponent of something nonnegative! Wait, but this isn't what we were trying to compute...</p>
+
+            <p>The fix is using the properties of exponentials:</p>
+
+            \[ \exp(-I) = \exp(-A)\exp(A-I) \]
+
+            <p>Now, this only works if \(\exp(-A)\) itself is easier to compute that \(\exp(-I)\), otherwise we've just made a circle. One particularly easy way is find some upper bound \(M\) for our function \(f(x)\), meaning that \(\forall x\in [0, L] \quad f(x)\leq M\). <i>(In practice, the values of f(x) might come from a 3D texture or some noise, and the upper bound can be easily estimated or precomputed.)</i> Then</p>
+
+            \[ I = \int\limits_0^L f(x)dx \leq \int\limits_0^L Mdx = M\cdot L \]
+
+            <p>Thus, we can rewrite \(\exp(-I)\) as</p>
+
+            \[ \exp(-I) = \exp(-ML)\exp(ML-I) \]
+
+            <p>Here, \(\exp(-ML)\) is just some constant, and the \(\exp(ML-I)\) is the exponent of something nonnegative! That's a win.</p>
+
+            <p>We can now express it via an infinite sum again:</p>
+
+            \[ \exp(-I) = \exp(-ML)\sum\limits_{k=0}^\infty \frac{(ML-I)^k}{k!} \]
+
+            <p>And we just need to sample random terms from this sum, using</p>
+
+            <h2 id="section-step-3-poisson-distribution">Step 3: Poisson distribution</h2>
+
+            <p>We know that for a good sampling strategy, the probability of picking the \(k\)-th term of the sum must be proportional to the value of this term. Unfortunately, we don't know the values of the terms (otherwise there wouldn't be anything left to compute), but we can try to bound them somehow.</p>
+
+            <p>Look at the \(k\)-th term of the sum again:</p>
+
+            \[ \frac{(ML-I)^k}{k!} = \frac{(ML)^k}{k!}\left(1-\frac{I}{ML}\right)^k \]
+
+            <p>I've rewritten it a bit to separate the constants \(ML\) and the term number \(k\) from the unknown integral value \(I\). The \(\left(1-\frac{I}{ML}\right)\) term is a bit scary, but notice that \(I\leq ML\), thus this term is always somewhere in the \([0, 1]\) range (at it remains there when we take the \(k\)-th power).</p>
+
+            <p>The remaining factors look pretty okay, so let's find a probability distribution which is proportional to their value</p>
+
+            \[ p_k \sim \frac{(ML)^k}{k!} \]
+
+            <p>We just need to compute the proportionality constant. To do this, sum all these terms:</p>
+
+            \[ C = \sum\limits_{k=0}^\infty \frac{(ML)^k}{k!} = \exp(ML) \]
+
+            <p>So, to turn this into a probability distribution, we need to divide \(\frac{(ML)^k}{k!}\) by \(\exp(ML)\), which is the same as multiply by a factor of \(\exp(-ML)\). The final probabilities now look like</p>
+
+            \[ p_k = \exp(-ML) \frac{(ML)^k}{k!} \]
+
+            <p>This is a well-known distribution called the <i><a href="https://en.wikipedia.org/wiki/Poisson_distribution">Poisson distribution</a></i>, and is one of the most important probability distributions across all math. The fact that it appeared out of nowewhere isn't a coincidence, although it does look <a href="https://translate.google.com/?sl=en&tl=fr&text=fish&op=translate">somewhat fishy</a>.</p>
+
+            <p>But wait, \(\exp(-ML)\) is exactly the factor we already had in front of our infinite sum! Recall:</p>
+
+            \[ \exp(-I) = \exp(-ML)\sum\limits_{k=0}^\infty \frac{(ML-I)^k}{k!} \]
+
+            <p>We can now rewrite it as</p>
+
+            \[ \exp(-I) = \sum\limits_{k=0}^\infty p_k \left(1-\frac{I}{ML}\right)^k \]
+
+            <p>Which literally has the form of an expectation value! How very convenient. So, here's our new algorithm:</p>
+
+            <ol>
+                <li>Select a random \(k\) with probability distribution \(p_k\),</li>
+                <li>Return a random estimate of \(\left(1-\frac{I}{ML}\right)^k\) as the answer.</li>
+            </ol>
+
+            <p>On average, this will converge to \(T=\exp(-I)\). The only thing that remains is</p>
+
+            <h2 id="section-step-4-sampling-the-kth-power">Step 4: Sampling the k-th power</h2>
+
+            <p>How on Earth do we Monte Carlo estimate \(\left(1-\frac{I}{ML}\right)^k\)? We've already talked about it in the beginning of the post: take \(k\) <b>independent</b> estimates of \(\left(1-\frac{I}{ML}\right)\) and multiply them all!</p>
+
+            <p>Okay, how do I Monte Carlo estimate \(\left(1-\frac{I}{ML}\right)\) itself? Rewrite it:</p>
+
+            \[ 1-\frac{I}{ML} = \frac{1}{ML}(ML-I) = \frac{1}{ML}\int\limits_0^L (M - f(x))dx = \]
+            \[ = \int\limits_0^L \frac{1}{L} \left(1-\frac{f(x)}{M}\right)dx \]
+
+            <p>This looks suspiciosly familiar: \(\frac{1}{L}\) is just the probability of selecting a point \(X\in[0,L]\) uniformly, and the expression as a whole is just the expected value of the resulting random variable \(1-\frac{f(X)}{M}\)!</p>
+
+            <p>So, here's the recipe for estimating \(\left(1-\frac{I}{ML}\right)^k\):</p>
+
+            <ol>
+                <li>Generate \(k\) independent points \(X_i\in[0,L]\) using uniform distribution</li>
+                <li>Compute the product \(\prod\limits_{i=1}^k \left(1-\frac{f(X_i)}{M}\right)\) &ndash; this is the desired estimate</li>
+            </ol>
+
+            <p>Notice that we don't divide by the probabilities of \(X_i\) (which are all equal to \(\frac{1}{L}\)) &ndash; it is already included in our formula, and it relies on the \(X_i\) being uniformly distributed.</p>
+
+            <p>We could stop here, &ndash; after all, we have all the algorithm pieces worked out, &ndash; but that's not how ratio tracking is usually presented. There are many reasons for that, one being that sampling \(k\) using the probabilities \(p_k\) we've derived earlier isn't actually that straightforward.</p>
+
+            <p>Instead, it uses something called</p>
+
+            <h2 id="section-step-5-poisson-process">Step 5: Poisson process</h2>
+
+            <p>Poisson process is something very closely related to the Poisson distribution. It is often described as the bus arrival distribution. The idea is that, in theory, buses should arrive at regular time intervals, but because of random traffic delays, varying bus speeds, and the drivers' aim of sticking to the timetable at least somewhat, the time intervals are stable only <i>on average</i>.</p>
+
+            <p>The Poisson process describes exactly what happens in this case: if we only know that certain events happen once every \(T\) seconds <i>on average</i>, what can we say about the exact distribution? How many events will happen during some time period, how long will we have to wait for the next event, for the second-to-next event, and so on.</p>
+
+            <p>The Poisson process with parameter \(\lambda\) defines an increasing sequence of random positive numbers (or points, or events) \(X_i\), and the difference between any two neighbouring points follows the exponential distribution \(\lambda \exp(-\lambda x)\). By the way, it is convenient to define \(X_{0}=0\) without considering \(X_{0}\) to be part of the sequence.</p>
+
+            <p>The connection between Poisson processes and volumetric rendering is extremely deep, and it's something that I'm still learning about, and something I'll hopefully share in a later post. For now, all we need can be boiled down to the following 3 standard facts about Poisson processes:</p>
+
+            <ol>
+                <li>For a Poisson process with parameter \(\lambda=M\), the number of events \(k\) in the interval \([0,L]\) follows the probability distribution \(p_k = \exp(-ML)\frac{(ML)^k}{k!}\).</li>
+                <li>If the number of events \(k\) is fixed, the events themselves \(X_i\) turn out to be uniformly distributed.</li>
+                <li>There is an easy algorithm for sampling the Poisson process.</li>
+            </ol>
+
+            <p>So, the idea is that we use the Poisson process to generate a sequence of points \(X_i\). We're only interested in points in the interval \([0, L]\), so we can simply stop when a new sample is outside that range (\(X_i>L\)). Then we simply compute \(\prod\limits_{i=1}^k\left(1-\frac{f(X_i)}{M}\right)\) as our estimate of \(T=\exp(-I)\).</p>
+
+            <p>A lot of things work out automatically here:</p>
+
+            <ul>
+                <li>The probability distribution of the choice of \(k\) will be exactly \(p_k\) by the properties of the Poisson process.</li>
+                <li>The individual distributions of the selected points \(X_i\) will be uniform by the properties of the Poisson process.</li>
+                <li>Combined, this whole sampling algorithm is equivalent to what we've derived by the end of step 4.</li>
+            </ul>
+
+            <p>What's left is actually sampling the Poisson process, which is done using</p>
+
+            <h2 id="section-step-6-cdf-inversion">Step 6: CDF inversion</h2>
+
+            <p>Recall that the Poisson process is defined like that:</p>
+
+            <ol>
+                <li>Start with \(X_{0}=0\), which isn't part of the sequence.</li>
+                <li>For each \(i\in\{1,2,\dots\}\), generate \(X_i\) as \(X_{i-1}\) plus an exponentially-distributed step size.</li>
+            </ol>
+
+            <p>So it boils down to generating exponentially-distributed values. This is where <a href="https://en.wikipedia.org/wiki/Inverse_transform_sampling">CDF inversion</a> enters the stage. Recall that the probability distribution for the step size is \(p(x) = \lambda\exp(-\lambda x)\). Integrating, we get the CDF equal to \(F(x) = 1-\exp(-\lambda x)\).</p>
+
+            <p>Now apply CDF inversion: to generate samples according to \(p(x)\), generate a sample \(u\) uniformly distributed on \([0, 1]\), and compute \(F^{-1}(u)\) &ndash; it will have the desired distribution.</p>
+
+            <p>In our case, \(F^{-1}\) is easy to find:</p>
+
+            \[ u = F(x) = 1 - \exp(-\lambda x) \]
+            \[ \exp(-\lambda x) = 1 - u \]
+            \[ -\lambda x = \log(1 - u) \]
+            \[ x = F^{-1}(u) = -\frac{\log(1 - u)}{\lambda} \]
+
+            <p>Recall that in the case of ratio tracking, we set \(\lambda=M\), where \(M\) is the upper bound for our function \(f(x)\).</p>
+
+            <p>So, we generate uniform values \(u_i \in [0,1]\), generate \(X_i\) sequentually using steps of \(-\frac{\log(1 - u)}{M}\), compute the product of \(\left(1-\frac{f(X_i)}{M}\right)\) terms, and stop when \(X_i > L\). <i>This</i> is ratio tracking!</p>
+
+            <h2 id="section-the-complete-algorithm">The complete algorithm</h2>
+
+            <p>It is very easy to get lost in all the formulas and terminology above, so let me once again describe the algorithm from start to end.</p>
+
+            <p>What we want to do is find a random variable \(Y\) which will be a Monte Carlo estimate of an exponential of minus the integral of a nonnegative function \(f(x)\):</p>
+
+            \[ T = \exp\left(-\int\limits_0^L f(x)dx\right) = \exp(-I) \]
+
+            <p>That is, we want the expectation value of \(Y\) to be equal to this exponential:</p>
+
+            \[ \mathbb E[Y] = \exp(-I) = T \]
+
+            <p>We do this by finding an upper bound \(M\) for our integrated function \(f(x)\), meaning that \(f(x) \leq M\) always holds.</p>
+
+            <p>Then, we generate a sequence of numbers \(X_i\), and compute the running product of \(\left(1-\frac{f(X_i)}{M}\right)\). Note that we don't need to store all the numbers, just the last one (in order to generate the next one).</p>
+
+            <p>And the numbers themselves are generated as incremental steps following the exponential distribution, starting with \(X_0=0\) (which is just the starting value, and not part of the sequence).</p>
+
+            <p>I'm sure that, for a lot of my audience, code is easier to read than literally everything I've said above, so here's the code:</p>
+
+            <pre><code class="language-cpp block">// f(x) is the function under the integral
+// L is the length of the interval
+// M is the upper bound for f(x)
+
+float x = 0;
+float result = 1;
+while (true) {
+    float u = rand01();
+    float step = - log(1 - u) / M;
+    x += step;
+    if (x >= L) break;
+    result *= 1 - f(x) / M;
+}
+
+// result holds the desired random estimate of the exponential</code></pre>
+
+            <p>Ta-daaaaa! Less than 10 lines, this one. So much for all the yapping.</p>
+
+            <div id="end-section"></div>
+            <div id="blog-footer"></div>
+        </div>
+        <script async src="/blog/scripts/header.js"></script>
+    </body>
+</html>

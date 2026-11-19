@@ -8,6 +8,14 @@
 		<atom:link href="https://lisyarus.github.io/blog/feed.xml" rel="self" type="application/rss+xml" />
 
 		<item>
+			<title>Ratio tracking, intuitively</title>
+			<pubDate>19 Nov 2026 18:00:00 GMT</pubDate>
+			<link>https://lisyarus.github.io/blog/posts/ratio-tracking-intuitively.html</link>
+			<guid isPermaLink="true">https://lisyarus.github.io/blog/posts/ratio-tracking-intuitively.html</guid>
+			<description></description>
+		</item>
+
+		<item>
 			<title>Revisiting importance sampling</title>
 			<pubDate>03 Nov 2026 18:00:00 GMT</pubDate>
 			<link>https://lisyarus.github.io/blog/posts/revisiting-importance-sampling.html</link>
