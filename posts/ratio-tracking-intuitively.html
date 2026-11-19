@@ -144,7 +144,7 @@
 
             <p>Thus, we have to use the second method. Which is actually really, really bad news. You see, our series is alternating in signs (because of the \((-1)^k\) factor), and in the <a href="/blog/posts/revisiting-importance-sampling.html#section-bonus-minimal-variance-for-a-series">previous post</a> we've derived that when estimating sign-alternating series like these, we have really big problems with variance (aka noise). Specifically, when computing an infinite sum \(\sum A_k\) using this method, the lowest variance we can get is</p>
 
-            <p>\left(\sum |A_k|\right)^2 - \left(\sum A_k\right)^2</p>
+            \[ \left(\sum |A_k|\right)^2 - \left(\sum A_k\right)^2 \]
 
             <p>Applying this to our series for \(T=\exp(-I)\), we get</p>
 
@@ -236,7 +236,7 @@
             \[ 1-\frac{I}{ML} = \frac{1}{ML}(ML-I) = \frac{1}{ML}\int\limits_0^L (M - f(x))dx = \]
             \[ = \int\limits_0^L \frac{1}{L} \left(1-\frac{f(x)}{M}\right)dx \]
 
-            <p>This looks suspiciosly familiar: \(\frac{1}{L}\) is just the probability of selecting a point \(X\in[0,L]\) uniformly, and the expression as a whole is just the expected value of the resulting random variable \(1-\frac{f(X)}{M}\)!</p>
+            <p>This looks suspiciously familiar: \(\frac{1}{L}\) is just the probability of selecting a point \(X\in[0,L]\) uniformly, and the expression as a whole is just the expected value of the resulting random variable \(1-\frac{f(X)}{M}\)!</p>
 
             <p>So, here's the recipe for estimating \(\left(1-\frac{I}{ML}\right)^k\):</p>
 
